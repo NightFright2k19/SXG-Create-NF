@@ -116,7 +116,7 @@ def WriteVoice(voice : Voice, target : MU) -> bytes :
 # things wrap if idx is < 0
 def WriteANSI(array : bytearray, idx : int, string : str) : 
 
-    str_bytes = string.encode(encoding='ANSI')
+    str_bytes = string.encode(encoding='cp1252')
 
     for i, addr in enumerate(range(idx, min(len(array) , idx+len(str_bytes)))) : 
         array[addr] = str_bytes[i]
@@ -336,7 +336,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
             name = voice.name[0:9]
             assert len(name) == 8
 
-            str_bytes = name.encode(encoding='ANSI')
+            str_bytes = name.encode(encoding='cp1252')
 
             if len(voices_bankA) < (0xFFFF - (len(str_bytes) + len(voice)) ) : 
                 offs = len(str_bytes) + len(voices_bankA)

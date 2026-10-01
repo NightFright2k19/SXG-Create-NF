@@ -134,7 +134,7 @@ class MU80(MUdecoder) :
         element_cnt = data[address] + 1  # + 0. 0=1 element 1=2 element
         volume = data[address+1]         # + 1 
 
-        name = data[address+2 : address + 10].decode(encoding='ANSI') # +2
+        name = data[address+2 : address + 10].decode(encoding='cp1252') # +2
 
         elements : list[Element] = []
         wavebanks : dict[str | int, WaveBank] = {} # key = wavedata start addr

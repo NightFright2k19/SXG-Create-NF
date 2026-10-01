@@ -152,7 +152,7 @@ class MUdecoder() :
         volume = data[address]          # + 0
         element_cnt = data[address+1]   # + 1
         if self.source == MU.MU50 : 
-            name = data[address+2 : address + 10].decode(encoding='ANSI') # +2
+            name = data[address+2 : address + 10].decode(encoding='cp1252') # +2
         else : 
             name = '' # f'{address}' # ? 
         assert element_cnt > 0 and element_cnt < 4
@@ -270,7 +270,7 @@ class MUdecoder() :
 
 #     def set_range2(a : list | bytearray, addr : int, name : str) :
 #         # assert len(name) <= length 
-#         a[addr : addr + len(name)] = name.encode(encoding='ANSI')
+#         a[addr : addr + len(name)] = name.encode(encoding='cp1252')
 
 #     out_data = bytearray(len(data))
 
