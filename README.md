@@ -2,7 +2,7 @@
 MU in S-YXG50. Table Creation and AWM2 Data Table Investigation
 
 # Installation & Usage
-Requirements: Python 3.8 or newer
+Requirements: Python 3.12 or newer
 
 Basic usage: Drag & Drop your roms onto **main.py**
 
