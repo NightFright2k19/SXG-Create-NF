@@ -61,14 +61,10 @@ class TableConverter :
             
             assert sample.out_sample_type != SampleFormat.UNKNOWN
 
-            # todo workaround for curious amp EG issue with MU80 tables
-            # +13=0x7F appears to be a bad value in S-YXG50, drum samples sound cut off
-            # this isn't a great solution, but it is confirmable against S-YXG50/MU50 tables
-            # they usually use 0x5E. 0x60+ seems to break.
-            # new_data[13] = 0x5E if new_data[13] == 0x7F else new_data[13]
-            # todo experimental heuristic: if 14 is < 0x30, then subtract 32 (0x7F->0x5F)
-            new_data[13] = new_data[13]-32 if new_data[13] > 0x60 and new_data[14] < 0x30 else new_data[13]
-
+            # Amp EG attack NightFright2k19
+            # S-YXG50 (and presumably MU50) Amp EG Attack implicitly + 0x21 
+            if drum.format == MU.MU80 : 
+                new_data[13] = max(0, new_data[13] - 0x21)
 
             # +16 0xFFFF means use internal sample 
             new_data[16] = 0xFF
@@ -76,7 +72,6 @@ class TableConverter :
 
             # +19: offset negative
             # +20: offset negative
-            # ! use encapsulated drum offsets, not sample offset
             new_data[19:19+2] = drum.offset_negative.to_bytes(2, byteorder='big', signed=False) 
 
             # +21: offset positive msb, maybe
@@ -90,12 +85,9 @@ class TableConverter :
             new_data[24:24+3] = sample.out_loop_address.to_bytes(3, byteorder='big', signed=False)
 
             # +27: sample type
-            # new_data[27] = SampleFormat_to_Byte_SYXG50(sample.sample_type)
             new_data[27] = SampleFormat_to_Byte_SYXG50(sample.out_sample_type)
 
-            if new_data[23] == 0x07 : 
-                test = fmtbytes(new_data)
-                assert True
+
         
         drum.data = bytes(new_data)
         drum.format = MU.SYXG50
