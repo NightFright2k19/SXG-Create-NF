@@ -28,21 +28,17 @@ def assemble_waverom(list : list[Path]) -> bytes :
     return bytes(out)
 
 
-
-
-
-
 # Write bytes
 
 def FileExists(filename : str, root_dir) : 
-    outfile = Path(root_dir+'\\'+filename)
+    outfile = Path(root_dir) / filename
     if outfile.exists() : 
         return True
     return False
 
 def WriteBytesToFile(b : bytes | bytearray, filename : str, root_dir) : 
 
-    outfile = Path(root_dir+'\\'+filename)
+    outfile = Path(root_dir) / filename
     if outfile.exists() : 
         print(f'WriteBytesToFile: file {outfile} already exists! Skipping...')
         return
@@ -55,7 +51,7 @@ def WriteBytesToFile(b : bytes | bytearray, filename : str, root_dir) :
 
 def WriteTXT(s : str, filename : str, root_dir) : 
 
-    outfile = Path(root_dir+'\\'+filename)
+    outfile = Path(root_dir) / filename
     if outfile.exists() : 
         print(f'WriteTXT: file {outfile} already exists! Skipping...')
         return
