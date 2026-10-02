@@ -70,8 +70,10 @@ class fromMU80(TableConverter) :
             new_data[9] = e.data[7] & 0x7F    
 
             # SXG +10: LFO pitch mod depth
-            # MU80 LFO pitch mod depth @ +8 (lower five bits)
-            new_data[10] = e.data[8] & 0x1F    
+            # MU80 LFO pitch mod depth @ +8 (lower SIX bits, bits 6-7 are the PEG depth)
+            # calibrated against S-YXG50: every S-YXG50 depth >= 0x20 has bit 5 set, the old
+            # 5-bit mask halved the vibrato/pitch-LFO depth of voices like Siren, Ghost, Goblins, Wind
+            new_data[10] = e.data[8] & 0x3F    
 
             # SXG +11: LFO filter mod depth
             # MU80 LFO filter mod depth @ +9 (lower 4)

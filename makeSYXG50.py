@@ -1,10 +1,11 @@
 from typing import Generator
 
 from table import *
-from cnv_fromBASE import TableConverter 
+from cnv_fromBASE import TableConverter, ToBigDrumVoice
 import SampleConvert
 
 import decSYXG50
+import buildtarget
 
 from utils import fmtbyte, fmtbytes
 
@@ -65,22 +66,31 @@ def WriteWaveData(wavebank : WaveBank, samples : list[Sample], target : MU) -> b
         out[offs+2] = wave.tune_cent
          
         # ? +3: offset_negative (24 bits? probably not...) BE
-        out[offs+3:offs+3+3] = wave.offset_negative.to_bytes(3, 'big')
+        # + ADPCM lead-in (extra decoded passes in front of the loop, see SampleConvert.ADPCM_Find_LeadIn)
+        offset_negative = wave.offset_negative + getattr(sample, 'lead_in', 0)
+        assert offset_negative <= 0xFFFFFF
+        out[offs+3:offs+3+3] = offset_negative.to_bytes(3, 'big')
 
-        # +6: blank
-        # *  +7: offset_positive 16 bits confirmed D:
+        # +6..+8: offset_positive (loop length), 24 bits BE
+        # syxg50.dll reads all 3 bytes, but masks the value to 16 bits at voice setup.
+        # Loops > 65535 need the patched DLL (masks at 0x1A6EC/0x1A6F8 widened to 0xFFFFFF).
+        assert wave.offset_positive <= 0xFFFFFF
         if wave.offset_positive > 0xFFFF : 
-            print(f'makeSYXG50 -> WriteWaveData: Warning, WDT srcaddr=0x{wave.address_src} ({sample.get_a_name()}) loop too long for S-YXG50! Clamping from {wave.offset_positive} to 65535')
-            out[offs+7:offs+7+2] = 0xFFFF.to_bytes(2, 'big')
+            print(f'makeSYXG50 -> WriteWaveData: Info, WDT srcaddr=0x{wave.address_src} ({sample.get_a_name()}) loop length {wave.offset_positive} > 65535, written as 24 bit (needs patched syxg50.dll)')
+        out[offs+6:offs+6+3] = wave.offset_positive.to_bytes(3, 'big')
+
+        if buildtarget.SYXG50_BIG : 
+            # S-YXG50 big: +9..+12 wave address, 32-bit BE in bytes, +13: sample type
+            assert sample.out_loop_address <= 0xFFFFFFFF
+            out[offs+9:offs+9+4] = sample.out_loop_address.to_bytes(4, 'big')
+            out[offs+13] = SampleFormat_to_Byte_SYXG50(sample.out_sample_type)
         else : 
-            out[offs+7:offs+7+2] = wave.offset_positive.to_bytes(2, 'big')
+            # +9: wave address BE
+            out[offs+9:offs+9+3] = sample.out_loop_address.to_bytes(3, 'big')
 
-        # +9: wave address BE
-        out[offs+9:offs+9+3] = sample.out_loop_address.to_bytes(3, 'big')
-
-        #+12: sample type
-        out[offs+12] = SampleFormat_to_Byte_SYXG50(sample.out_sample_type)
-        #+13: unused
+            #+12: sample type
+            out[offs+12] = SampleFormat_to_Byte_SYXG50(sample.out_sample_type)
+            #+13: unused
         #+14: note low
         out[offs+14] = wave.key_min
         #+15: note high, FF for end keysplit
@@ -142,6 +152,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     # could also just use a list and .index, but I think this might be less messy. idk 
     drumkitIDX = (i for i in range(257))
     waveIDX = (i for i in range(257)) # next(waveIDX)
+    waveIDX1 = (i for i in range(256, 513)) # second page (big layout, 512 multisamples)
     extvoiceIDX = (i for i in range(350)) # next(extvoiceIDX)
 
     header = bytearray(100) # 0
@@ -224,10 +235,19 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
                                         wavebank.get_samples(table.Sample_pool), 
                                         MU.SYXG50)
 
-            if wavebank.index < 0 : 
-                wavebank.index = next(waveIDX)
+            if getattr(voice, 'page', 0) == 0 : 
+                if wavebank.index < 0 : 
+                    wavebank.index = next(waveIDX)
+            else : 
+                if getattr(wavebank, 'index1', -1) < 0 : 
+                    wavebank.index1 = next(waveIDX1)
 
-        tablecnv.ConvertElements(voice, voice.get_wavebanks(table.Wavebank_pool), MU.SYXG50)
+        # the element stores the wave number as one byte; page 1 numbers are stored minus 256
+        class _PagedWB : 
+            def __init__(self, wb, page) : 
+                self.index = wb.index if page == 0 else wb.index1 - 256
+        page = getattr(voice, 'page', 0)
+        tablecnv.ConvertElements(voice, [_PagedWB(wb, page) for wb in voice.get_wavebanks(table.Wavebank_pool)], MU.SYXG50)
         voice.data = WriteVoice(voice, MU.SYXG50)
 
 
@@ -267,13 +287,50 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
                                         drumvoice.get_voice(table.Voice_pool), 
                                         target=MU.SYXG50)
         else : 
+            # ADPCM lead-in moves the loop point back by lead_in samples, the start stays where it was
+            drumvoice.offset_negative += getattr(drumvoice.get_sample(table.Sample_pool), 'lead_in', 0)
             tablecnv.ConvertDrumVoice(drumvoice, drumvoice.get_sample(table.Sample_pool), 
                                         drumvoice.get_voice(table.Voice_pool), 
                                         target=MU.SYXG50)
+
+        # big layout: rearrange the finished S-YXG50 drum voice
+        if buildtarget.SYXG50_BIG : 
+            if drumvoice.ext_Voice_address : 
+                drumvoice.data = bytes(ToBigDrumVoice(bytearray(drumvoice.data), drumvoice, None, 
+                                                         drumvoice.get_voice(table.Voice_pool)))
+            else : 
+                drumvoice.data = bytes(ToBigDrumVoice(bytearray(drumvoice.data), drumvoice, 
+                                                         drumvoice.get_sample(table.Sample_pool), None))
         drumvoice.converted = True
 
         # test_after : str = fmtbytes(drumvoice.data)
 
+
+    # mark samples played directly by drum keys (their start offset is only 16 bit in syxg50.dll)
+    for drumvoice in table.DrumVoice_pool.values() : 
+        if not drumvoice.ext_Voice_address : 
+            drumvoice.get_sample(table.Sample_pool).used_by_drum = True
+
+    # * more than 256 multisamples (MU100+): two pages of 256, big layout only.
+    # The "Full" patched syxg50.dll adds 256 to the wave number of every element that lies in
+    # voice bank B, as soon as the wavedata offset table has more than 256 entries.
+    # So: page 0 voices -> bank A, page 1 voices -> bank B, and each page gets its own
+    # wave numbers (a multisample used by both pages gets an entry in both, same data).
+    paging = False
+    used_wb = {e.wavebank_address for v in table.Voice_pool.values() for e in v.elements}
+    if len(used_wb) > 256 : 
+        if not buildtarget.SYXG50_BIG : 
+            raise Exception(f'{len(used_wb)} multisamples, the classic table layout can only address 256')
+        paging = True
+        pages : list[set] = [set(), set()]
+        for voice in table.Voice_pool.values() : 
+            wbs = {e.wavebank_address for e in voice.elements}
+            voice.page = 0 if len(pages[0] | wbs) <= 256 else 1
+            pages[voice.page] |= wbs
+            if len(pages[1]) > 256 : 
+                raise Exception('more than 512 multisamples needed')
+        print(f'multisamples: {len(used_wb)} -> two pages: {len(pages[0])} (bank A) + {len(pages[1])} (bank B), '
+              f'{len(pages[0] & pages[1])} shared  (needs the "Full" patched syxg50.dll)')
 
     # update metadata for regular voices
     # voices, wavebanks, and samples 
@@ -314,64 +371,65 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     # * create voice tables
     # voice objects store offset and voicebank
     # note: the offset values are 'real' offsets, not encoded
+    # * Voices used by drum keys (ext drum voices) must live in bank A:
+    # syxg50.dll reads their position as a 16-bit byte offset from the start of bank A,
+    # so a voice that lands in bank B would be read from the wrong place.
+    # Place them first, the order of all other voices is unchanged.
+    voices_ordered : list[Voice] = [v for v in table.Voice_pool.values() if v.extvoice_index >= 0] \
+                                 + [v for v in table.Voice_pool.values() if v.extvoice_index < 0]
+
     if VOICE_PAD == 0 : 
-        for voice in table.Voice_pool.values() : 
+        for voice in voices_ordered : 
             assert voice.converted
-            if len(voices_bankA) < (0xFFFF - len(voice)) : 
+            if (voice.page == 0) if paging else (len(voices_bankA) < (0xFFFF - len(voice))) : 
                 offs = len(voices_bankA)
                 voices_bankA = voices_bankA + voice.data
                 voice.offset = offs
                 voice.voicebank = 'bankA'
             else : 
                 offs = len(voices_bankB)
-                assert offs <= 0xFFFF # out of space!
+                assert offs <= 0xFFFF or paging # out of space!
                 voices_bankB = voices_bankB + voice.data
                 voice.offset = offs
                 voice.voicebank = 'bankB'
 
     # * print name before our voice for easier debugging
     elif VOICE_PAD == 8 :  
-        for voice in table.Voice_pool.values() : 
+        for voice in voices_ordered : 
             assert voice.converted
-            name = voice.name[0:9]
-            assert len(name) == 8
+            # debug label only (the engine doesn't read it): always exactly 8 bytes.
+            # S-YXG50 source tables have no voice names, MU50/MU80 names are 8 characters
+            name = (voice.name if voice.name else '--------')[0:8].ljust(8)
+            str_bytes = name.encode(encoding='cp1252', errors='replace')
+            assert len(str_bytes) == 8
 
-            str_bytes = name.encode(encoding='cp1252')
-
-            if len(voices_bankA) < (0xFFFF - (len(str_bytes) + len(voice)) ) : 
+            if (voice.page == 0) if paging else (len(voices_bankA) < (0xFFFF - (len(str_bytes) + len(voice)) )) : 
                 offs = len(str_bytes) + len(voices_bankA)
                 voices_bankA = voices_bankA + str_bytes + voice.data
                 voice.offset = offs
                 voice.voicebank = 'bankA'
             else : 
                 offs = len(str_bytes) + len(voices_bankB)
-                assert offs <= 0xFFFF # out of space!
+                assert offs <= 0xFFFF or paging # out of space!
                 voices_bankB = voices_bankB + str_bytes + voice.data
                 voice.offset = offs
                 voice.voicebank = 'bankB'
 
 
 
-    highest_wavedata_index = next(waveIDX)-1
-
     to_delete = []
     for key, wavebank in table.Wavebank_pool.items() :  # * debug
-        if wavebank.index < 0 : 
+        if wavebank.index < 0 and getattr(wavebank, 'index1', -1) < 0 : 
             to_delete.append(key)
 
     for key in to_delete : del table.Wavebank_pool[key]
 
-    # create wavedata table
+    # create wavedata table (each multisample once, even if it has a number in both pages)
     # relevant offset value stored in wavebank.offset
-    for idx in range(highest_wavedata_index+1) : 
-        for wavebank in table.Wavebank_pool.values() : 
-
-            if not wavebank.index == idx : continue
-
-            offs = len(wavedata)
-            wavedata = wavedata + wavebank.out_data
-            wavebank.offset = offs
-            break
+    first_index = lambda wb : wb.index if wb.index >= 0 else wb.index1
+    for wavebank in sorted(table.Wavebank_pool.values(), key=first_index) : 
+        wavebank.offset = len(wavedata)
+        wavedata = wavedata + wavebank.out_data
 
 
     for wavebank in table.Wavebank_pool.values() :  # * debug
@@ -435,18 +493,37 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     # * ext drum voice offsets table
     highest_extvoice_index = max(0, next(extvoiceIDX)-1)
 
-    ext_drumvoice_offsets = bytearray((highest_extvoice_index+1) * 2)
+    # big layout: 32-bit LE byte offsets from the start of voice bank A (bank B follows bank A)
+    ptr_size = 4 if buildtarget.SYXG50_BIG else 2
 
-    for idx, addr in enumerate(range(0, len(ext_drumvoice_offsets), 2) ) : 
+    def voice_byte_offset(voice : Voice) -> int : 
+        assert voice.offset >= 0
+        if voice.voicebank == 'bankB' : 
+            return len(voices_bankA) + voice.offset
+        return voice.offset
+
+    ext_drumvoice_offsets = bytearray((highest_extvoice_index+1) * ptr_size)
+
+    for idx, addr in enumerate(range(0, len(ext_drumvoice_offsets), ptr_size) ) : 
 
         for drumvoice in table.DrumVoice_pool.values() : 
             if drumvoice.extvoice_index == idx : 
                 voice = drumvoice.get_voice(table.Voice_pool)
                 assert voice
                 assert voice.offset >= 0
-                ext_drumvoice_offsets[addr:addr+2] = voice.offset.to_bytes(2, 'little')
+                if buildtarget.SYXG50_BIG : 
+                    ext_drumvoice_offsets[addr:addr+4] = voice_byte_offset(voice).to_bytes(4, 'little')
+                else : 
+                    # must be in bank A (see voices_ordered), otherwise the drum key plays the wrong data
+                    if voice.voicebank != 'bankA' : 
+                        raise Exception(f'ext drum voice "{voice.name}" is in {voice.voicebank}, syxg50.dll can only reach bank A')
+                    ext_drumvoice_offsets[addr:addr+2] = voice.offset.to_bytes(2, 'little')
 
 
+
+    ext_voices = [v for v in table.Voice_pool.values() if v.extvoice_index >= 0]
+    print(f'ext drum voices: {len(ext_voices)}, in bank A: {sum(1 for v in ext_voices if v.voicebank == "bankA")}, '
+          f'bank A size: {len(voices_bankA):,} bytes, bank B size: {len(voices_bankB):,} bytes')
 
     # * Voice Bank mapping - 128 byte tables
     # allows (limited) assignment for 'banks'. Each bank contains 128 programs
@@ -563,8 +640,8 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     # ... then the address is multiplied by two
 
     # Also, in S-YXG50, there are two of these. One for GS, one for XG
-    voice_prgmap_GS = bytearray((highest_bankID_GS+1) * 256)
-    voice_prgmap_XG = bytearray((highest_bankID_XG+1) * 256)
+    voice_prgmap_GS = bytearray((highest_bankID_GS+1) * 128 * ptr_size)
+    voice_prgmap_XG = bytearray((highest_bankID_XG+1) * 128 * ptr_size)
 
     # returns: encoded offset value
     # our voices should already have offset & bank values stored in them
@@ -582,30 +659,39 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     for voicebank in table.voice_banks.values() : 
 
         # voicebank -> voices : dict[int, str | int] #  prg, voice hash (voice address)
-        bank_addr = voicebank.index * 256
-        for prg, addr in enumerate(range(bank_addr, bank_addr+256, 2)) : 
+        bank_addr = voicebank.index * 128 * ptr_size
+        for prg, addr in enumerate(range(bank_addr, bank_addr + 128 * ptr_size, ptr_size)) : 
             voice_hash = voicebank.voices[prg]
             voice = table.Voice_pool[voice_hash]
-            offs = encode_SYXG50_voice_offset(voice.offset, voice.voicebank)
+            if buildtarget.SYXG50_BIG : 
+                # big layout: plain 32-bit byte offset
+                offs_bytes = voice_byte_offset(voice).to_bytes(4, 'little')
+            else : 
+                offs_bytes = encode_SYXG50_voice_offset(voice.offset, voice.voicebank).to_bytes(2,'little')
 
             if voicebank.bank == Bank.GS : 
-                voice_prgmap_GS[addr : addr+2] = offs.to_bytes(2,'little')
+                voice_prgmap_GS[addr : addr+ptr_size] = offs_bytes
             else : 
-                voice_prgmap_XG[addr : addr+2] = offs.to_bytes(2,'little')
+                voice_prgmap_XG[addr : addr+ptr_size] = offs_bytes
 
 
 
     # * wavedata offset table
     # these are accessed via Voices and should already have unique identifiers in wavebank.index
 
-    highest_waveIDX = next(waveIDX)-1
-    wavedata_offsets = bytearray((highest_waveIDX+1)*2)
+    highest_waveIDX = max([wb.index for wb in table.Wavebank_pool.values()] + 
+                          [getattr(wb, 'index1', -1) for wb in table.Wavebank_pool.values()])
+    if not paging : 
+        highest_waveIDX += 1   # unchanged from before: one spare entry at the end
+    wavedata_offsets = bytearray((highest_waveIDX+1)*ptr_size)
+    assert not paging or highest_waveIDX >= 256   # the DLL switches on paging by the table size
 
     for wavebank in table.Wavebank_pool.values() :
-        assert wavebank.index >= 0 
         assert wavebank.offset >= 0 
-        addr = wavebank.index * 2
-        wavedata_offsets[addr : addr+2] = wavebank.offset.to_bytes(2,'little')
+        for index in (wavebank.index, getattr(wavebank, 'index1', -1)) : 
+            if index < 0 : continue
+            addr = index * ptr_size
+            wavedata_offsets[addr : addr+ptr_size] = wavebank.offset.to_bytes(ptr_size,'little')
 
 
     # * Construct header

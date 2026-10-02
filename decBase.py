@@ -37,6 +37,12 @@ class MUdecoder() :
 
     endian : Literal['big', 'little'] = 'big'
 
+    # * voice program maps: MU50-MU90 = 16-bit entries, offset * 2. MU100 = 32-bit entries, plain byte offset
+    prgmap_entry_bytes : int = 2
+    prgmap_offset_mult : int = 2
+    # * size of the (possibly sparse) wave address space, 0 = sum of the wave ROM file sizes
+    waverom_span : int = 0
+
     # ? S-YXG50 is messy 
     SXG50_voice_banks_GS : TableData = TABLEDATA_BLANK
     SXG50_voice_banks_XG : TableData = TABLEDATA_BLANK
@@ -270,7 +276,7 @@ class MUdecoder() :
 
 #     def set_range2(a : list | bytearray, addr : int, name : str) :
 #         # assert len(name) <= length 
-#         a[addr : addr + len(name)] = name.encode(encoding='cp1252')
+#         a[addr : addr + len(name)] = name.encode(encoding='ANSI')
 
 #     out_data = bytearray(len(data))
 

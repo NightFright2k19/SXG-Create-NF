@@ -2,7 +2,7 @@
 # license:BSD-3-Clause
 # copyright-holders:Olivier Galibert
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dataenum import *
 
@@ -48,7 +48,7 @@ dpcm_limits : list[int] = [0x7fff, 0x7ffe, 0x7ffc, 0x7ff8, 0x7ff0, 0x7fe0, 0x7fc
 
 def S12_to_16bit(sample : Sample, waves : bytes) -> bytes : 
     assert sample.sample_type == SampleFormat.S12
-    assert sample.out_sample_type == SampleFormat.U16 or sample.out_sample_type == SampleFormat.S16 
+    assert sample.out_sample_type == SampleFormat.U16 
 
     output : list[int] = []
 
@@ -153,29 +153,12 @@ def S16_To_U16(sample : Sample, waves : bytes) :
 # Possibly *100%* accurate to SWP00 and SWP20 output!
 # Or not, because we aren't letting the delta run from loop to loop
 # Loops are coming through pretty clean though
-def ADPCM_to_S16(sample : Sample, waverom : bytes, looptime : int = 0, ADPCMloop : bool = False) : 
+def _ADPCM_Stepper(encoding : int) : 
+    # returns MakeSample(input, prev_sample, prev_delta, prev_remainder) for this sample's encoding
 
-    start = sample.get_start_address()
-    loop = sample.loop_address
-    end = sample.get_end_address()
-    assert end < len(waverom)
-
-    b = waverom[sample.get_start_address() :  sample.get_end_address()]
-    assert len(b)
-
-    encoding = sample.encoding_parameters
-    
     mode = encoding & 0x03
     scale = (encoding >> 2) & 0x07
-
     dpcm_limit = dpcm_limits[scale]
-
-    # # * rightshift that rounds down for negative values
-    # # ? does not match the C++ output, so unused
-    # def shift_right(val, shiftby) : 
-    #     if val < 0 : 
-    #         return -(-val >> shiftby)
-    #     return val >> shiftby
 
     # Tarboh smooshed the delta and remainder together into 24 bits
     # here it's untangled. Seems to match the C++ output
@@ -189,7 +172,6 @@ def ADPCM_to_S16(sample : Sample, waverom : bytes, looptime : int = 0, ADPCMloop
         if output < -0x8000 : 
             output = -0x8000
         elif output > dpcm_limit : 
-            # print(f'ADPCM_to_S16: mode{mode} peak high! {sample.get_a_name()} distortion={output - dpcm_limit}')
             output = dpcm_limit
 
         new_delta = (output >> scale) - accum
@@ -218,32 +200,79 @@ def ADPCM_to_S16(sample : Sample, waverom : bytes, looptime : int = 0, ADPCMloop
 
         return output, new_delta, new_remainder
 
+    return MakeSample
 
-    running_delta = 0
-    smp = 0
-    remainder = 0
 
-    out : list[int] = [0 for _ in range(sample.offset_negative + sample.offset_positive)] 
+# * ADPCM loop continuity
+# The hardware keeps decoding through the loop: every pass starts with the decoder state
+# (sample, delta, remainder) that the previous pass ended with. A PCM table can only repeat
+# one fixed loop, so we emulate the passes until the state settles, put the transitional
+# passes in front of the loop (lead-in) and use the settled pass as the loop.
+# The result then plays back exactly like the continuously decoded hardware stream.
+ADPCM_MAX_PASSES = 8
 
-    for i, input in enumerate(waverom[start : end]) : 
+def ADPCM_Stream(sample : Sample, waverom : bytes, loop_len : int, n_out : int) -> list[int] : 
+    # continuous decode: body + loop, then the loop bytes again with carried-over state
+    MakeSample = _ADPCM_Stepper(sample.encoding_parameters)
+    loop = sample.loop_address
+    body_bytes = waverom[loop - sample.offset_negative : loop]
+    loop_bytes = waverom[loop : loop + loop_len]
+    assert len(loop_bytes) == loop_len
+    out : list[int] = []
+    smp = delta = rem = 0
+    for b in body_bytes : 
+        smp, delta, rem = MakeSample(b, smp, delta, rem)
+        out.append(smp)
+    while len(out) < n_out : 
+        for b in loop_bytes : 
+            smp, delta, rem = MakeSample(b, smp, delta, rem)
+            out.append(smp)
+    return out[:n_out]
 
-        smp, running_delta, remainder = MakeSample(input, smp, running_delta, remainder)
-        out[i] = smp
-        # if i < 200 : 
-        #     print(f'{i}: {smp}')
 
-    # * debug stuff - pad loop out so we can test the loop point
-    if sample.offset_positive and looptime : 
-        loopcnt = max(2, int((looptime / sample.offset_positive)+0.5))
-        if ADPCMloop : 
-            for _ in range(loopcnt) : 
-                for input in waverom[loop : end] : 
-                    smp, running_delta, remainder = MakeSample(input, smp, running_delta, remainder)
-                    out.append(smp)
-        else : 
-            for _ in range(loopcnt) : 
-                out = out + out[-sample.offset_positive:]
+def ADPCM_Find_LeadIn(sample : Sample, waverom : bytes, loop_len : int, max_passes : int = ADPCM_MAX_PASSES) -> tuple[int, bool] : 
+    # returns (number of transitional passes, settled?)
+    # pass j is followed by an identical pass when the state at its start equals the state at its end
+    MakeSample = _ADPCM_Stepper(sample.encoding_parameters)
+    loop = sample.loop_address
+    body_bytes = waverom[loop - sample.offset_negative : loop]
+    loop_bytes = waverom[loop : loop + loop_len]
+    smp = delta = rem = 0
+    for b in body_bytes : 
+        smp, delta, rem = MakeSample(b, smp, delta, rem)
+    state = (smp, delta, rem)
+    for j in range(max_passes) : 
+        for b in loop_bytes : 
+            smp, delta, rem = MakeSample(b, smp, delta, rem)
+        new_state = (smp, delta, rem)
+        if new_state == state : 
+            return j, True
+        state = new_state
+    return 0, False
 
+
+def ADPCM_to_S16(sample : Sample, waverom : bytes, looptime : int = 0, ADPCMloop : bool = False) : 
+
+    lead_in = getattr(sample, 'lead_in', 0)
+    loop_len = getattr(sample, 'adpcm_loop_len', 0)
+    n_out = sample.offset_negative + lead_in + sample.offset_positive
+
+    if loop_len > 0 : 
+        # looped: continuous stream. The guard samples after the loop end are the loop's continuation
+        out = ADPCM_Stream(sample, waverom, loop_len, n_out)
+        if looptime : # * debug: pad loop out so we can test the loop point
+            out = ADPCM_Stream(sample, waverom, loop_len, n_out + looptime)
+    else : 
+        # one-shot: unchanged behaviour
+        MakeSample = _ADPCM_Stepper(sample.encoding_parameters)
+        start = sample.get_start_address()
+        end = sample.get_end_address()
+        assert end < len(waverom)
+        out = [0 for _ in range(n_out)]
+        smp = delta = rem = 0
+        for i, input in enumerate(waverom[start : end]) : 
+            smp, delta, rem = MakeSample(input, smp, delta, rem)
+            out[i] = smp
 
     out_bytes = bytearray(len(out) * 2)
 
@@ -271,8 +300,30 @@ def ConvertSample(sample : Sample, waverom : bytes, mu_src : MU, mu_dest : MU, e
 
     assert mu_dest == MU.SYXG50
 
+    # * MU90 reverse playback: convert the source region forwards, then reverse it (one-shot)
+    if getattr(sample, 'reverse', False) :
+        import copy
+        total = sample.offset_negative                 # body + loop of the source region
+        guard = sample.offset_positive                 # guard samples added by FeedSample
+        fwd = copy.copy(sample)
+        fwd.reverse = False
+        fwd.offset_positive = sample.src_offset_positive
+        fwd.offset_negative = total - fwd.offset_positive
+        fwd.lead_in = 0; fwd.adpcm_loop_len = 0        # no loop -> plain one-shot decode
+        fwd_positive = fwd.offset_positive
+        fwd.offset_positive = fwd_positive + guard     # read a little further, same total length
+        data = ConvertSample(fwd, waverom, mu_src, mu_dest)
+        bps = SampleFormat_To_Bits(sample.out_sample_type) >> 3
+        assert len(data) == (total + guard) * bps
+        frames = [data[i:i+bps] for i in range(0, total * bps, bps)]
+        frames.reverse()
+        frames += [frames[-1]] * guard                 # guard: hold the last (= first source) value
+        sample.format = mu_dest
+        return b''.join(frames)
+
     src_encoding = sample.sample_type
     output_bytes = bytes()
+
     match src_encoding : 
         case SampleFormat.U8 : 
             if sample.out_sample_type == SampleFormat.U8 : 
@@ -291,10 +342,7 @@ def ConvertSample(sample : Sample, waverom : bytes, mu_src : MU, mu_dest : MU, e
             output_bytes = S12_to_16bit(sample, waverom)
 
         case SampleFormat.S16 :
-            if sample.out_sample_type == SampleFormat.S16 : 
-                output_bytes = ExtractSample(sample, waverom)
-            else : 
-                output_bytes = S16_To_U16(sample, waverom)
+            output_bytes = S16_To_U16(sample, waverom)
         case SampleFormat.ADPCM : 
             output_bytes = ADPCM_to_S16(sample, waverom)
 
@@ -335,6 +383,10 @@ class SampleMonster() :
     rom_end : int = 0
 
     # * returns new loop address & format
+    adpcm_stats : dict = field(default_factory=lambda : {'settled':0, 'settled+lead':0, 'unsettled':0, 'unsettled+lead':0})
+    adpcm_lead_samples : int = 0
+    adpcm_reserve : int = 0x400000   # keep 4 MB free for the samples that are still to come
+
     def FeedSample(self, sample : Sample, mu_src : MU, mu_dest : MU) -> tuple[int, SampleFormat] : 
         assert sample.waverom_bank < len(self.waveroms_src)
         assert not sample.written
@@ -343,12 +395,35 @@ class SampleMonster() :
         target_format = get_SampleFormat_Target(sample.sample_type, mu_src, mu_dest)
         bytes_per_sample = SampleFormat_To_Bits(target_format) >> 3
 
+        # * ADPCM loops: emulate the hardware's continuous decoding (see ADPCM_Find_LeadIn)
+        sample.lead_in = 0
+        sample.adpcm_loop_len = 0
+        if sample.sample_type == SampleFormat.ADPCM and sample.offset_positive > 0 : 
+            sample.adpcm_loop_len = sample.offset_positive
+            passes, settled = ADPCM_Find_LeadIn(sample, self.waveroms_src[sample.waverom_bank], sample.offset_positive)
+            lead_in = passes * sample.offset_positive
+            # limits: wave start offset 24 bit; drum voices only store a 16-bit start offset in syxg50.dll
+            import buildtarget
+            body_limit = 0xFFFF if (getattr(sample, 'used_by_drum', False) and not buildtarget.SYXG50_BIG) else 0xFFFFFF
+            if sample.offset_negative + lead_in > body_limit : 
+                lead_in = 0
+            # syxg50.dll addresses the wave file with 24 bits (16 MB), the big layout with 26 bits (64 MB):
+            # only spend lead-in while it fits
+            if lead_in : 
+                projected = self.rom_end + (sample.offset_negative + lead_in + sample.offset_positive + 2) * bytes_per_sample
+                if projected + self.adpcm_reserve > (0x3FFFFFF if buildtarget.SYXG50_BIG else 0xFFFFFF) : 
+                    lead_in = 0
+                    self.adpcm_stats['skipped (16 MB limit)'] = self.adpcm_stats.get('skipped (16 MB limit)', 0) + 1
+            sample.lead_in = lead_in
+            self.adpcm_stats[('settled' if settled else 'unsettled') + ('+lead' if lead_in else '')] += 1
+            self.adpcm_lead_samples += lead_in
+
         # todo messy
         # * we are off by -1, so we need a little more breathing room
         # this will not get written to the table, but the loop address will be, by + 1
         sample.offset_positive = sample.offset_positive + 2
 
-        bytelength_body = sample.offset_negative * bytes_per_sample * sample.upsample_mult
+        bytelength_body = (sample.offset_negative + sample.lead_in) * bytes_per_sample * sample.upsample_mult
         bytelength_loop = sample.offset_positive * bytes_per_sample * sample.upsample_mult
         bytelength_total = bytelength_body + bytelength_loop
 
@@ -393,7 +468,7 @@ class SampleMonster() :
 
             if mask_mode : 
                 bytes_per_sample = 1 if sample.out_sample_type == SampleFormat.U8 else 2
-                length = (sample.offset_negative + sample.offset_positive) * bytes_per_sample
+                length = (sample.offset_negative + getattr(sample, 'lead_in', 0) + sample.offset_positive) * bytes_per_sample
                 mask_bytes = bytearray(length)
                 mask_bytes[0] = 0xFF
                 if sample.offset_positive : 
@@ -410,11 +485,17 @@ class SampleMonster() :
 
                 # debug
                 bytes_per_sample = 1 if sample.out_sample_type == SampleFormat.U8 else 2
-                length = (sample.offset_negative + sample.offset_positive) * bytes_per_sample
+                length = (sample.offset_negative + getattr(sample, 'lead_in', 0) + sample.offset_positive) * bytes_per_sample
                 assert len(cnv_bytes) == length
 
                 out_bytes = out_bytes + cnv_bytes
 
         print(f'sample conversions complete, took {time.perf_counter() - start_time:.2f}s')
         print(f'out waverom size = {len(out_bytes):,}')
+        n = sum(v for k, v in self.adpcm_stats.items() if not k.startswith('skipped'))
+        if n : 
+            print(f'ADPCM loops: {n} total, {self.adpcm_stats["settled"]} already seamless, '
+                  f'{self.adpcm_stats["settled+lead"]} made seamless with lead-in (+{self.adpcm_lead_samples:,} samples), '
+                  f'{self.adpcm_stats["unsettled"]} not settling within {ADPCM_MAX_PASSES} passes (loop as before)'
+                  + (f', {self.adpcm_stats["skipped (16 MB limit)"]} skipped because of the 16 MB limit' if self.adpcm_stats.get("skipped (16 MB limit)") else ''))
         return bytes(out_bytes)

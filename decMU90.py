@@ -3,14 +3,45 @@ from decBase import *
 
 from utils import fmtbyte, fmtbytes
 
-# ! work in progress
+# * MU90 wave ROMs: xs518a0 and xs743a0 are two 16-bit halves of one 32-bit data bus.
+# Word n = xs518a0[2n:2n+2] + xs743a0[2n:2n+2], read as a little-endian byte stream.
+# (verified: 8-bit, 12-bit, 16-bit and ADPCM samples all decode to smooth audio this way,
+# and consecutive samples line up back to back with only 1-4 words of padding in between)
+def MU90_Waverom(rom_a : bytes, rom_b : bytes) -> bytes :
+    assert len(rom_a) == len(rom_b)
+    out = bytearray(len(rom_a) * 2)
+    for i in range(0, len(rom_a), 2) :
+        out[2*i : 2*i+2] = rom_a[i : i+2]
+        out[2*i+2 : 2*i+4] = rom_b[i : i+2]
+    return bytes(out)
+
+
+# * "backwards" flag (wavedata +8 / drum voice +34, bit 7): the hardware plays the sample in
+# reverse, starting at the loop address. Yamaha uses this both ways: the tom sample is stored
+# backwards in the ROM and only sounds right with the flag (toms 47/48/50 of the standard kits,
+# MelodTom, Real Tom), while the same data without the flag gives Rev Tom / Rev Kick etc.
+# The reversed copy gets its own sample-pool key; the data is reversed on conversion
+# (SampleConvert.ConvertSample). The reversed sample is a one-shot.
+REVERSED_KEY = 0x40000000
+
+def Make_Reversed(sample : Sample) -> tuple[Sample, int, int] :
+    sample.reverse = True
+    sample.src_offset_negative = sample.offset_negative
+    sample.src_offset_positive = sample.offset_positive
+    sample.address_src = sample.loop_address + REVERSED_KEY
+    sample.offset_negative = sample.offset_negative + sample.offset_positive
+    sample.offset_positive = 0
+    return sample, sample.offset_negative, sample.offset_positive
+
 
 @dataclass
 class MU90(MUdecoder) : 
 
     # bankorder_voice : list[Bank] = [Bank.GS, Bank.SFX, Bank.XG]
     # bankorder_drums : list[Bank] = [Bank.GS_DRUMS, Bank.XG_DRUMS, Bank.SFX_DRUMS]
-    bankorder_voice : list[Bank] = field(default_factory=lambda : [Bank.GS, Bank.SFX, Bank.XG] )
+    # * voice bank map order on the MU90 is XG (LSB), SFX (MSB), GS (verified: the first row holds the
+    # XG LSB numbers 1,3,6,8,12,..,96-101, the last one the GS variation numbers 1-11,16,24,32,40,126,127)
+    bankorder_voice : list[Bank] = field(default_factory=lambda : [Bank.XG, Bank.SFX, Bank.GS] )
     bankorder_drums : list[Bank] = field(default_factory=lambda : [Bank.GS_DRUMS, Bank.XG_DRUMS, Bank.SFX_DRUMS] )
 
     
@@ -94,18 +125,27 @@ class MU90(MUdecoder) :
             # +14: loop address
             # +15: loop address
 
-            mu90_plus4 = data[address + 4]
+            # * MU90 wave ROM layout (verified against the ROM data, 2026-09-30):
+            #   the two wave ROMs form 32-bit words: bytes 0-1 from xs518a0, bytes 2-3 from xs743a0
+            #   (see MU90_Waverom). The loop address counts these 32-bit words -> byte address * 4.
+            #   Offsets (+5 body, +9 loop) are plain sample counts, like on the MU80.
+            #   Samples are packed back to back, format-dependent: 16 bit = 2 bytes, 12 bit = LE
+            #   bit stream (3 bytes per 2 samples, same as MU50), 8 bit and ADPCM = 1 byte.
+            mu90_plus4 = data[addr + 4]
 
-            offset_negative = self.decode_bytes(data,addr+5, 24, 'big') >> 1
-            offset_positive = self.decode_bytes(data,addr+9, 24, 'big') >> 1
-            loop_address = self.decode_bytes(data,addr+13, 24, 'big') * 2 # todo wrong
+            offset_negative = self.decode_bytes(data,addr+5, 24, 'big')
+            offset_positive = self.decode_bytes(data,addr+9, 24, 'big')
+            loop_address = self.decode_bytes(data,addr+13, 24, 'big') * 4
             sample_byte = data[addr+12] & 0xC0
             sample_format = Byte_To_SampleFormat(self.source, sample_byte)
             assert sample_format != SampleFormat.UNKNOWN
             ADPCM_params = (data[addr+12] & 0b00111110) >> 1
+            backwards = bool(data[addr+8] & 0x80)
 
-            sample = Sample(loop_address, offset_negative, offset_positive, loop_address, sample_format, 
+            sample = Sample(loop_address, offset_negative, offset_positive, loop_address, sample_format,
                             encoding_parameters=ADPCM_params, format=self.source, address_book={addr})
+            if backwards :
+                sample, offset_negative, offset_positive = Make_Reversed(sample)
 
             AddToSampleList(samples, sample) # will only add the longer sample if clipped
 
@@ -113,15 +153,15 @@ class MU90(MUdecoder) :
             key_max = data[addr+3]
             last_key = key_max + 1 # + 1 is more in line with what s-yxg50 expects, always sequential key ranges
 
-            wave = Wave(addr, 
-                        offset_negative, offset_positive, loop_address, 
+            wave = Wave(addr,
+                        offset_negative, offset_positive, sample.address_src,
                         attenuation=data[addr+0],
                         tune_note=data[addr+1],
                         tune_cent=data[addr+2],
                         key_min=key_min,
                         key_max=key_max,
                         mu90_plus4=mu90_plus4,
-                        backwards=bool(data[addr+8]),
+                        backwards=backwards,
                         )
 
             waves.append(wave)
@@ -208,40 +248,29 @@ class MU90(MUdecoder) :
             address_book.add(voice_address)
 
 
-        sample_format = Byte_To_SampleFormat(self.source, drumvoice_data[38]) # +38: sample byte, always C0 or 00
-        # * +38: DPCM parameters are left shifted... I think. Only EE is used for drums
-        dpcm_parameters : int = (drumvoice_data[38] & 0x3F) >> 1 
+        # * the sample part (+30..+41) mirrors the wavedata entry (+4..+15):
+        #   +30 unknown (= wavedata +4), +31..+33 body, +34 bit 7 = backwards, +35..+37 loop,
+        #   +38 format / ADPCM parameters, +39..+41 loop address in 32-bit words
+        sample_format = Byte_To_SampleFormat(self.source, drumvoice_data[38] & 0xC0)
+        dpcm_parameters : int = (drumvoice_data[38] & 0x3E) >> 1
 
-        # todo this is all wrong
-        # * 0x80: S8, offsets / 2
-        # * 0x40: S12, offsets * 0.75  / 1.5    23,873 -> ~17,905
-        # * 0x00: S16  offsets / 2  -  1 offset = 1 bytes (0.5 samples)
-        # * 0xEE: ADPCM, offsets / 2
-        # offset_negative = self.decode_bytes(drumvoice_data, 31, bits=24)
-        # offset_positive = self.decode_bytes(drumvoice_data, 35, bits=24)
-
-
-        offset_negative = self.decode_bytes(drumvoice_data, 31, bits=24) >> 1
-        offset_positive = self.decode_bytes(drumvoice_data, 35, bits=24) >> 1
-
-        # +38 & 1FFFFFF << 2 on mu100
-        # loop_address = self.decode_bytes(drumvoice_data, 39, bits=24) * 4
-
-        # todo wrong
-        loop_address = self.decode_bytes(drumvoice_data, 39, bits=24) * 2 
-
+        offset_negative = self.decode_bytes(drumvoice_data, 31, bits=24)
+        offset_positive = self.decode_bytes(drumvoice_data, 35, bits=24)
+        loop_address = self.decode_bytes(drumvoice_data, 39, bits=24) * 4
 
         address_book.add(address)
 
-
-        drumvoice = DrumVoice(drumvoice_data, loop_address, voice_address, 
-                              offset_negative, offset_positive, 
-                              format=self.source, 
-                              address_book=set(address_book),)
-        sample = Sample(loop_address, offset_negative, offset_positive, loop_address, sample_format, 
+        sample = Sample(loop_address, offset_negative, offset_positive, loop_address, sample_format,
                         encoding_parameters=dpcm_parameters,
                         format=self.source,
                         address_book=set(address_book))
+        if drumvoice_data[34] & 0x80 :
+            sample, offset_negative, offset_positive = Make_Reversed(sample)
+
+        drumvoice = DrumVoice(drumvoice_data, sample.address_src, voice_address,
+                              offset_negative, offset_positive,
+                              format=self.source,
+                              address_book=set(address_book),)
 
         
         return voice_address, drumvoice, sample

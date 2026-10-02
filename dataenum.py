@@ -9,6 +9,10 @@ class MU(StrEnum) :
     TG300 = auto()
     SYXG50 = auto()
     MU90 = auto()
+    MU100 = auto()
+    MU1000 = auto()
+    MU128 = auto()
+    MU2000 = auto()
 
 class Bank(StrEnum) : 
     GS = auto()
@@ -74,8 +78,16 @@ def Byte_To_SampleFormat(mu : MU, b : int) -> SampleFormat :
         case MU.MU80 : 
             match b : 
                 # ? 0xC0 shares some of the same loop addresses as 0x80, so they gotta be s16
-                # ? Does the other bit have meaning?
-                # ? drumvoices are 0xC0, and never 0x80
+                # * bit 6 (0xC0 vs 0x80), checked against the MU80 v1.04 data (analyze_sample_flags.py):
+                #   - only occurs with 16-bit PCM (never with ADPCM), all 211 PCM drum voices use 0xC0,
+                #     only 14 of 513 voice wave entries use 0xC0
+                #   - not a loop flag: 0x80 entries without loop exist, all 0xC0 voice entries loop
+                #   - not a data format: the same sample data is used with 0x80 and 0xC0, levels are normal
+                #   - not a pitch/octave flag: loop length vs. tune note follows the same rule in 0x80 and
+                #     0xC0 zones (e.g. single-cycle waves), RockOrgn uses the same sample with the same tune
+                #     in a 0xC0 and a 0x80 zone, chromatic listening test across the zone borders is smooth
+                #   -> treating both as S16 is correct; any remaining hardware meaning has no audible
+                #      counterpart that the S-YXG50 table format could express
                 case 0x80 | 0xC0 : return SampleFormat.S16 
                 case _ : return SampleFormat.ADPCM # parameters in a separate column
         case MU.MU50 | MU.MU90 : 

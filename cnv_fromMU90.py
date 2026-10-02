@@ -38,6 +38,11 @@ class fromMU90(TableConverter) :
         # up to +15 is identical
         new_data = bytearray(drum.data[0:30])
         for i in range(16, 30) : new_data[i] = 0
+
+        # * drum EG rate (byte 13): same rule as the MU80 (see cnv_fromBASE), calibrated with
+        # analyze_drum_eg.py: S-YXG50 = MU90 - 0x21 for 426 of 460 matched drum voices
+        if not ext_voice : 
+            new_data[13] = max(0, new_data[13] - 0x21)
         
         # +16: external voice seqID MSB 
         # +17: external voice seqID LSB
@@ -66,22 +71,33 @@ class fromMU90(TableConverter) :
 
             # +19: offset negative
             # +20: offset negative
+            # * syxg50.dll only has 16 bits for the drum start offset. Four XG open hi-hats have a
+            # 70,626 sample body: instead of cutting off the attack (old behaviour), the loop start is
+            # moved earlier by the excess, so the sound starts at its real beginning and the loop
+            # covers the extra part of the tail (hi-hat noise, the longer loop is inaudible)
             offsetminus = drum.offset_negative
-            if offsetminus > 0xFFFF : 
-                print(f'cnv_mu90 warning: drumvoice body too large! clamping {fmtbyte(offsetminus)} -> 0xFFFF')
+            offsetplus = drum.offset_positive
+            loop_address = sample.out_loop_address
+            import buildtarget
+            if offsetminus > 0xFFFF and not buildtarget.SYXG50_BIG : 
+                shift = offsetminus - 0xFFFF
+                bps = 1 if sample.out_sample_type in (SampleFormat.U8, SampleFormat.S8) else 2
+                print(f'cnv_mu90 info: drum body {offsetminus} > 65535, loop start moved {shift} samples earlier')
                 offsetminus = 0xFFFF
+                offsetplus = offsetplus + shift
+                loop_address = loop_address - shift * bps
 
-            new_data[19:19+2] = offsetminus.to_bytes(2, byteorder='big', signed=False) 
+            new_data[19:19+2] = min(offsetminus, 0xFFFF).to_bytes(2, byteorder='big', signed=False) # big layout: full value written by ToBigDrumVoice
 
             # +21: offset positive msb, maybe
             # +22: offset positive
             # +23: offset positive
-            new_data[21:21+3] = drum.offset_positive.to_bytes(3, byteorder='big', signed=False)
+            new_data[21:21+3] = offsetplus.to_bytes(3, byteorder='big', signed=False)
 
             # +24: loop address
             # +25: loop address
             # +26: loop address
-            new_data[24:24+3] = sample.out_loop_address.to_bytes(3, byteorder='big', signed=False)
+            new_data[24:24+3] = (loop_address & 0xFFFFFF).to_bytes(3, byteorder='big', signed=False) # big layout: 32-bit value written by ToBigDrumVoice
 
             # +27: sample type
             new_data[27] = SampleFormat_to_Byte_SYXG50(sample.out_sample_type)
@@ -149,8 +165,8 @@ class fromMU90(TableConverter) :
             new_data[9] = e.data[8] & 0x7F    
 
             # SXG +10: LFO pitch mod depth
-            # MU80 LFO pitch mod depth @ +8 (lower five bits)
-            new_data[10] = e.data[9] & 0x1F    
+            # MU80 LFO pitch mod depth @ +8 (lower six bits, same fix as cnv_fromMU80)
+            new_data[10] = e.data[9] & 0x3F    
 
             # SXG +11: LFO filter mod depth
             # MU80 LFO filter mod depth @ +9 (lower 4)

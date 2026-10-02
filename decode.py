@@ -18,6 +18,8 @@ def Create_Table(MUinfo : MUdecoder, table_name : str, data : bytes | bytearray,
     waverom_length : int = 0
     for rom in waveroms : 
         waverom_length = waverom_length + len(bytes(open(rom, mode='rb').read() ))
+    if MUinfo.waverom_span : 
+        waverom_length = MUinfo.waverom_span
 
 
 
@@ -126,7 +128,8 @@ def Create_Table(MUinfo : MUdecoder, table_name : str, data : bytes | bytearray,
             if prg_seqID == 0xFF :
                 continue
 
-            program_map_address = MUinfo.voice_PRGmap.start + (prg_seqID * 256)
+            prgmap_stride = 128 * MUinfo.prgmap_entry_bytes
+            program_map_address = MUinfo.voice_PRGmap.start + (prg_seqID * prgmap_stride)
 
             # S-YXG50: program sections split into GS & Non-GS
             if MUinfo.source == MU.SYXG50 : 
@@ -149,9 +152,9 @@ def Create_Table(MUinfo : MUdecoder, table_name : str, data : bytes | bytearray,
 
             # * program definitions, 256 byte table w/ offsets for 'voices' table(s)
 
-            for prg, offset_address in enumerate(range(program_map_address, program_map_address + 256, 2) ) :
+            for prg, offset_address in enumerate(range(program_map_address, program_map_address + prgmap_stride, MUinfo.prgmap_entry_bytes) ) :
 
-                voice_offset_raw = MUinfo.decode_bytes(data, offset_address, 16, MUinfo.endian)
+                voice_offset_raw = MUinfo.decode_bytes(data, offset_address, 8 * MUinfo.prgmap_entry_bytes, MUinfo.endian)
 
                 # S-YXG50: top bit of program map offset determines whether to start in voicesA or voicesB
                 # MU50 through MU90: One big voices section
@@ -164,8 +167,8 @@ def Create_Table(MUinfo : MUdecoder, table_name : str, data : bytes | bytearray,
                     voice_offset = (voice_offset_raw & 0x7FFF) * 2
                 else : 
                     voice_bank_start = MUinfo.voices.start
-                    # Voices offset is always * 2
-                    voice_offset = voice_offset_raw * 2 
+                    # Voices offset is * 2 (MU50-MU90), plain on the MU100
+                    voice_offset = voice_offset_raw * MUinfo.prgmap_offset_mult
 
                 # ? unlike in the drumkit keymaps, I think FFFF will just crash S-YXG50
                 assert voice_offset != 0xFFFF 
