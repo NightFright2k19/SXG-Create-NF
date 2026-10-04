@@ -17,7 +17,7 @@ from decMU90 import MU90, MU90_Waverom, Make_Reversed, Apply_Drum_HPF, Apply_Ele
 # - wavedata: MU90 format, one table, 16-bit offsets
 # - wave ROMs: two 32-bit pairs, contiguous: xv364a0+xv365a0 (words 0x000000-), xw848a0+xw849a0 (0x400000-)
 # - program maps: 32-bit BE offsets in 16-bit words, 512 bytes per bank (221 banks)
-# - voice maps: MU Basic, MU Native (converted by default, --mu-basic: MU Basic), GS, MSB 48, GM2 (basic/native)
+# - voice maps: MU Basic, MU Native (both converted, MU Basic as the second map in the same table), GS, MSB 48, GM2 (basic/native)
 #   MU Basic = the MU90-compatible voice set (unrevoiced names like "GrandPno"), MU Native = "GrandP #" etc.
 #
 # The MU2000 has the same voice data, but its program ROM stores the filter/level scaling of
@@ -91,7 +91,7 @@ class MU1000(MU90) :
         drumprg_end = len(data)
 
         banks_start = len(data)
-        # --mu-basic: row 1 (MU Basic, base bank 0x00), otherwise row 2 (MU Native)
+        # basic=True (second map): row 1 (MU Basic, base bank 0x00), otherwise row 2 (MU Native)
         data += row(_BANKROWS, 1 if basic else 2)   # XG LSB
         msb = bytearray(row(_BANKROWS, 0))
         for i, v in enumerate(msb) :

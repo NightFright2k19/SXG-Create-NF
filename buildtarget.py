@@ -15,10 +15,6 @@
 #   * sample data:     S-YXG50 formats (unsigned 16 bit / 8 bit), as in the classic layout
 SYXG50_BIG : bool = False
 
-# --mu-basic (MU100, MU128, MU1000): convert the "MU Basic" voice map (= MU90 voices and kits) instead
-# of the native map ("MU100 Native" / "MU Native"). Same as the module's own Voice Map setting.
-MU_BASIC : bool = False
-
 # --embed: table and wave file are embedded in the patched DLL (RT_RCDATA, see dllpatch.embed_files)
 # instead of being written as files; the DLL is renamed syxg<n>.dll if it was supplied as syxg50.dll.
 EMBED : bool = False

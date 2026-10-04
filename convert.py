@@ -34,6 +34,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
 
     in_wave_bytes = bytes()
     mu_src_original = mu_src
+    alt_decoder = None      # second voice map (MU Basic) for MU100 / MU128 / MU1000
     match mu_src : 
  
         case MU.MU80 : 
@@ -100,14 +101,15 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
 
             # * big table layout: ~30 MB of samples and more than 256 multisamples
             buildtarget.SYXG50_BIG = True
-            # --mu-basic: MU Basic voice map (MU90 voices), separate file names
-            basic = buildtarget.MU_BASIC
-            new_table_version='SXG MU100 Basic' if basic else 'SXG MU100'
-            new_table_name='SXGMU100B.TBL' if basic else 'SXGMU100.TBL'
-            new_waverom_name='SXGMU100B.UPCM' if basic else 'SXGMU100.UPCM'
-            print('MU100 voice map: ' + ('MU Basic' if basic else 'MU100 Native'))
+            # both voice maps in one table (MU100 Native + MU Basic, switched in the DLL's Settings page)
+            new_table_version='SXG MU100'
+            new_table_name='SXGMU100.TBL'
+            new_waverom_name='SXGMU100.UPCM'
+            print('MU100 voice maps: MU100 Native (default) + MU Basic')
 
-            table_decoder = decMU100.MU100.From_Bytes(Dejumble(open( program_roms[0], mode='rb').read() ), basic)
+            prg100 = Dejumble(open( program_roms[0], mode='rb').read() )
+            table_decoder = decMU100.MU100.From_Bytes(prg100, False)
+            alt_decoder = decMU100.MU100.From_Bytes(prg100, True)
             table_converter=cnv_fromMU90.fromMU90(MU.MU90)
             assert len(wave_roms) == 6
             rd = lambda p : open(p, mode='rb').read()
@@ -121,18 +123,18 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             model = 'MU1000' if mu_src == MU.MU1000 else 'MU128'
             # * big table layout: up to ~50 MB of samples and more than 256 multisamples
             buildtarget.SYXG50_BIG = True
-            # --mu-basic: MU Basic voice map, separate file names (B)
-            basic = buildtarget.MU_BASIC
-            stem = ('SXGMU1K' if model == 'MU1000' else 'SXGMU128') + ('B' if basic else '')
-            new_table_version=f'SXG {model}' + (' Basic' if basic else '')
+            # both voice maps in one table (MU Native + MU Basic, switched in the DLL's Settings page)
+            stem = 'SXGMU1K' if model == 'MU1000' else 'SXGMU128'
+            new_table_version=f'SXG {model}'
             new_table_name=f'{stem}.TBL'
             new_waverom_name=f'{stem}.UPCM'
-            print(f'{model} voice map: ' + ('MU Basic' if basic else 'MU Native'))
+            print(f'{model} voice maps: MU Native (default) + MU Basic')
 
             # program flash: high/low 16-bit halves of a 32-bit bus
             assert len(program_roms) == 2
             prg = decMU1000.MU1000_Program(open(program_roms[0], mode='rb').read(), open(program_roms[1], mode='rb').read())
-            table_decoder = decMU1000.MU1000.From_Bytes(Dejumble(prg), model, basic)
+            table_decoder = decMU1000.MU1000.From_Bytes(Dejumble(prg), model, False)
+            alt_decoder = decMU1000.MU1000.From_Bytes(Dejumble(prg), model, True)
             table_converter = cnv_fromMU1000.fromMU1000(MU.MU90)
             assert len(wave_roms) == 4
             rd = lambda p : open(p, mode='rb').read()
@@ -149,8 +151,6 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
         case _ : 
             raise NotImplementedError()
 
-    if buildtarget.MU_BASIC and mu_src_original not in (MU.MU100, MU.MU128, MU.MU1000) : 
-        print('note: --mu-basic only applies to the MU100, MU128 and MU1000, ignored')
 
     # big layout: own file names (X = extended)
     if buildtarget.SYXG50_BIG : 
@@ -161,6 +161,11 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
 
     table_decoder.waverom = in_wave_bytes     # source samples, for loudness estimates (elemreduce)
     table = decode.Create_Table(table_decoder, mu_src, table_decoder.data, wave_roms)
+    alt_table = None
+    if alt_decoder is not None : 
+        # second voice map (MU Basic): same ROM, its voices / banks / rows are merged in (makeSYXG50.Merge_Alt_Table)
+        alt_decoder.waverom = in_wave_bytes
+        alt_table = decode.Create_Table(alt_decoder, mu_src, alt_decoder.data, wave_roms)
     PrintTableInfo(table)
     hpf = [s for s in table.Sample_pool.values() if getattr(s, 'hpf_fc', 0)]
     if hpf : 
@@ -174,7 +179,8 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
                                 tablecnv=table_converter, 
                                 new_table_version=new_table_version,
                                 new_table_name=new_table_name,
-                                new_waverom_name=new_waverom_name)
+                                new_waverom_name=new_waverom_name,
+                                alt_table=alt_table, alt_default=False)
 
 
 

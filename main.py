@@ -53,8 +53,10 @@ def main() :
     files : list[Path] = []
 
     args = argv[1:]
-    # --mu-basic : MU100 / MU128 / MU1000, use the MU Basic voice map instead of the native one
-    buildtarget.MU_BASIC, args = take_flag(args, '--mu-basic')
+    # --mu-basic was removed: MU100 / MU128 / MU1000 tables contain both voice maps, switched in the DLL's Setup dialog
+    removed, args = take_flag(args, '--mu-basic')
+    if removed : print('note: --mu-basic is no longer needed and is ignored. MU100 / MU128 / MU1000 tables contain both voice maps, '
+                       'switch with "MU Basic voice map" in the Setup dialog of the S-YXG50.')
     # --embed : table and wave file go into the patched DLL (RT_RCDATA), no separate files and no ini
     buildtarget.EMBED, args = take_flag(args, '--embed')
     # internal (multi-model conversion, see below): output folder and DLL name of one model's run
@@ -176,7 +178,6 @@ def main() :
         cmd = [sys.executable, str(Path(__file__).resolve())] + [str(p) for p in paths_program + paths_waves]
         if dll : cmd += [str(dll), '--dll-name', dllpatch.Model_Dll_Name(model)]
         cmd += ['--out-dir', output_folder(paths_program)]
-        if buildtarget.MU_BASIC : cmd.append('--mu-basic')
         if buildtarget.EMBED : cmd.append('--embed')
         print(f'\n==== {table_type.name} ' + '=' * max(0, 60 - len(table_type.name)), flush=True)
         r = subprocess.run(cmd, env=dict(os.environ, SXG_NO_PAUSE='1'), stdin=subprocess.DEVNULL)

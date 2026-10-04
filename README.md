@@ -34,7 +34,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **MU100** (new): three 32-bit wave ROM pairs in one address space, three wavedata tables with their own offset tables, 32-bit voice program maps, MU100 Native and MU Basic voice maps.
 - **MU128 and MU1000** (new): program flash from high/low 16-bit halves, 84-byte elements (mapped almost 1:1, verified on 2,317 elements shared with the MU100), 42-byte drum voices with byte 0 moved to `+23`, voice maps MU Native / MU Basic, GS, MSB 48 and GM2.
 - **MU2000** detected; its program ROM lacks a table, so the MU1000 set (same sound data) is used instead.
-- **`--mu-basic`** for MU100 / MU128 / MU1000: converts the MU90-compatible "MU Basic" voice map instead of the native one.
+- **MU Basic voice map** for MU100 / MU128 / MU1000: the MU90-compatible map is built into the same table as the native one and can be switched in the Setup dialog (MU Native is the default). The earlier `--mu-basic` switch was removed.
 
 ### Table formats
 
@@ -71,7 +71,8 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **Table loading:** ini section/key `[Config]` / `SoftSynth`, 24-bit loop length, and for "Full" all big-layout parser changes (program maps, wavedata offsets with three pages, drum voice fields, formats, root key).
 - **Effects:** missing effect types mapped to the nearest available type, return levels scaled per type (calibrated against the S-MU2000) and recomputed on a type change, fade-in after a type change shortened from 0.3-1 s to 80-90 ms.
 - **Drum setup EG offsets** for ext drum voices no longer act twice as strong.
-- **Resources:** panel bitmap per model, names in About dialog / string table / version info (S-YXG<n>), default table name, conversion date and credits in the version info.
+- **Voice map switch** ("Full"): checkbox "MU Basic voice map" in the Setup dialog switches MU100 / MU128 / MU1000 tables between MU Native and MU Basic, stored as `MUBasic` in the ini; works with external and embedded tables.
+- **Resources:** panel bitmap per model, names in About dialog / string table / version info (S-YXG<n>), default table name (MU50 too), conversion date and credits in the version info.
 
 ### Usage and command line
 
@@ -87,7 +88,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 ## Quick start
 
 ```
-python main.py <ROM files...> [syxg50.dll] [--mu-basic] [--embed]
+python main.py <ROM files...> [syxg50.dll] [--embed]
 ```
 
 You can also drag & drop all files onto `main.py`.
@@ -135,8 +136,7 @@ This writes `syxgmu50.dll`, `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.
 |---|---|
 | `<ROM files>` | Program ROM(s) and wave ROMs of one or more models, in any order (see [Supported models](#supported-models-and-rom-sets)). Optional if the `roms` folder holds them. Wildcards are allowed. |
 | `<dll>` | Optional. A `syxg50.dll`, under any file name (`syxg50.dll`, `mu800.dll`, ...). It is recognised by its content, not its name. A DLL in the `roms` folder is used if none is given on the command line. See [DLL patching](#dll-patching). |
-| `--mu-basic` | MU100 / MU128 / MU1000 only. Converts the "MU Basic" voice map instead of the native one (see [MU Basic voice maps](#mu-basic-voice-maps)). Ignored for other models, with a note. |
-| `--embed` | Puts table and wave file into the patched DLL as resources instead of writing them as files (see [Embedded tables](#embedded-tables---embed)). Needs a DLL. |
+| `--embed` | **New.** Puts table and wave file into the patched DLL as resources instead of writing them as files (see [Embedded tables](#embedded-tables---embed)). Needs a DLL. |
 
 The table layout and the DLL patch level are chosen automatically from the detected model. `--out-dir` and `--dll-name` exist as well, but only for the per-model runs that `main.py` starts itself in a multi-model conversion.
 
@@ -173,11 +173,10 @@ The S-YXG50's own tables and `Vampire.dll` are recognised as well, but they are 
 | MU80 | classic | "Enhanced" | `SXGMU80a1.TBL` | `SXGMU80a1.UPCM` | 12.7 MB |
 | MU90 / MU90B | classic | "Enhanced" | `SXGMU90t.TBL` | `SXGMU90.UPCM` | 13.3 MB |
 | MU100 | big | "Full" | `SXGMU100X.TBL` | `SXGMU100X.UPCM` | 51.8 MB |
-| MU100 `--mu-basic` | big | "Full" | `SXGMU100BX.TBL` | `SXGMU100BX.UPCM` | |
 | MU128 | big | "Full" | `SXGMU128X.TBL` | `SXGMU128X.UPCM` | 70.8 MB |
-| MU128 `--mu-basic` | big | "Full" | `SXGMU128BX.TBL` | `SXGMU128BX.UPCM` | |
 | MU1000 | big | "Full" | `SXGMU1KX.TBL` | `SXGMU1KX.UPCM` | 87.3 MB |
-| MU1000 `--mu-basic` | big | "Full" | `SXGMU1KBX.TBL` | `SXGMU1KBX.UPCM` | |
+
+The MU100, MU128 and MU1000 tables contain both voice maps (native and MU Basic); the wave file is the same as for the native map alone. Earlier versions wrote a separate `...BX` set with the old `--mu-basic` switch; these files are no longer needed, and `--mu-basic` is ignored with a note.
 
 With `--embed`, the DLL contains both files and is correspondingly large (MU90 14 MB, MU100 53 MB, MU128 72 MB, MU1000 88 MB).
 
@@ -259,7 +258,7 @@ Any input file that starts with `MZ` is taken as the DLL and identified by its c
 | Level | Used for | Patches |
 |---|---|---|
 | "Enhanced" | MU50 / MU80 / MU90 | ini names, 24-bit loop length, drum EG offsets, effect types, effect return levels, effect fade-in, bitmaps, names, version info |
-| "Full" | MU100 / MU128 / MU1000 | everything in "Enhanced" + table size limits (big layout) |
+| "Full" | MU100 / MU128 / MU1000 | everything in "Enhanced" + table size limits (big layout) + voice map switch |
 
 ### Patch sites in `syxg50.dll` (file offset = RVA)
 
@@ -289,12 +288,13 @@ Any input file that starts with `MZ` is taken as the DLL and identified by its c
 | `0x099C2`, `0x09A97`, `0x09ADC`, `0x09B80`, `0x09C4E`, `0x09CA3` + code cave `0x3F460` | **Effect types without counterpart -> nearest type.** The six functions that turn MSB/LSB into the internal effect number read the type through a stub with a per-block substitution table. Reverb: Canyon -> Tunnel. Chorus: Symphonic -> Celeste 1, Phaser -> Flanger 1, Ensemble Detune -> Chorus 1. Variation: Touch Wah -> Auto Wah, Auto/Touch Wah+Dist/OD, Dist/OD+Delay, Comp+Dist/OD+Delay, Wah+Dist/OD+Delay -> Distortion / Overdrive, 2-Way Rotary -> Rotary, Ensemble Detune -> Symphonic, Talking Modulator -> Auto Wah. |
 | `0x041D6`, `0x0A65D` + code cave `0x3F5A0` | **Effect return level per type** (reverb and variation as system effects): the return level (0-127) is read through a stub that scales it with a per-type factor, result capped at 127. Factors from the S-MU2000: Hall +2.5 dB, Room1 +3.5, Room2/3 +2.0, Stage1 +1.0, Stage2 +2.5, Plate +1.5, White Room +3.5, Basement -1.0; variation only: Delay LCR +1.0, Delay LR +2.5, Echo +2.0, Cross Delay x2, ER2 +2.5, Gate / Reverse Gate +2.0, Karaoke 1/2 -1.5/-2.5, Symphonic x1.56, Rotary x1.45, Tremolo / Auto Pan x2. |
 | `0x0900E` + code cave `0x3F680` | **Return level update on a type change:** the DLL computed the return level only when the return parameter changed. The type change handler (0x10008F50) now also runs the return update of its block. |
+| `0x03875`, `0x30B91`, `0x30BBA`, `0x30BEF`, `0x30C5F` + code cave `0x3F6B0`-`0x3F9FA`, dialog resource 111, `.data` VirtualSize -> `0x5E00` | **Voice map switch** (Full only; see [MU Basic voice maps](#mu-basic-voice-maps)). After the table setup, the cave looks for the voice map appendix behind the table sections (`MAP2`), remembers the 8 bank/drum row pointers and points them at the appendix rows when `[Config] MUBasic=1` selects MU Basic. A checkbox (control `0x420`) is added to the Setup page; Init and Set Defaults set it, a click enables Apply, and Apply switches the rows and writes `MUBasic` to the ini via `WritePrivateProfileStringA`. Without an appendix the checkbox is hidden. The cave code is position independent; its state lives in `.data` at `0x56DC0`. |
 | `0x08C24`, `0x08C75`, `0x08CDF` | **Effect fade-in after a type change:** the handler mutes the block, and a ramp run every 10 ms brings it back in steps of 4: reverb 0.64 s, chorus 1.03 s, variation 0.32-0.9 s. Larger steps (reverb 32, chorus 52, variation 40) end the ramp after 80-90 ms; the end values are unchanged. |
 
 **Resources**
 
 - **Bitmaps:** bitmap 101 (the panel picture) becomes `bitmaps/Bitmap101_<model>.bmp` for MU80, MU90, MU100, MU128 and MU1000 (MU50 keeps the original), bitmap 105 becomes `bitmaps/Bitmap105.bmp` for every model. Keep the `bitmaps` folder next to the scripts. Replacement pictures must have the size of the original (400x90 and 110x13); any uncompressed 8-, 24- or 32-bit BMP works. They are stored as 24-bit DIBs in place.
-- **Names** (MU80 ... MU1000; MU50 keeps them): the About dialog and string table say S-YXG<n> instead of S-YXG50 (e.g. S-YXG1000), the internal name `xg50` becomes `mu<n>`, the default table name in the string table becomes the table just built, and the version info reads "Yamaha S-YXG<n> VSTi", "S-YXG<n>", "S-YXG<n>.DLL" and "Yamaha S-YXG<n> Portable VSTi". Hosts may list the plugin under its new name after a rescan.
+- **Names** (MU80 ... MU1000; MU50 keeps the S-YXG50 names, only its default table name is set): the About dialog and string table say S-YXG<n> instead of S-YXG50 (e.g. S-YXG1000), the internal name `xg50` becomes `mu<n>`, the default table name in the string table becomes the table just built, and the version info reads "Yamaha S-YXG<n> VSTi", "S-YXG<n>", "S-YXG<n>.DLL" and "Yamaha S-YXG<n> Portable VSTi". Hosts may list the plugin under its new name after a rescan.
 - **Version info** (all models): the file version `2016,4,25,18` becomes the conversion date (`YYYY,MM,DD,0`), the FileVersion string `2016.04.25.0018` becomes `YYYY.MM.DD`, and the copyright reads "... 2016 VEG, 2026 Soundshock/NightFright".
 
 The resource section grows by a few KB for this. The PE checksum is recalculated after patching.
@@ -329,6 +329,7 @@ DisableGUI=0
 | `XGLite` | XG Lite mode (0 = off) |
 | `DebugPanel` | 1 = show the debug panel instead of the normal panel |
 | `DisableGUI` | 1 = no GUI window |
+| `MUBasic` | **New**, MU100 / MU128 / MU1000 only: 1 = MU Basic voice map, 0 = MU Native. Written by the Setup dialog; without the key MU Native is used. |
 
 ### Embedded tables (`--embed`)
 
@@ -347,14 +348,22 @@ DisableGUI=0
 
 ## MU Basic voice maps
 
-The MU100, MU128 and MU1000 have two voice maps, which the module switches with its own Voice Map setting. Use `--mu-basic` to convert the second one:
+The MU100, MU128 and MU1000 have two voice maps, which the module switches with its own Voice Map setting:
 
 | Map | Voices | PC 0 drum kit |
 |---|---|---|
-| Native (default) | revoiced (`GrandP #`, `BriteP #`, `Strngs1#`, ...) | native Standard Kit |
-| MU Basic (`--mu-basic`) | MU90-compatible (`GrandPno`, `BritePno`, `Strings1`, ...) | MU90 Standard Kit |
+| MU Native | revoiced (`GrandP #`, `BriteP #`, `Strngs1#`, ...) | native Standard Kit |
+| MU Basic | MU90-compatible (`GrandPno`, `BritePno`, `Strings1`, ...) | MU90 Standard Kit |
 
-`--mu-basic` switches the XG voice row, the XG drum program row and (on MU128/MU1000) the GM2 row to the basic map. GS, SFX and MSB 48 are the same in both maps. Output names get a `B` (`SXGMU1KBX.TBL`).
+**New:** the converted table contains **both maps**, and the patched DLL switches between them like the module does:
+
+- **Setup dialog:** open Setup in the S-YXG50 panel, tick **"MU Basic voice map"** and press Apply/OK. The choice is stored as `MUBasic=1` (or `0`) in `[Config]` of `<dll name>.ini` and is used again on the next start. **Set Defaults** returns to MU Native.
+- **When it takes effect:** at the next program change. Notes already playing, and channels that don't send a new program/bank change, keep their current voice until then (a song restart or GM/XG reset reloads all channels).
+- **Default:** MU Native, until the setting is changed in the Setup dialog.
+- **Embedded tables (`--embed`):** the switch works the same. When the setting is changed, the DLL writes a small ini with only the `MUBasic` key next to itself; it stays portable (no registry, no other files). In a read-only folder the setting applies until the plugin is unloaded.
+- **Other tables:** with MU50 / MU80 / MU90 tables, or MU100+ tables from earlier versions, the checkbox is hidden.
+
+Both maps share the same samples, elements and drum voices. The appendix behind the table holds only what differs: the XG voice row, the XG drum program row and (on MU128/MU1000) the GM2 row, plus the banks and voices only the basic map has (MU100: 70 banks, no extra voices; MU128: 83 banks, 32 voices; MU1000: 86 banks, 32 voices). The wave file does not grow. GS, SFX and MSB 48 are the same in both maps. Both settings were checked to render byte-identical to separate native-only and basic-only builds (external and embedded).
 
 > **Note:** the newer kits (e.g. the Apogee Kit on XG drum program 30) exist in both maps. A song that selects such a kit sounds different on MU100+ tables than on MU80/MU90 tables, which fall back to the Standard Kit, and the same happens on real hardware.
 
@@ -382,6 +391,7 @@ The MU hardware keeps decoding through a loop, carrying the decoder state from o
 ### MU50
 
 - **Identical to Yamaha's own S-YXG50 table** in all voice and drum parameters (see [Verification](#verification-against-the-s-mu2000-and-the-s-yxg50)), but with the MU50's original sample data.
+- **Default table name:** the MU50 DLL keeps the S-YXG50 names, but its string table now names `SXGMU50a1.TBL` instead of `SXGBIN41.TBL`. Before, a MU50 DLL that was started without a `SoftSynth` entry (embedded with `--embed`, or a host that does not find the ini) looked for the missing `SXGBIN41.TBL` and failed to load.
 
 ### MU80
 
@@ -411,7 +421,7 @@ Players that substitute "missing" programs from an instrument list (e.g. Falcoso
 
 - **Wave ROMs:** three 32-bit pairs (MU90 pair + two new pairs), mapped to one address space.
 - **Wavedata tables:** three, with their own offset tables (wave numbers 0-292 / 293-326 / 327-).
-- **Voice map:** MU100 Native by default, MU Basic with `--mu-basic`.
+- **Voice maps:** MU100 Native and MU Basic in one table, switchable in the Setup dialog (default MU Native).
 - **Element HPF:** the MU100 stores the element HPF cutoff in element byte `+69` (unused on the MU90). It is the same value as byte `+80` of the MU128/MU1000 in all 1,925 elements of the voices both models have. It was not converted before, so 66 MU100 voices (86 elements, e.g. Oboe #, MuteGtr#, Wrench, Heinz, Parasite) sounded up to 13 dB too loud and dull in the low keys (Parasite up to 19 dB). Now they are filtered like on the MU128/MU1000.
 
 ### MU128 / MU1000
@@ -419,7 +429,7 @@ Players that substitute "missing" programs from an instrument list (e.g. Falcoso
 - **Program flash:** high/low 16-bit halves of a 32-bit bus, combined.
 - **Elements:** 84-byte elements, mapped to the 78-byte S-YXG50 element almost 1:1. This was verified on 2,317 elements shared with the MU100, all 77 bytes match.
 - **Drum voices:** 42 bytes in the MU90 layout, except byte 0, which moved to `+23`.
-- **Voice maps:** MU Native by default, MU Basic with `--mu-basic`, plus GS, MSB 48 and GM2.
+- **Voice maps:** MU Native and MU Basic in one table, switchable in the Setup dialog (default MU Native), plus GS, MSB 48 and GM2.
 - **Element HPF (element byte `+80`):** 162 elements in 128 MU1000 voices, e.g. Oboe, Muted/Jazz/Overdrive Guitar, Slap Bass, Rock Organ. Same filter and cutoff scale as the drum HPF (measured on the S-MU2000). Baked into filtered copies of the multisamples (see [Why the wave files got bigger](#why-the-wave-files-got-bigger)). The HPF copies are cut in the transposed key range (key + coarse tune), as the DLL selects waves; this matters for 18 elements with both, e.g. Sleep (+24): low-band shape against the S-MU2000 -1.9 -> +0.3 dB.
 
 ### Voices with 3 or 4 elements (MU1000)
@@ -480,6 +490,7 @@ These are limits of the S-YXG50 engine, or changes that were tried and rejected 
 - **HPF as baked copies:** the filter cutoff is exact only every 6 keys (within about 3 semitones), it cannot follow real-time changes, and it costs wave data. The DLL has no high-pass filter to do it properly.
 - **Rising decay 2:** the dip is limited to -46 dB (decay 1 level 64), because the DLL ends notes below that level; Bounce and Ana Echo have shallower gaps between their repeats than on the hardware.
 - **Drum attack without hold for MU50/MU80:** the MU90+ correction is not applied to MU50/MU80. Yamaha's own MU50-based S-YXG50 table uses the hold, and whether the real MU50/MU80 decay immediately like the MU90 could not be verified without recordings.
+- **Voice map switch:** a change takes effect at the next program change, not on notes or channels already playing (the DLL resolves the voice when the program is selected). The Setup dialog part was tested by emulating the dialog messages, not yet in every VST host.
 - **MU2000:** its program ROM needs a table that is not in the dump; the MU1000 set is used instead (same sound).
 - **MU50 DOC bank:** the 'DOC' voice bank and drum kit are not converted. Some DOC drum voices appear to be missing data, so it would need reconstruction.
 - **Remaining deviations:** most measured voices are within about ±2.5 dB of the S-MU2000; a few effect types and merged voices are 2-3 dB off. Some differences come from engine details that a table cannot change (e.g. the LFO phase).
@@ -489,7 +500,7 @@ These are limits of the S-YXG50 engine, or changes that were tried and rejected 
 ## Using the converted DLLs
 
 - **Host:** syxg50.dll is a 32-bit VST2 instrument. Any VST2 host works; to use it as a system MIDI device (e.g. for DOSBox or Windows games), load it through a VSTi MIDI driver.
-- **Which model:** MU50 sounds like the DB50XG, SW60XG and the S-YXG50 itself, which is what most players of 1990s games heard. MU90/MU100 are good all-rounders with better samples and similar balance (MU100 = SW1000XG sound set). MU1000/MU128 have the best samples and the most voices, but are larger and partly revoiced; `--mu-basic` gives the MU90-compatible voice set for older material.
+- **Which model:** MU50 sounds like the DB50XG, SW60XG and the S-YXG50 itself, which is what most players of 1990s games heard. MU90/MU100 are good all-rounders with better samples and similar balance (MU100 = SW1000XG sound set). MU1000/MU128 have the best samples and the most voices, but are larger and partly revoiced; the "MU Basic voice map" checkbox in Setup gives the MU90-compatible voice set for older material.
 - **GS:** GS songs play through Yamaha's GS mode, an approximation of the Roland sound set. MT-32 music needs an MT-32 emulator.
 
 ---
@@ -520,10 +531,9 @@ New modules used by the conversion: `elemreduce.py` (voices with 3/4 elements, E
 
 ## Credits and license
 
-- **Soundshock** – [SXG-Create](https://github.com/Soundshock/SXG-Create) (original MU ROM conversion scripts)
-- **tarboh** – [S-MU2000](https://github.com/tarboh/S-MU2000) (awesome and essential reference for the sound comparisons)
-- **VEG** – [S-YXG50](https://veg.by/en/projects/syxg50) (`syxg50.dll` which got all of this started)
-- **Falcosoft** – [MIDI Player + VST MIDI Driver](https://falcosoft.hu) (essential tools for this project)
+- **Soundshock** – original [SXG-Create](https://github.com/Soundshock/SXG-Create)
+- **tarboh** – [S-MU2000](https://github.com/tarboh/S-MU2000), the reference for the sound comparisons
+- **VEG** – [S-YXG50](https://veg.by/en/projects/syxg50/) (`syxg50.dll`)
 - **Yamaha** – MU series tone generators and the S-YXG50 sound engine
 
 DPCM delta table, DPCM limits table, and delta format decoding code based on MAME, copyright (c) MAME contributors, and related contributions by TaleTN, tarboh, and hockinsk under the BSD-3 license.

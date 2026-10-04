@@ -120,6 +120,75 @@ def Rising_Decay2_Fix(data) :
         data = bytes(data)
     return data
 
+# * second voice map (MU Basic) in the same table. The MU100 / MU128 / MU1000 have two voice maps
+#   (module setting "Voice Map": MU Basic = MU90 voices, MU Native = revoiced). Both use the same samples,
+#   drum kits and drum voices; they differ in which voice bank an XG bank select (and the XG / GM2 drum
+#   program) gives. The table holds the voices and banks of both maps, the bank map / drum program rows of
+#   the native map in the normal place, and those of the second map in an appendix behind the wave data,
+#   which the patched DLL swaps in (dllpatch.SYXG50_VOICEMAP). The DLL ignores data behind the last section.
+#   Appendix (VOICE_MAP_APPENDIX bytes): +0 'MAP2', +4 default map (0 = native, 1 = second), +5..+7 0,
+#   +8 eight alternate rows of 128 bytes: drum programs GS / XG / SFX / GM2, voice banks GS / MSB / XG / GM2
+VOICE_MAP_MAGIC = b'MAP2'
+VOICE_MAP_APPENDIX = 8 + 8 * 128
+
+def Merge_Alt_Table(table : Table, alt : Table) :
+    # voices, wavebanks, samples, drum voices and kits are keyed by their ROM address, the banks of the second
+    # map that the first one does not have are added and marked (their rows go to the appendix)
+    added_voices = 0
+    for pool in ('Voice_pool', 'Wavebank_pool', 'Sample_pool', 'DrumVoice_pool') : 
+        mine, other = getattr(table, pool), getattr(alt, pool)
+        for k, v in other.items() : 
+            if k not in mine : 
+                mine[k] = v
+                if pool == 'Voice_pool' : added_voices += 1
+    assert set(alt.drumkits) <= set(table.drumkits), 'second voice map uses drum kits the first one does not have'
+    added = 0
+    for k, vb in alt.voice_banks.items() : 
+        if k not in table.voice_banks : 
+            import copy
+            nb = copy.copy(vb)
+            nb.aliases = list(vb.aliases)
+            nb.alt = True
+            table.voice_banks[k] = nb
+            added += 1
+    print(f'voice maps: the second map adds {added} banks and {added_voices} voices')
+
+def Voice_Map_Appendix(alt : Table, table : Table, GSbanks : dict, XGbanks : dict, bank_map_order : list,
+                       drum_bank_locations : dict, voice_bankmaps : bytes, drumbank_prgmaps : bytes, alt_default : bool) -> bytes :
+    # rows of the second map, with the bank and kit indices of this table
+    # voice bank rows: same filling rule as the main rows (aliases included), GS / XG side kept apart
+    rows = bytearray(0xFF for _ in range(128)) + bytearray(len(voice_bankmaps) - 128)
+    for vb in alt.voice_banks.values() : 
+        for bank, byte in [(vb.bank, vb.relevant_byte())] + list(vb.aliases) : 
+            if bank not in bank_map_order : continue
+            dst = (GSbanks if bank == Bank.GS else XGbanks).get(vb.prg_address)
+            assert dst is not None and dst.index >= 0, f'bank {vb.prg_address} of the second map has no index on the {bank} side'
+            rows[byte + 128 * bank_map_order.index(bank)] = dst.index
+    # MSB row: syxg50.dll reads a bank index of 1 there as "XG: take the bank from the LSB row" (which is why
+    # the native XG LSB 0 bank gets index 1). The second map's XG LSB 0 bank has another index, so its MSB
+    # entries are written as 1 as well
+    lsb0 = [vb for vb in alt.voice_banks.values() if vb.bank == Bank.XG and vb.lsb == 0]
+    if lsb0 : 
+        i0 = XGbanks[lsb0[0].prg_address].index
+        msb_row = 128 * bank_map_order.index(Bank.SFX)
+        for i in range(msb_row, msb_row + 128) : 
+            if rows[i] == i0 : rows[i] = 1
+    # drum program rows: kits are shared, so the second map's program -> kit, with this table's kit index
+    drows = bytearray(len(drumbank_prgmaps))
+    for key, kit in alt.drumkits.items() : 
+        idx = table.drumkits[key].index
+        for bank, prg in [(kit.bank, kit.prg)] + list(kit.aliases) : 
+            drows[prg + 128 * drum_bank_locations[bank]] = idx
+    drows = (drows + bytearray(4 * 128))[:4 * 128]
+    rows = (bytes(rows) + bytes(4 * 128))[:4 * 128]
+    same_v = sum(1 for a, b in zip(rows, voice_bankmaps) if a != b)
+    same_d = sum(1 for a, b in zip(drows, drumbank_prgmaps) if a != b)
+    print(f'voice maps: second map differs in {same_v} bank map and {same_d} drum program entries'
+          f' (default: {"second" if alt_default else "native"} map)')
+    out = bytearray(VOICE_MAP_MAGIC) + bytes([1 if alt_default else 0, 0, 0, 0]) + drows + rows
+    assert len(out) == VOICE_MAP_APPENDIX
+    return bytes(out)
+
 # * convert voice / element first, then this will generically write it
 def WriteVoice(voice : Voice, target : MU) -> bytes : 
     assert target == MU.SYXG50
@@ -154,7 +223,14 @@ def WriteANSI(array : bytearray, idx : int, string : str) :
 # I'm not sure if they are restricted to VoicesA or not
 
     # * ------------ table reconstruction
-def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_table_version : str, new_table_name : str, new_waverom_name : str, VOICE_PAD : int = 8) -> tuple[bytes,SampleConvert.SampleMonster]  : 
+def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_table_version : str, new_table_name : str, new_waverom_name : str, VOICE_PAD : int = 8,
+               alt_table : Table | None = None, alt_default : bool = False) -> tuple[bytes,SampleConvert.SampleMonster]  : 
+    # alt_table: the same model decoded with its second voice map (MU Basic, MU100 / MU128 / MU1000).
+    # Its voices and banks are added to this table, and the bank map / drum program rows of the second map
+    # are appended to the table (see VOICE_MAP_APPENDIX); the patched syxg50.dll switches between the two
+    # maps (Settings page, "MU Basic voice map"). alt_default: start in the second map.
+    if alt_table is not None : 
+        Merge_Alt_Table(table, alt_table)
 
     
     # todo this should be validated before it goes in here
@@ -599,6 +675,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
                         dupe_lsb, dupe_msb = BankToLSBMSB(dupebank, dupebyte)
 
                         new_voicebank = VoiceBank(vb.prg_address, dupebank, lsb=dupe_lsb, msb=dupe_msb, voices=vb.voices, seqID=0, aliases=[])
+                        new_voicebank.alt = getattr(vb, 'alt', False)
 
                         if vb.prg_address not in XGbanks : 
                             XGbanks[vb.prg_address] = new_voicebank
@@ -613,6 +690,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
                     if dupebank == Bank.GS : 
 
                         new_voicebank = VoiceBank(vb.prg_address, dupebank, lsb=0, msb=dupebyte, voices=vb.voices, seqID=0, aliases=[])
+                        new_voicebank.alt = getattr(vb, 'alt', False)
 
                         if vb.prg_address not in GSbanks : 
                             GSbanks[vb.prg_address] = new_voicebank
@@ -623,7 +701,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     # sort XGbank SFX MSB1 (silent bank) first
     # ! THIS IS LOAD BEARING, if XG voice banks start at index 00 it breaks bank changing!
     for xgbank in XGbanks.values() : 
-        if xgbank.bank == Bank.SFX and xgbank.msb == 1 : 
+        if xgbank.bank == Bank.SFX and xgbank.msb == 1 and not getattr(xgbank, 'alt', False) : 
             xgbank.index = next(banksXG_IDX)
             break
 
@@ -631,7 +709,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     # todo: none of the XG range can be 00, this is currently causing issues with the MU90
     # ? though XG MSB(SFX) and GM2 use 00 just fine
     for xgbank in XGbanks.values() : 
-        if xgbank.bank == Bank.XG and xgbank.lsb == 0 : 
+        if xgbank.bank == Bank.XG and xgbank.lsb == 0 and not getattr(xgbank, 'alt', False) : 
             xgbank.index = next(banksXG_IDX)
             break
 
@@ -654,6 +732,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     for voicebank in voicebanks_expanded :
 
         assert voicebank.bank in bank_map_order 
+        if getattr(voicebank, 'alt', False) : continue      # second voice map only: rows in the appendix
 
         addr = voicebank.relevant_byte() + (128 * bank_map_order.index(voicebank.bank))
         voice_bankmaps[addr] = voicebank.index
@@ -799,6 +878,10 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     + voice_prgmap_GS + voice_prgmap_XG \
     + voices_bankA + voices_bankB \
     + wavedata_offsets + wavedata
+
+    if alt_table is not None : 
+        table_file = table_file + Voice_Map_Appendix(alt_table, table, GSbanks, XGbanks, bank_map_order,
+                                                     drum_bank_locations, voice_bankmaps, drumbank_prgmaps, alt_default)
 
 
     return bytes(table_file), samplemonster

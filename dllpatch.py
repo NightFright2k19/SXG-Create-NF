@@ -180,6 +180,70 @@ SYXG50_FXFADE = [
     (0x08CDF, '66 83 86 da 66 00 00 fc', '66 83 86 da 66 00 00 d8'),
 ]
 
+
+# * voice map switch (MU100 / MU128 / MU1000, "Full" level): the table carries both voice maps of the model
+#   (MU Native in the normal bank map / drum program rows, MU Basic in an appendix behind the wave data, see
+#   makeSYXG50.Voice_Map_Appendix). The Settings page gets a checkbox "MU Basic voice map" (id 0x420):
+#   - table setup (0x10003870 -> 0x100043D0): afterwards the cave looks for the appendix ('MAP2'), saves the
+#     eight row pointers (drum programs GS/XG/SFX/GM2 0x100552D0/CC/F8/E8, bank maps GS/MSB/XG/GM2
+#     0x100552D8/D4/E4/E0), reads [Config] MUBasic from the DLL's ini (default: the table's default) and points
+#     the rows at the appendix when the Basic map is on
+#   - Settings page (0x10030AF0): WM_INITDIALOG / Set Defaults set the checkbox (hidden without an appendix),
+#     a click marks the page changed, PSN_APPLY switches the rows and writes MUBasic=0/1 to the ini
+#     (WritePrivateProfileStringA via GetProcAddress; the ini only gets this key, so an embedded table stays in use)
+#   The switch takes effect at the next program change / bank select of a part.
+#   State in the .data section behind its used part (0x10056DC0, VirtualSize enlarged to 0x5E00).
+#   All code is position independent (call/pop), generated from vmap.asm with mkvmap3.py (keystone).
+SYXG50_VOICEMAP = [
+    (0x03875, 'e8 56 0b 00 00',
+              'e8 36 be 03 00'),
+    (0x30B91, 'e8 6a 06 00 00',
+              'e8 3f ed 00 00'),
+    (0x30C5F, 'e8 9c 05 00 00',
+              'e8 75 ec 00 00'),
+    (0x30BEF, '0f b7 44 24 14 3d f6 03 00 00 8b 74 24 0c',
+              'e9 52 ed 00 00 90 90 90 90 90 90 90 90 90'),
+    (0x30BBA, '8b 4c 24 08 8b 41 08',
+              'e9 a6 ed 00 00 90 90'),
+    (0x3F6B0, '00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00',
+              '8b 44 24 04 50 e8 16 4d fc ff 60 e8 00 00 00 00 5d 81 ed c0 f6 03 10 8b 74 24 24 31 c0 8d 7e 20 b9 11 00 00 00 03 07 83 c7 04 e2 f9 8d 7c 06 64 c6 85 c1 6d 05 10 00 81 3f 4d 41 50 32 0f 85 95 00 00 00 89 bd c4 6d 05 10 8b 85 d0 52 05 10 89 85 c8 6d 05 10 8b 85 cc 52 05 10 89 85 cc 6d 05 10 8b 85 f8 52 05 10 89 85 d0 6d 05 10 8b 85 e8 52 05 10 89 85 d4 6d 05 10 8b 85 d8 52 05 10 89 85 d8 6d 05 10 8b 85 d4 52 05 10 89 85 dc 6d 05 10 8b 85 e4 52 05 10 89 85 e0 6d 05 10 8b 85 e0 52 05 10 89 85 e4 6d 05 10 c6 85 c1 6d 05 10 01 0f b6 47 04 50 8d 85 c6 f9 03 10 50 8d 85 ec 19 05 10 50 e8 84 39 ff ff 85 c0 0f 95 c0 88 85 c0 6d 05 10 e8 04 00 00 00 61 c2 04 00 60 e8 00 00 00 00 5d 81 ed 92 f7 03 10 80 bd c1 6d 05 10 01 0f 85 ce 00 00 00 80 bd c0 6d 05 10 00 74 65 8b b5 c4 6d 05 10 8d 46 08 89 85 d0 52 05 10 8d 86 88 00 00 00 89 85 cc 52 05 10 8d 86 08 01 00 00 89 85 f8 52 05 10 8d 86 88 01 00 00 89 85 e8 52 05 10 8d 86 08 02 00 00 89 85 d8 52 05 10 8d 86 88 02 00 00 89 85 d4 52 05 10 8d 86 08 03 00 00 89 85 e4 52 05 10 8d 86 88 03 00 00 89 85 e0 52 05 10 eb 60 8b 85 c8 6d 05 10 89 85 d0 52 05 10 8b 85 cc 6d 05 10 89 85 cc 52 05 10 8b 85 d0 6d 05 10 89 85 f8 52 05 10 8b 85 d4 6d 05 10 89 85 e8 52 05 10 8b 85 d8 6d 05 10 89 85 d8 52 05 10 8b 85 dc 6d 05 10 89 85 d4 52 05 10 8b 85 e0 6d 05 10 89 85 e4 52 05 10 8b 85 e4 6d 05 10 89 85 e0 52 05 10 61 c3 60 e8 00 00 00 00 5d 81 ed 7c f8 03 10 8d 85 ce f9 03 10 50 ff 95 04 01 04 10 85 c0 74 3f 8d 8d db f9 03 10 51 50 ff 95 30 00 04 10 85 c0 74 2d 8d 8d 98 6b 05 10 51 8d 8d f6 f9 03 10 80 bd c0 6d 05 10 00 74 06 8d 8d f8 f9 03 10 51 8d 8d c6 f9 03 10 51 8d 8d ec 19 05 10 51 ff d0 61 c3 31 c0 eb 05 b8 01 00 00 00 50 ff 74 24 0c ff 74 24 0c e8 14 19 ff ff 58 60 e8 00 00 00 00 5d 81 ed f3 f8 03 10 8b 5c 24 24 89 c7 68 20 04 00 00 53 ff 95 78 01 04 10 80 bd c1 6d 05 10 01 74 0b 6a 00 50 ff 95 b0 01 04 10 eb 22 0f b6 85 c0 6d 05 10 85 ff 74 0a 8b 8d c4 6d 05 10 0f b6 41 04 50 68 20 04 00 00 53 ff 95 d0 01 04 10 61 c2 08 00 0f b7 44 24 14 8b 74 24 0c 3d 20 04 00 00 75 05 e9 c6 13 ff ff 3d f6 03 00 00 e9 98 12 ff ff 60 e8 00 00 00 00 5d 81 ed 6b f9 03 10 80 bd c1 6d 05 10 01 75 3e 8b 5c 24 2c 68 20 04 00 00 53 ff 95 78 01 04 10 6a 00 6a 00 68 f0 00 00 00 50 ff 95 74 01 04 10 83 f8 01 0f 94 c0 3a 85 c0 6d 05 10 74 10 88 85 c0 6d 05 10 e8 d8 fd ff ff e8 bd fe ff ff 61 8b 4c 24 08 8b 41 08 e9 fb 11 ff ff 4d 55 42 61 73 69 63 00 4b 45 52 4e 45 4c 33 32 2e 44 4c 4c 00 57 72 69 74 65 50 72 69 76 61 74 65 50 72 6f 66 69 6c 65 53 74 72 69 6e 67 41 00 30 00 31 00'),
+]
+VMAP_CAVE_END = 0x3F9FA
+VMAP_DATA_END = 0x56E00
+VMAP_CONTROL_ID = 0x420
+VMAP_CONTROL_TEXT = 'MU Basic voice map'
+
+def data_virtual_size(data : bytearray, minimum : int) :
+    for h, vs, va, rs, rp in sections(data) :
+        if data[h : h + 5] == b'.data' :
+            if va + vs < minimum :
+                nxt = min(v for _, _, v, _, _ in sections(data) if v > va)
+                assert minimum <= nxt
+                struct.pack_into('<I', data, h + 8, minimum - va)
+            return
+    raise DllPatchError('.data section not found')
+
+def add_voicemap_checkbox(raw : bytes) -> bytes :
+    # DLGTEMPLATEEX of the Settings page (dialog 111): one more item, an auto checkbox left of "Set Defaults"
+    if struct.unpack_from('<HH', raw, 0) != (1, 0xFFFF) : raise DllPatchError('dialog 111 is not a DLGTEMPLATEEX')
+    if struct.pack('<I', VMAP_CONTROL_ID) + b'\xff\xff\x80\x00' in raw : return raw       # already there
+    n = struct.unpack_from('<H', raw, 16)[0]
+    out = bytearray(raw)
+    while len(out) % 4 : out.append(0)
+    out += struct.pack('<IIIhhhhI', 0, 0, 0x50010003, 10, 142, 160, 10, VMAP_CONTROL_ID)
+    out += b'\xff\xff\x80\x00' + VMAP_CONTROL_TEXT.encode('utf-16le') + b'\0\0' + b'\0\0'
+    struct.pack_into('<H', out, 16, n + 1)
+    return bytes(out)
+
+def apply_voicemap(data : bytearray) :
+    apply(data, SYXG50_VOICEMAP, 'voice map switch (MU Native / MU Basic, Settings page)')
+    text_virtual_size(data, VMAP_CAVE_END)
+    data_virtual_size(data, VMAP_DATA_END)
+    entry = resource_entries(data, RT_DIALOG).get(111)
+    if entry is None : raise DllPatchError('dialog 111 not found in the DLL')
+    old = resource_data(data, entry); new = add_voicemap_checkbox(old)
+    if new != old : replace_resource_data(data, entry, new)
+
 KNOWN = {
     # CRC32 of the original file -> (kind, description)
     '38A60E61' : ('syxg50', 'syxg50.dll, external tables (626,688 bytes)'),
@@ -343,7 +407,7 @@ def apply_bitmaps(data : bytearray, model : str | None) :
 # The DLL's names follow the converted model (dialog 112 "About", string table 1, version info):
 #   S-YXG50 -> S-YXG<n>, xg50 -> mu<n>, default table SXGBIN41.TBL -> the table just built,
 #   version info: Yamaha S-YXG<n> VSTi, S-YXG<n>, S-YXG<n>.DLL, Yamaha S-YXG<n> Portable VSTi.
-# MU50 (and an unknown model) keeps the original names.
+# MU50 keeps the original names except the default table name (an unknown model keeps everything).
 MODEL_NUMBER = {'MU80' : '80', 'MU90' : '90', 'MU100' : '100', 'MU128' : '128', 'MU1000' : '1000'}
 
 def Model_Dll_Name(model : str) -> str : 
@@ -496,6 +560,16 @@ def edit_version(raw : bytes, fn) -> bytes :
 def apply_names(data : bytearray, model : str | None, table_name : str | None) :
     n = MODEL_NUMBER.get(model or '')
     if not n :
+        # MU50 keeps the S-YXG50 names, but the default table name in the string table must still be the
+        # table just built: without a SoftSynth entry in the ini (--embed, or a host that starts the DLL
+        # without finding its ini) the DLL loads that name, and SXGBIN41.TBL does not exist any more
+        if model and table_name :
+            entry = resource_entries(data, RT_STRING).get(1)
+            if entry is None : raise DllPatchError('string table 1 not found in the DLL')
+            old = resource_data(data, entry)
+            new = edit_string_table(old, lambda t : table_name if t.upper().endswith('.TBL') else t)
+            if new != old : replace_resource_data(data, entry, new)
+            print(f'  names (S-YXG50 kept): default table {table_name}')
         return
     sx = f'S-YXG{n}'
     def text(t) : return t.replace('S-YXG50', sx)
@@ -706,6 +780,7 @@ def Patch(path : Path, full : bool, model : str | None = None, table_name : str 
             print('  note: 5 MB syxg50.dll, its embedded (classic) tables are not used, the ini selects the table')
         apply(data, SYXG50_BIG, 'table size limits (big layout)')
         text_virtual_size(data, BIG_CAVE_END)
+        apply_voicemap(data)
     apply_bitmaps(data, model)
     apply_names(data, model, table_name)
     apply_version_date(data)

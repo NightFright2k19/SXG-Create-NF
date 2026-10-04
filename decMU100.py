@@ -81,7 +81,7 @@ class MU100(MU90) :
 
         # voice banks: XG (native LSB row), SFX (MSB row), GS
         banks_start = len(data)
-        # --mu-basic: row 1 (MU Basic, base bank 0x00), otherwise row 3 (MU100 Native, base bank 0x55)
+        # basic=True (second map, see makeSYXG50.Merge_Alt_Table): row 1 (MU Basic, base bank 0x00), otherwise row 3 (MU100 Native, base bank 0x55)
         data += row(1) if basic else row(3)
         msb = bytearray(row(0))
         for i, v in enumerate(msb) :
