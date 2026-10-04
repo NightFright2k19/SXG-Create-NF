@@ -520,10 +520,10 @@ New modules used by the conversion: `elemreduce.py` (voices with 3/4 elements, E
 
 ## Credits and license
 
-- **Soundshock** – original [SXG-Create](https://github.com/Soundshock/SXG-Create)
-- **tarboh** – [S-MU2000](https://github.com/tarboh/S-MU2000), the reference for the sound comparisons
-- **VEG** – [S-YXG50](https://veg.by/en/projects/syxg50/) (`syxg50.dll` which got all of this started)
-- **Falcosoft** – [Falcosoft MIDI Player/VST MIDI Driver]([https://veg.by/en/projects/syxg50/](https://falcosoft.hu/)) (essential tools for this project)
+- **Soundshock** – [SXG-Create](https://github.com/Soundshock/SXG-Create) (original MU ROM conversion scripts)
+- **tarboh** – [S-MU2000](https://github.com/tarboh/S-MU2000) (awesome and essential reference for the sound comparisons)
+- **VEG** – [S-YXG50](https://veg.by/en/projects/syxg50) (`syxg50.dll` which got all of this started)
+- **Falcosoft** – [MIDI Player + VST MIDI Driver](https://falcosoft.hu) (essential tools for this project)
 - **Yamaha** – MU series tone generators and the S-YXG50 sound engine
 
 DPCM delta table, DPCM limits table, and delta format decoding code based on MAME, copyright (c) MAME contributors, and related contributions by TaleTN, tarboh, and hockinsk under the BSD-3 license.
