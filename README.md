@@ -136,7 +136,7 @@ This writes `syxgmu50.dll`, `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.
 | `<ROM files>` | Program ROM(s) and wave ROMs of one or more models, in any order (see [Supported models](#supported-models-and-rom-sets)). Optional if the `roms` folder holds them. Wildcards are allowed. |
 | `<dll>` | Optional. A `syxg50.dll`, under any file name (`syxg50.dll`, `mu800.dll`, ...). It is recognised by its content, not its name. A DLL in the `roms` folder is used if none is given on the command line. See [DLL patching](#dll-patching). |
 | `--mu-basic` | MU100 / MU128 / MU1000 only. Converts the "MU Basic" voice map instead of the native one (see [MU Basic voice maps](#mu-basic-voice-maps)). Ignored for other models, with a note. |
-| `--embed` | **New.** Puts table and wave file into the patched DLL as resources instead of writing them as files (see [Embedded tables](#embedded-tables---embed)). Needs a DLL. |
+| `--embed` | Puts table and wave file into the patched DLL as resources instead of writing them as files (see [Embedded tables](#embedded-tables---embed)). Needs a DLL. |
 
 The table layout and the DLL patch level are chosen automatically from the detected model. `--out-dir` and `--dll-name` exist as well, but only for the per-model runs that `main.py` starts itself in a multi-model conversion.
 
