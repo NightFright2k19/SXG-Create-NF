@@ -26,7 +26,7 @@ This document is the reference for the current state of SXG-Create: what changed
 
 ## What's new in this version
 
-Compared to the state of 1 October 2026. Most of the sound changes were measured against the **S-MU2000** (Yamaha's MU2000 software version, which runs the MU2000/MU1000 firmware and sound data) and against recordings of a real **MU1000**; see [Verification](#verification-against-the-s-mu2000-and-the-s-yxg50).
+Most of the sound changes were measured against the **S-MU2000** (Yamaha's MU2000 software version, which runs the MU2000/MU1000 firmware and sound data) and against recordings of a real **MU1000**; see [Verification](#verification-against-the-s-mu2000-and-the-s-yxg50).
 
 ### Usage and command line
 
