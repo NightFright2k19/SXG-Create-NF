@@ -6,7 +6,7 @@ This document is the reference for the current state of SXG-Create: what changed
 
 ## Table of contents
 
-- [What's new in this version](#whats-new-in-this-version)
+- [Changes compared to the original SXG-Create](#changes-compared-to-the-original-sxg-create)
 - [Quick start](#quick-start)
 - [Command line parameters](#command-line-parameters)
 - [Supported models and ROM sets](#supported-models-and-rom-sets)
@@ -24,35 +24,63 @@ This document is the reference for the current state of SXG-Create: what changed
 
 ---
 
-## What's new in this version
+## Changes compared to the original SXG-Create
 
-Most of the sound changes were measured against the **S-MU2000** (Yamaha's MU2000 software version, which runs the MU2000/MU1000 firmware and sound data) and against recordings of a real **MU1000**; see [Verification](#verification-against-the-s-mu2000-and-the-s-yxg50).
+This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Create), which converted the MU50 and MU80 (MU90 work in progress) into classic S-YXG50 tables and left the DLL setup to the user. Below is the complete list of changes, grouped by topic. Most of the sound changes were measured against the **S-MU2000** (Yamaha's MU2000 software version, which runs the MU2000/MU1000 firmware and sound data) and against recordings of a real **MU1000**; see [Verification](#verification-against-the-s-mu2000-and-the-s-yxg50). Details for each point are in the sections further down.
+
+### New models
+
+- **MU90 / MU90B** completed (was work in progress): word-interleaved wave ROMs (two 16-bit halves of a 32-bit bus), all four sample formats (16 bit, 12 bit, 8 bit, ADPCM), 42-byte drum voices, the bank map order XG (LSB) / SFX (MSB) / GS, and the MU90B program ROM.
+- **MU100** (new): three 32-bit wave ROM pairs in one address space, three wavedata tables with their own offset tables, 32-bit voice program maps, MU100 Native and MU Basic voice maps.
+- **MU128 and MU1000** (new): program flash from high/low 16-bit halves, 84-byte elements (mapped almost 1:1, verified on 2,317 elements shared with the MU100), 42-byte drum voices with byte 0 moved to `+23`, voice maps MU Native / MU Basic, GS, MSB 48 and GM2.
+- **MU2000** detected; its program ROM lacks a table, so the MU1000 set (same sound data) is used instead.
+- **`--mu-basic`** for MU100 / MU128 / MU1000: converts the MU90-compatible "MU Basic" voice map instead of the native one.
+
+### Table formats
+
+- **Big table layout** for MU100 / MU128 / MU1000: 32-bit voice, ext voice and wavedata offsets, 32-bit sample addresses, 24-bit drum start offset and loop length, **768 multisamples** in three pages of 256, **30-bit drum sample addresses**. The classic layout stays for MU50 / MU80 / MU90.
+- **24-bit loop lengths** (both layouts): loops longer than 65,535 samples (MU80 pads, MU90) are written in full instead of being clamped.
+- **Ext drum voices** are placed in voice bank A (the DLL reads their offsets as 16 bit from bank A).
+- **Duplicated voice banks** (GS <-> XG side) get their own program map. The MU80's MSB 126/127 pointed to an empty map, so all 128 programs read the 8-byte debug label in front of the first voice as a voice.
+
+### Sample conversion
+
+- **ADPCM loops** are made seamless: the decoder state is emulated through the loop passes until it settles, the transitional passes go in front of the loop (lead-in), the settled pass becomes the loop.
+- **Reverse flag** (MU90 and later): samples the hardware plays backwards are reversed (toms of the standard kits, MelodTom, Real Tom; Rev Tom / Rev Kick).
+- **Long drum bodies** in the classic layout (four XG open hi-hats with 70,626 samples): the loop start is moved earlier instead of cutting off the attack.
+- **MU80 format bit 6** (`0xC0` vs `0x80`): investigated, no audible meaning; both are 16-bit PCM.
+
+### Voices and elements
+
+- **LFO pitch modulation depth** read with 6 bits instead of 5 (MU80 / MU90 and later); the old mask halved the vibrato of voices like Siren, Ghost, Goblins, Wind.
+- **Element HPF** (MU100: element byte `+69`, MU128/MU1000: `+80`): baked into filtered copies of the multisamples, every 6 keys in the low range; the copies follow the coarse-tuned key range. 66 MU100 voices and 128 MU1000 voices use it (e.g. Oboe, muted/jazz/overdrive guitars, slap bass, rock organ); without it they were up to 13-19 dB too loud and dull in the low keys.
+- **Voices with 3 or 4 elements** (22 MU1000 voices): folded into the two elements the DLL can play instead of dropping elements 3 and 4 (stereo pairs, key splits, layers; `elemreduce.py`), incl. per-member wave start offsets and baked amp EGs for percussive key-split members.
+- **Rising decay 2** (MU80 and later): decay 1 level raised to 64 where decay 2 rises again, because the DLL ends notes below that level (Lite Org, WireLead, synecho2, Bounce, Ana Echo).
+
+### Drum keys
+
+- **Drum EG rate** (byte 13): the original's MU80 rule S-YXG50 = MU - `0x21` was checked against the S-YXG50 table (245 of 253 MU80 drum voices) and extended to the MU90 and later (426 of 460).
+- **HPF cutoff** (MU100 and later): baked into a filtered copy of the drum sample.
+- **Level offset** (MU100 and later, byte `+29`): added to the key's level (MU1000 Ride 1 was 13.6 dB too loud).
+- **Instant attack with equal decay rates** and **short decay 1 before a fast decay 2** (MU90 and later): converted to an attack mode of the DLL without its 18-120 ms hold (Seq Click, Hi Q, Click Noise, Short Guiro: 3.5-8 dB too loud before, now within 1-2 dB).
+- **Velocity pitch / LPF cutoff sensitivity** (MU90 and later): reproduced with generated ext drum voices (`drumvel.py`).
+
+### DLL patching (new)
+
+- SXG-Create patches a supplied `syxg50.dll` (626,688 bytes or the 5 MB version, any file name) and writes a matching ini; the original is kept as `<name>.orig.dll`. Patch level follows the table: **"Enhanced"** (classic) or **"Full"** (big layout). Already-patched DLLs are accepted and checked patch by patch.
+- **Table loading:** ini section/key `[Config]` / `SoftSynth`, 24-bit loop length, and for "Full" all big-layout parser changes (program maps, wavedata offsets with three pages, drum voice fields, formats, root key).
+- **Effects:** missing effect types mapped to the nearest available type, return levels scaled per type (calibrated against the S-MU2000) and recomputed on a type change, fade-in after a type change shortened from 0.3-1 s to 80-90 ms.
+- **Drum setup EG offsets** for ext drum voices no longer act twice as strong.
+- **Resources:** panel bitmap per model, names in About dialog / string table / version info (S-YXG<n>), default table name, conversion date and credits in the version info.
 
 ### Usage and command line
 
-- **`roms` folder:** ROMs are also picked up from a folder `roms` next to `main.py`, including all subfolders (e.g. `roms/mu90`, `roms/mu1000`). `python main.py syxg50.dll` is then enough.
-- **Several models in one run:** when the complete ROM sets of several models are found, all of them are converted one after the other, and the DLLs/inis are named after the model (`syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.dll`, `syxg1000.dll`; MU50: `syxgmu50.dll`). The MU2000 set is skipped when the MU1000 set is present (same sound set).
-- **New switch `--embed`:** table and wave file are embedded into the patched DLL instead of being written as files. The old embedded tables of the 5 MB `syxg50.dll` (`SXGBIN41.TBL`, `SXGWAVE4.TBL`) are removed first. No ini is needed.
-- **Wildcards** such as `*.bin` are expanded by SXG-Create itself (the Windows command line passes them unexpanded). A pattern without matches is skipped with a note.
-- **Python 3.12** or newer is required (nested f-strings).
-
-### DLL patches (all models)
-
-- **Effect types without a counterpart** in the DLL (it switched them off or to Thru) now use the nearest type it has.
-- **Effect return levels** are scaled per effect type, calibrated against the S-MU2000, and recomputed on a type change.
-- **Effect fade-in after a type change** is shortened from 0.3-1 s to 80-90 ms.
-- **Drum setup EG offsets** (attack/decay) for ext drum voices now act with the same strength as for internal drum keys (they acted twice as strong).
-- **768 multisamples** in three pages (was 512) and **30-bit drum sample addresses** (was 26 bits) in the "Full" patch, needed by the larger MU128/MU1000 wave data.
-- **Model identity:** panel bitmap per model, names in the About dialog, string table and version info (S-YXG<n>), default table name, conversion date and credits in the version info.
-
-### Sound conversion
-
-- **Element HPF** (MU100, MU128, MU1000): the per-element high-pass filter is baked into filtered copies of the multisamples, because syxg50.dll has no high-pass filter. The MU100 stores it in a byte that was not read before.
-- **Drum keys:** HPF cutoff (baked), level offset, an attack mode without the DLL's built-in hold for instant attacks, and velocity pitch/filter sensitivity via generated ext drum voices.
-- **Voices with 3 or 4 elements** (22 MU1000 voices): folded into the two elements the DLL can play, instead of dropping elements 3 and 4.
-- **Wave start offset** of merged elements, **amp EG baking** for percussive key-split members, **HPF and coarse tune**, **rising decay 2** (notes that ended right after the attack, e.g. Lite Org), and **program maps of duplicated banks** (MU80, MSB 126/127).
-
-Details for each point are in the sections below.
+- **`--embed`:** table and wave data are stored inside the patched DLL (old `SXGBIN41.TBL` / `SXGWAVE4.TBL` removed), no ini needed.
+- **`roms` folder:** ROMs are also read from `roms` next to `main.py`, including subfolders.
+- **Several models in one run:** all complete ROM sets found are converted, DLLs/inis named `syxg80.dll` ... `syxg1000.dll` (MU50: `syxgmu50.dll`); MU2000 is skipped when the MU1000 set is there.
+- **Wildcards** (`*.bin`) are expanded by the script; `SXG_NO_PAUSE=1` skips the final key press.
+- **Output folder** next to the program ROM, or next to the DLL / `main.py` for ROMs from the `roms` folder.
+- **Investigation tools** added: `analyze_drum_eg.py`, `analyze_voice_params.py`, `analyze_sample_flags.py`, `list_long_loops.py`.
 
 ---
 
@@ -253,7 +281,7 @@ Any input file that starts with `MZ` is taken as the DLL and identified by its c
 | `0x138F0` | drum voice sample fields: start 24 bit, loop length 24 bit, address **30 bit** + format | Full |
 | `0x15620` | wavedata entry: loop length 24 bit, address 32 bit, format `+0x0D` | Full |
 
-**Sound (new in this version)**
+**Sound**
 
 | Offset | Patch |
 |---|---|
@@ -263,7 +291,7 @@ Any input file that starts with `MZ` is taken as the DLL and identified by its c
 | `0x0900E` + code cave `0x3F680` | **Return level update on a type change:** the DLL computed the return level only when the return parameter changed. The type change handler (0x10008F50) now also runs the return update of its block. |
 | `0x08C24`, `0x08C75`, `0x08CDF` | **Effect fade-in after a type change:** the handler mutes the block, and a ramp run every 10 ms brings it back in steps of 4: reverb 0.64 s, chorus 1.03 s, variation 0.32-0.9 s. Larger steps (reverb 32, chorus 52, variation 40) end the ramp after 80-90 ms; the end values are unchanged. |
 
-**Resources (new in this version)**
+**Resources**
 
 - **Bitmaps:** bitmap 101 (the panel picture) becomes `bitmaps/Bitmap101_<model>.bmp` for MU80, MU90, MU100, MU128 and MU1000 (MU50 keeps the original), bitmap 105 becomes `bitmaps/Bitmap105.bmp` for every model. Keep the `bitmaps` folder next to the scripts. Replacement pictures must have the size of the original (400x90 and 110x13); any uncompressed 8-, 24- or 32-bit BMP works. They are stored as 24-bit DIBs in place.
 - **Names** (MU80 ... MU1000; MU50 keeps them): the About dialog and string table say S-YXG<n> instead of S-YXG50 (e.g. S-YXG1000), the internal name `xg50` becomes `mu<n>`, the default table name in the string table becomes the table just built, and the version info reads "Yamaha S-YXG<n> VSTi", "S-YXG<n>", "S-YXG<n>.DLL" and "Yamaha S-YXG<n> Portable VSTi". Hosts may list the plugin under its new name after a rescan.
@@ -337,12 +365,12 @@ The MU100, MU128 and MU1000 have two voice maps, which the module switches with 
 ### All models
 
 - **Bank maps:** program and drum kit bank maps are rebuilt for the S-YXG50 bank map format (XG, SFX, GS; MU128/MU1000 also GM2).
-- **Duplicated banks (new):** a voice bank used on both the GS and the XG side is copied to the other side with its own index. The copy now also gets its program map. Before, the MU80's MSB 126/127 (which point to the GS bank) had an empty program map, so all 128 programs read the 8-byte debug label in front of the first voice as a voice (element count `0x70`).
+- **Duplicated banks:** a voice bank used on both the GS and the XG side is copied to the other side with its own index. The copy now also gets its program map. Before, the MU80's MSB 126/127 (which point to the GS bank) had an empty program map, so all 128 programs read the 8-byte debug label in front of the first voice as a voice (element count `0x70`).
 - **Ext drum voices:** drum keys that play a full voice are placed in voice bank A, which the drum voice offsets require.
 - **Drum EG rate (byte 13):** S-YXG50 = MU - `0x21`. The MU models store the rate with the offset that syxg50.dll adds itself. Without the correction, values >= `0x60` put the drum envelope into a special state, which made drums sound cut off. Calibrated against the S-YXG50 table: 245 of 253 matching MU80 drum voices, 426 of 460 MU90 drum voices.
 - **LFO pitch modulation depth:** read with 6 bits instead of 5. The old mask halved the vibrato depth of voices like Siren, Ghost, Goblins and Wind.
 - **24-bit loop lengths:** loops longer than 65,535 samples are written in full (they need the "Enhanced" or "Full" DLL).
-- **Rising decay 2 (new, MU80 and later):** an amp EG whose decay 2 level is above its decay 1 level falls to the decay 1 level and climbs back. syxg50.dll does that too, but it ends the note as soon as the envelope is below level 64 (measured: decay 1 level 63 ends it at every key and velocity, 64 keeps it). Lite Org was only a click instead of a sustained organ; WireLead, synecho2, Bounce and Ana Echo have one such element. The decay 1 level is raised to 64 (-46 dB). The S-YXG50/MU50 data never does this.
+- **Rising decay 2 (MU80 and later):** an amp EG whose decay 2 level is above its decay 1 level falls to the decay 1 level and climbs back. syxg50.dll does that too, but it ends the note as soon as the envelope is below level 64 (measured: decay 1 level 63 ends it at every key and velocity, 64 keeps it). Lite Org was only a click instead of a sustained organ; WireLead, synecho2, Bounce and Ana Echo have one such element. The decay 1 level is raised to 64 (-46 dB). The S-YXG50/MU50 data never does this.
 
 ### ADPCM loops
 
@@ -369,7 +397,7 @@ The MU hardware keeps decoding through a loop, carrying the decoder state from o
 - **Long drum bodies (classic layout):** four XG open hi-hats have a 70,626-sample body, more than the 16-bit drum start offset allows. Instead of cutting the attack, the loop start is moved earlier by the excess, so the sound starts at its real beginning.
 - **Bank map order:** XG (LSB), SFX (MSB), GS.
 
-### Drum keys (MU90 and later, new)
+### Drum keys (MU90 and later)
 
 - **HPF cutoff** (MU100 and later, drum voice byte `+21` / MU1000 `+20`): baked into a filtered copy of the drum sample. Measured on the S-MU2000: 2nd-order high-pass, Q about 1.0, cutoff at the output 2^(5.066 + 0.0591 x value) Hz (value 55 = 319 Hz, 94 = 1.57 kHz), independent of the note pitch. The sample is filtered in its own time base, so the cutoff is divided by its playback ratio.
 - **Level offset** (MU100 and later, drum voice byte `+29`, signed): added to the key's level. Used by 11 keys of the MU1000/MU128 Standard Kit (e.g. Ride 1, Crash 1/2, Chinese, Ride 2, hi-hats) and 7 MU100 keys; without it the Ride 1 was 13.6 dB too loud.
@@ -384,7 +412,7 @@ Players that substitute "missing" programs from an instrument list (e.g. Falcoso
 - **Wave ROMs:** three 32-bit pairs (MU90 pair + two new pairs), mapped to one address space.
 - **Wavedata tables:** three, with their own offset tables (wave numbers 0-292 / 293-326 / 327-).
 - **Voice map:** MU100 Native by default, MU Basic with `--mu-basic`.
-- **Element HPF (new):** the MU100 stores the element HPF cutoff in element byte `+69` (unused on the MU90). It is the same value as byte `+80` of the MU128/MU1000 in all 1,925 elements of the voices both models have. It was not converted before, so 66 MU100 voices (86 elements, e.g. Oboe #, MuteGtr#, Wrench, Heinz, Parasite) sounded up to 13 dB too loud and dull in the low keys (Parasite up to 19 dB). Now they are filtered like on the MU128/MU1000.
+- **Element HPF:** the MU100 stores the element HPF cutoff in element byte `+69` (unused on the MU90). It is the same value as byte `+80` of the MU128/MU1000 in all 1,925 elements of the voices both models have. It was not converted before, so 66 MU100 voices (86 elements, e.g. Oboe #, MuteGtr#, Wrench, Heinz, Parasite) sounded up to 13 dB too loud and dull in the low keys (Parasite up to 19 dB). Now they are filtered like on the MU128/MU1000.
 
 ### MU128 / MU1000
 
@@ -392,9 +420,9 @@ Players that substitute "missing" programs from an instrument list (e.g. Falcoso
 - **Elements:** 84-byte elements, mapped to the 78-byte S-YXG50 element almost 1:1. This was verified on 2,317 elements shared with the MU100, all 77 bytes match.
 - **Drum voices:** 42 bytes in the MU90 layout, except byte 0, which moved to `+23`.
 - **Voice maps:** MU Native by default, MU Basic with `--mu-basic`, plus GS, MSB 48 and GM2.
-- **Element HPF (new, element byte `+80`):** 162 elements in 128 MU1000 voices, e.g. Oboe, Muted/Jazz/Overdrive Guitar, Slap Bass, Rock Organ. Same filter and cutoff scale as the drum HPF (measured on the S-MU2000). Baked into filtered copies of the multisamples (see [Why the wave files got bigger](#why-the-wave-files-got-bigger)). The HPF copies are cut in the transposed key range (key + coarse tune), as the DLL selects waves; this matters for 18 elements with both, e.g. Sleep (+24): low-band shape against the S-MU2000 -1.9 -> +0.3 dB.
+- **Element HPF (element byte `+80`):** 162 elements in 128 MU1000 voices, e.g. Oboe, Muted/Jazz/Overdrive Guitar, Slap Bass, Rock Organ. Same filter and cutoff scale as the drum HPF (measured on the S-MU2000). Baked into filtered copies of the multisamples (see [Why the wave files got bigger](#why-the-wave-files-got-bigger)). The HPF copies are cut in the transposed key range (key + coarse tune), as the DLL selects waves; this matters for 18 elements with both, e.g. Sleep (+24): low-band shape against the S-MU2000 -1.9 -> +0.3 dB.
 
-### Voices with 3 or 4 elements (MU1000, new)
+### Voices with 3 or 4 elements (MU1000)
 
 syxg50.dll plays at most 2 elements per voice. Taking the first two (as before) left whole key ranges silent (Sweet Tp above key 84, 5partStr below key 36, Tim'sSet below key 60) and dropped whole layers (the brass of Str+Brss). `elemreduce.py` now folds the 22 affected voices (e.g. Sweet Tp, 5partStr, Tim'sSet, Str+Brss, 4 Way EP, TurnTabl, SolidStr, Symphnc, Temple, Trcrtps) into two elements. The log lists the result for each voice, e.g. `Tim'sSet el3[0-59] + el0[60-127] | el2[0-59] + el1[60-127]`.
 
