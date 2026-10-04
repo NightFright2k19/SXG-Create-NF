@@ -13,9 +13,13 @@
 #   "Enhanced"  MU50 / MU80 / MU90 (classic table layout)
 #     * ini section [Config] and key SoftSynth (originally [SYXG50] / VoiceTable)
 #     * 24-bit loop length (loops > 65,535 samples: MU90 and some MU80 voices)
+#     * drum setup EG offsets (attack/decay) for ext drum voices at the same strength as for
+#       internal drum keys
+#     * embedded bitmaps 101 (per model, bitmaps/Bitmap101_<model>.bmp) and 105 (bitmaps/Bitmap105.bmp)
+#     * names in the About dialog, string table and version info follow the model (S-YXG<n>, mu<n>, table name)
 #   "Full"      MU100 / MU128 / MU1000 (big table layout)
 #     * everything from "Enhanced"
-#     * table size limits: 32-bit sample addresses (up to 64 MB of 8/16-bit samples), 512 multisamples,
+#     * table size limits: 32-bit sample addresses (wave file > 64 MB; drum keys: 30 bits), 768 multisamples,
 #       32-bit voice and ext voice offsets. The sound engine (incl. MMX/SSE) is unchanged.
 
 import zlib, struct
@@ -40,12 +44,15 @@ SYXG50_BIG = [
     # voice map 32-bit
     (0x045E0, '66 8b 04 46 66 3d 00 80 5e 5b 73 11 8b 0d dc 52 05 10 33 d2 66 8b d0 8d 04 51 c2 10 00 8b 0d 08 53 05 10 05 00 80 00 00 33 d2 66 8b d0 8d 04 51 c2 10',
               '8b 04 86 5e 5b 90 90 90 90 90 90 90 8b 0d dc 52 05 10 8d 04 01 c2 10 00 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90'),
-    # wavedata offsets 32-bit, 512 multisamples (hook)
+    # wavedata offsets 32-bit, up to 768 multisamples in three pages (hook)
     (0x04DF4, '0f b6 08 8b 15 04 53 05 10 0f b7 04 4a 03 05 fc 52 05 10',
-              'e9 67 a5 03 00 cc cc cc cc cc cc cc cc cc cc cc cc cc cc'),
-    # wavedata offsets 32-bit, 512 multisamples (code cave)
-    (0x3F360, '00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00',
-              '0f b6 08 56 e8 00 00 00 00 5e 8b 96 93 5f 01 00 2b 96 9b 5f 01 00 81 fa 00 04 00 00 76 0e 3b 86 9f 5f 01 00 72 06 81 c1 00 01 00 00 8b 96 9b 5f 01 00 8b 04 8a 03 86 93 5f 01 00 5e e9 66 5a fc ff'),
+              'e9 e7 a5 03 00 cc cc cc cc cc cc cc cc cc cc cc cc cc cc'),
+    # wavedata offsets 32-bit, up to 768 multisamples (code cave, position independent):
+    #   wave number = element byte 0, + 256 for elements in voice bank B when the offset table has
+    #   more than 256 entries, + another 256 for elements behind bank B + [entry 768] when it has
+    #   more than 512 entries
+    (0x3F3E0, '00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00',
+              '0f b6 08 56 57 e8 00 00 00 00 5e 8b be 1a 5f 01 00 8b 96 12 5f 01 00 29 fa 81 fa 00 04 00 00 76 2c 3b 86 1e 5f 01 00 72 24 81 c1 00 01 00 00 81 fa 00 08 00 00 76 16 8b 97 00 0c 00 00 03 96 1e 5f 01 00 39 d0 72 06 81 c1 00 01 00 00 8b 04 8f 03 86 12 5f 01 00 89 fa 5f 5e e9 c8 59 fc ff'),
     # drum: ext voice check +0x11
     (0x05BFE, '80 79 10 ff',
               '80 79 11 ff'),
@@ -84,12 +91,94 @@ SYXG50_BIG = [
               'b1 01 90 88 4e 0a'),
     # drum sample fields
     (0x138F0, '8b 44 24 08 8b 40 30 0f b6 50 13 0f b6 48 14 c1 e2 08 03 d1 8b 4c 24 04 89 91 cc 01 00 00 0f b6 50 16 56 0f b6 70 17 c1 e2 08 03 d6 89 91 d4 01 00 00 0f b6 50 18 0f b6 70 19 c1 e2 08 03 d6 0f b6 70 1a c1 e2 08 03 d6 89 91 d0 01 00 00 8a 40 1b 88 81 cb 01 00 00 5e c2 08 00 90 90 90 90 90',
-              '8b 44 24 08 8b 40 30 8b 4c 24 04 8b 50 12 0f ca c1 ea 08 89 91 cc 01 00 00 8b 50 15 0f ca c1 ea 08 89 91 d4 01 00 00 8b 50 18 0f ca 89 d0 81 e2 ff ff ff 03 89 91 d0 01 00 00 c1 e8 18 24 c0 88 81 cb 01 00 00 c2 08 00 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90'),
+              '8b 44 24 08 8b 40 30 8b 4c 24 04 8b 50 12 0f ca c1 ea 08 89 91 cc 01 00 00 8b 50 15 0f ca c1 ea 08 89 91 d4 01 00 00 8b 50 18 0f ca 89 d0 81 e2 ff ff ff 3f 89 91 d0 01 00 00 c1 e8 18 24 c0 88 81 cb 01 00 00 c2 08 00 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90'),
     # wavedata fields
     (0x15620, '8b 44 24 0c 8b 40 24 0f b6 48 06 0f b6 50 07 c1 e1 08 03 ca 0f b6 50 08 c1 e1 08 03 ca 8b 54 24 04 89 8a d4 01 00 00 8a 48 0c 88 8a cb 01 00 00 0f b6 48 09 c1 e1 08 56 0f b6 70 0a 03 ce 0f b6 70 0b c1 e1 08 03 ce 89 8a d0 01 00 00',
               '8b 44 24 0c 8b 40 24 8b 54 24 04 8b 48 05 0f c9 81 e1 ff ff ff 00 89 8a d4 01 00 00 8a 48 0d 88 8a cb 01 00 00 8b 48 09 0f c9 89 8a d0 01 00 00 56 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90'),
 ]
-BIG_CAVE_END = 0x3F360 + 0x41   # code cave at the end of .text, the section's VirtualSize is enlarged to cover it
+BIG_CAVE_END = 0x3F3E0 + 95    # code cave at the end of .text, the section's VirtualSize is enlarged to cover it
+
+# drum setup EG offsets (attack, decay 1, decay 2) for ext drum voices (syxg50.dll 0x10012210):
+# the offset is added to the element rate, whose unit is two drum units, so the offset acted twice
+# as strong as on internal drum keys. Now rate + (offset - 0x40) / 2, via three small code caves.
+SYXG50_DRUMEG = [
+    (0x12233, '66 0f be 52 0d 8d 44 10 c0',
+              'e8 78 d1 02 00 90 90 90 90'),
+    (0x3f3b0, '00 00 00 00 00 00 00 00 00 00 00 00 00 00',
+              '0f b6 52 0d 0f b7 c0 8d 44 42 c0 d1 f8 c3'),
+    (0x12273, '66 0f be 51 0e 8d 44 10 c0',
+              'e8 48 d1 02 00 90 90 90 90'),
+    (0x3f3c0, '00 00 00 00 00 00 00 00 00 00 00 00 00 00',
+              '0f b6 51 0e 0f b7 c0 8d 44 42 c0 d1 f8 c3'),
+    (0x122b3, '66 0f be 51 0f 8d 44 10 c0',
+              'e8 18 d1 02 00 90 90 90 90'),
+    (0x3f3d0, '00 00 00 00 00 00 00 00 00 00 00 00 00 00',
+              '0f b6 51 0f 0f b7 c0 8d 44 42 c0 d1 f8 c3'),
+]
+DRUMEG_CAVE_END = 0x3F3D0 + 14
+
+# effect types the DLL does not have (it switches the block off or to Thru) -> the nearest type it has.
+# The six functions that turn MSB/LSB into the internal effect number (0x100099C0 - 0x10009D36:
+# reverb, chorus, variation, each set + get) read the type through a small stub that first rewrites
+# MSB/LSB with a per-block table (code cave at 0x3F460, position independent):
+#   reverb    12/xx Canyon -> 11/00 Tunnel
+#   chorus    44/xx Symphonic -> 42/00 Celeste 1, 48/xx Phaser -> 43/00 Flanger 1, 57/xx Ensemble Detune -> 41/00 Chorus 1
+#   variation 4E/01, 4E/02 Auto Wah+Dist/+OD -> 49/00 Distortion / 4A/00 Overdrive, 52/01, 52/02 Touch Wah+Dist/+OD
+#             -> Distortion / Overdrive, 52/xx Touch Wah -> 4E/00 Auto Wah, 56/xx 2-Way Rotary -> 45/00 Rotary,
+#             57/xx Ensemble Detune -> 44/00 Symphonic, 5D/xx Talking Modulator -> Auto Wah,
+#             5F-61/00 Dist+Delay, Comp+Dist+Delay, Wah+Dist+Delay -> Distortion, 5F-61/01 (OD versions) -> Overdrive
+#   left as they are (no counterpart, Thru): Pitch Change, Harmonic Enhancer, Compressor, Noise Gate, Lo-Fi
+SYXG50_FX = [
+    (0x099C2, '8a 90 c4 69 00 00',
+              'e8 be 5a 03 00 90'),
+    (0x09A97, '8a 91 af 69 00 00',
+              'e8 09 5a 03 00 90'),
+    (0x09ADC, '8a 91 9b 69 00 00',
+              'e8 e4 59 03 00 90'),
+    (0x09B80, '8a 8a c4 69 00 00',
+              'e8 60 59 03 00 90'),
+    (0x09C4E, '8a 81 ae 69 00 00',
+              'e8 b2 58 03 00 90'),
+    (0x09CA3, '8a 81 9a 69 00 00',
+              'e8 7d 58 03 00 90'),
+    (0x3F460, '00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00',
+              '8a 07 84 c0 74 1e 3a 06 75 15 8a 67 01 80 fc ff 74 05 3a 66 01 75 08 66 8b 47 02 66 89 06 c3 83 c7 04 eb dc c3 60 8d b0 c3 69 00 00 e8 00 00 00 00 5f 81 c7 cf 00 00 00 e8 c3 ff ff ff 61 8a 90 c4 69 00 00 c3 60 8d b1 ae 69 00 00 e8 00 00 00 00 5f 81 c7 9f 00 00 00 e8 a3 ff ff ff 61 8a 91 af 69 00 00 c3 60 8d b1 9a 69 00 00 e8 00 00 00 00 5f 81 c7 77 00 00 00 e8 83 ff ff ff 61 8a 91 9b 69 00 00 c3 60 8d b2 c3 69 00 00 e8 00 00 00 00 5f 81 c7 6f 00 00 00 e8 63 ff ff ff 61 8a 8a c4 69 00 00 c3 60 8d b1 ae 69 00 00 e8 00 00 00 00 5f 81 c7 3f 00 00 00 e8 43 ff ff ff 61 8a 81 ae 69 00 00 c3 60 8d b1 9a 69 00 00 e8 00 00 00 00 5f 81 c7 17 00 00 00 e8 23 ff ff ff 61 8a 81 9a 69 00 00 c3 00 00 00 12 ff 11 00 00 00 00 00 44 ff 42 00 48 ff 43 00 57 ff 41 00 00 00 00 00 4e 01 49 00 4e 02 4a 00 52 01 49 00 52 02 4a 00 52 ff 4e 00 56 ff 45 00 57 ff 44 00 5d ff 4e 00 5f 00 49 00 5f ff 4a 00 60 00 49 00 60 ff 4a 00 61 00 49 00 61 ff 4a 00 00 00 00 00'),
+    # effect return level per type (reverb and variation, system effects), code cave at 0x3F5A0: the DLL reads
+    # the return level (0-127) through a stub that scales it with a per-type factor (64 = x1, result max 127).
+    # Factors from the S-MU2000 (12_Effect_Test, tail 4.0-5.2 s after the dry signal, reverb types averaged
+    # over the reverb and the variation block): Hall +2.5 dB, Room1 +3.5, Room2/3 +2.0, Stage1 +1.0, Stage2 +2.5,
+    # Plate +1.5, White Room +3.5, Basement -1.0; variation only: Delay LCR +1.0, Delay LR +2.5, Echo +2.0,
+    # Cross Delay x2, ER2 +2.5, Gate / Reverse Gate +2.0, Karaoke 1/2 -1.5/-2.5; Symphonic x1.56,
+    # Rotary x1.45, Tremolo / Auto Pan x2 (total level; still short of the S-MU2000 by 0.8 / 0.9 dB)
+    (0x041D6, '66 8b 96 76 69 00 00',
+              'e8 fa b3 03 00 90 90'),
+    (0x0A65D, '0f b7 96 80 69 00 00',
+              'e8 98 4f 03 00 90 90'),
+    (0x3F5A0, '00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00',
+              '8a 0f 84 c9 74 2e 3a 0e 75 25 8a 6f 01 80 fd ff 74 05 3a 6e 01 75 18 0f b6 4f 02 0f af c1 83 c0 20 c1 e8 06 83 f8 7f 76 0b b8 7f 00 00 00 c3 83 c7 03 eb cc c3 60 0f b7 86 76 69 00 00 8d b6 9a 69 00 00 e8 00 00 00 00 5f 81 c7 38 00 00 00 e8 ac ff ff ff 89 44 24 14 61 c3 60 0f b7 86 80 69 00 00 8d b6 c3 69 00 00 e8 00 00 00 00 5f 81 c7 2c 00 00 00 e8 87 ff ff ff 89 44 24 14 61 c3 00 01 ff 55 02 00 60 02 ff 51 03 00 48 03 ff 55 04 ff 4c 10 ff 60 13 ff 39 00 01 ff 55 02 00 60 02 ff 51 03 00 48 03 ff 55 04 ff 4c 10 ff 60 13 ff 39 05 ff 48 06 ff 55 07 ff 51 08 ff 80 09 01 55 0a ff 51 0b ff 51 14 00 36 14 01 30 44 ff 64 45 ff 5d 46 ff 80 47 ff 80 00'),
+    # the DLL computes the return level only when the return parameter changes, not on a type change: the
+    # type change handler (0x10008F50) now also runs the return update of its block (reverb: group 1,
+    # variation: group 6; block 0 = reverb, 1 = chorus, 2 = variation) after setting up the new type (code cave at 0x3F680)
+    (0x0900E, '8b 16 53 56 ff 52 3c',
+              'e8 6d 66 03 00 90 90'),
+    (0x3F680, '00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00',
+              '8b 16 53 56 ff 52 3c 60 0f b6 c3 85 c0 75 04 6a 01 eb 07 83 f8 02 75 08 6a 06 56 8b 16 ff 52 50 61 c3'),
+]
+FX_CAVE_END = 0x3F6A2
+
+# effect fade-in after a type change: the type change handler mutes the block, and a ramp run every 10 ms
+# (0x10008850) brings it back in steps of 4 (reverb 0 -> -256 at 0x10008C20: 64 steps = 0.64 s; chorus
+# 0 -> -412 at 0x10008C70: 1.03 s; variation 0 -> -128 / -362 at 0x10008CD0: 0.32 / 0.9 s). Songs and games
+# that set the effect types at the start lost the first second of reverb / chorus / variation. Larger
+# steps (reverb 32, chorus 52, variation 40) end the ramp after 80-90 ms, the end values are unchanged.
+# Measured on the emulator (type change, then notes every 100 ms against the settled type): reverb -3.6 dB
+# for 0.7 s -> -0.9 dB in the first 100 ms only, chorus up to -3.5 dB for 1 s -> first 100 ms, variation
+# (Chorus, system) -4.6 dB for 0.9 s -> -2.3 dB in the first 100 ms.
+SYXG50_FXFADE = [
+    (0x08C24, '66 83 80 d6 66 00 00 fc', '66 83 80 d6 66 00 00 e0'),
+    (0x08C75, '66 83 86 d8 66 00 00 fc', '66 83 86 d8 66 00 00 cc'),
+    (0x08CDF, '66 83 86 da 66 00 00 fc', '66 83 86 da 66 00 00 d8'),
+]
 
 KNOWN = {
     # CRC32 of the original file -> (kind, description)
@@ -166,6 +255,418 @@ def apply(data : bytearray, patches, label : str) :
     print(f'  {label}: {state}')
 
 
+# ----------------------------------------------------------------------------- bitmaps
+# Embedded bitmaps (RT_BITMAP) replaced from the bitmaps folder next to this script:
+#   101  Bitmap101_<model>.bmp  (the panel picture, one per converted model: MU80 ... MU1000;
+#        models without a file keep the original)
+#   105  Bitmap105.bmp          (same for all models)
+# The new picture must have the size of the original; it is written in the original's format
+# (24-bit DIB), so the resource keeps its size and stays in place.
+BITMAP_DIR = Path(__file__).resolve().parent / 'bitmaps'
+RT_BITMAP = 2
+
+def find_resources(data : bytes | bytearray, rtype : int) -> dict[int, tuple[int, int]] :
+    # -> {resource id: (file offset, size)} of the first language entry of each resource
+    pe = struct.unpack_from('<I', data, 0x3C)[0]
+    nsec = struct.unpack_from('<H', data, pe + 6)[0]
+    opt = pe + 24
+    magic = struct.unpack_from('<H', data, opt)[0]
+    ddir = opt + (96 if magic == 0x10B else 112)
+    rsrc_rva = struct.unpack_from('<I', data, ddir + 2 * 8)[0]
+    sec0 = opt + struct.unpack_from('<H', data, pe + 20)[0]
+    secs = [struct.unpack_from('<IIII', data, sec0 + 40 * i + 8) for i in range(nsec)]   # vsize, va, rawsize, rawptr
+    def off(rva) :
+        for vs, va, rs, rp in secs :
+            if va <= rva < va + max(vs, rs) : return rp + rva - va
+        raise DllPatchError(f'RVA 0x{rva:X} outside the sections')
+    base = off(rsrc_rva)
+    def entries(d) :
+        n = sum(struct.unpack_from('<HH', data, d + 12))
+        return [struct.unpack_from('<II', data, d + 16 + 8 * i) for i in range(n)]
+    out = {}
+    for name, ptr in entries(base) :
+        if name != rtype or not ptr & 0x80000000 : continue
+        for rid, p2 in entries(base + (ptr & 0x7FFFFFFF)) :
+            if rid & 0x80000000 or not p2 & 0x80000000 : continue
+            langs = entries(base + (p2 & 0x7FFFFFFF))
+            if not langs : continue
+            rva, size = struct.unpack_from('<II', data, base + langs[0][1])
+            out[rid] = (off(rva), size)
+    return out
+
+def bmp_to_dib24(bmp : bytes) -> tuple[int, int, bytes] :
+    # uncompressed 8/24/32-bit BMP file -> (width, height, 24-bit DIB with BITMAPINFOHEADER)
+    if bmp[:2] != b'BM' : raise DllPatchError('not a BMP file')
+    pix_off = struct.unpack_from('<I', bmp, 10)[0]
+    hsize, w, h, planes, bpp, comp = struct.unpack_from('<IiiHHI', bmp, 14)
+    if comp not in (0, 3) or bpp not in (8, 24, 32) : raise DllPatchError(f'unsupported BMP ({bpp} bit, compression {comp})')
+    ncol = struct.unpack_from('<I', bmp, 46)[0] or (256 if bpp == 8 else 0)
+    pal = [bmp[14 + hsize + 4 * i : 14 + hsize + 4 * i + 3] for i in range(ncol)] if bpp == 8 else []
+    rows = abs(h)
+    src_stride = ((w * bpp + 31) // 32) * 4
+    dst_stride = ((w * 24 + 31) // 32) * 4
+    out = bytearray()
+    for r in range(rows) :
+        y = r if h > 0 else rows - 1 - r          # DIB rows bottom-up
+        line = bmp[pix_off + y * src_stride : pix_off + (y + 1) * src_stride]
+        if bpp == 8 : px = b''.join(pal[i] for i in line[:w])
+        elif bpp == 24 : px = line[:3 * w]
+        else : px = b''.join(line[4 * i : 4 * i + 3] for i in range(w))
+        out += px + b'\0' * (dst_stride - 3 * w)
+    hdr = struct.pack('<IiiHHIIiiII', 40, w, abs(h), 1, 24, 0, len(out), 3780, 3780, 0, 0)
+    return w, abs(h), hdr + bytes(out)
+
+def bitmap_files(model : str | None) -> dict[int, Path] :
+    files = {105 : BITMAP_DIR / 'Bitmap105.bmp'}
+    if model : files[101] = BITMAP_DIR / f'Bitmap101_{model}.bmp'
+    return {rid : f for rid, f in files.items() if f.exists()}
+
+def apply_bitmaps(data : bytearray, model : str | None) :
+    files = bitmap_files(model)
+    if not files :
+        return
+    res = find_resources(data, RT_BITMAP)
+    done = []
+    for rid, path in sorted(files.items()) :
+        if rid not in res : raise DllPatchError(f'bitmap {rid} not found in the DLL')
+        off, size = res[rid]
+        ow, oh = struct.unpack_from('<ii', data, off + 4)
+        w, h, dib = bmp_to_dib24(path.read_bytes())
+        if (w, h) != (ow, abs(oh)) : raise DllPatchError(f'{path.name}: {w}x{h}, the DLL bitmap {rid} is {ow}x{abs(oh)}')
+        if len(dib) != size : raise DllPatchError(f'{path.name}: {len(dib)} bytes as 24-bit DIB, bitmap {rid} has {size}')
+        data[off : off + size] = dib
+        done.append(f'{rid} ({path.name})')
+    print(f'  bitmaps: {", ".join(done)}')
+
+
+# ----------------------------------------------------------------------------- names
+# The DLL's names follow the converted model (dialog 112 "About", string table 1, version info):
+#   S-YXG50 -> S-YXG<n>, xg50 -> mu<n>, default table SXGBIN41.TBL -> the table just built,
+#   version info: Yamaha S-YXG<n> VSTi, S-YXG<n>, S-YXG<n>.DLL, Yamaha S-YXG<n> Portable VSTi.
+# MU50 (and an unknown model) keeps the original names.
+MODEL_NUMBER = {'MU80' : '80', 'MU90' : '90', 'MU100' : '100', 'MU128' : '128', 'MU1000' : '1000'}
+
+def Model_Dll_Name(model : str) -> str : 
+    # multi-model conversion: one DLL per model, named after it (MU50: syxgmu50.dll, syxg50.dll is the original)
+    n = MODEL_NUMBER.get(model)
+    return f'syxg{n}.dll' if n else f'syxg{model.lower()}.dll'
+
+RT_DIALOG, RT_STRING, RT_VERSION = 5, 6, 16
+
+def resource_entries(data : bytes | bytearray, rtype : int) -> dict[int, int] :
+    # -> {resource id: file offset of its IMAGE_RESOURCE_DATA_ENTRY} (first language)
+    pe = struct.unpack_from('<I', data, 0x3C)[0]
+    opt = pe + 24
+    ddir = opt + (96 if struct.unpack_from('<H', data, opt)[0] == 0x10B else 112)
+    rsrc_rva = struct.unpack_from('<I', data, ddir + 16)[0]
+    base = rva_to_offset(data, rsrc_rva)
+    def entries(d) :
+        n = sum(struct.unpack_from('<HH', data, d + 12))
+        return [struct.unpack_from('<II', data, d + 16 + 8 * i) for i in range(n)]
+    out = {}
+    for name, ptr in entries(base) :
+        if name != rtype or not ptr & 0x80000000 : continue
+        for rid, p2 in entries(base + (ptr & 0x7FFFFFFF)) :
+            if rid & 0x80000000 or not p2 & 0x80000000 : continue
+            langs = entries(base + (p2 & 0x7FFFFFFF))
+            if langs : out[rid] = base + langs[0][1]
+    return out
+
+def sections(data) :
+    pe = struct.unpack_from('<I', data, 0x3C)[0]
+    nsec = struct.unpack_from('<H', data, pe + 6)[0]
+    sec0 = pe + 24 + struct.unpack_from('<H', data, pe + 20)[0]
+    return [(sec0 + 40 * i,) + struct.unpack_from('<IIII', data, sec0 + 40 * i + 8) for i in range(nsec)]   # hdr, vsize, va, rawsize, rawptr
+
+def rva_to_offset(data, rva) :
+    for h, vs, va, rs, rp in sections(data) :
+        if va <= rva < va + max(vs, rs) : return rp + rva - va
+    raise DllPatchError(f'RVA 0x{rva:X} outside the sections')
+
+def resource_data(data, entry : int) -> bytes :
+    rva, size = struct.unpack_from('<II', data, entry)
+    off = rva_to_offset(data, rva)
+    return bytes(data[off : off + size])
+
+def replace_resource_data(data : bytearray, entry : int, new : bytes) :
+    # same size or smaller: in place; larger: appended to .rsrc (the last section), which grows
+    rva, size = struct.unpack_from('<II', data, entry)
+    if len(new) <= size :
+        off = rva_to_offset(data, rva)
+        data[off : off + len(new)] = new
+        struct.pack_into('<I', data, entry + 4, len(new))
+        return
+    secs = sections(data)
+    h, vs, va, rs, rp = secs[-1]
+    if data[h : h + 5] != b'.rsrc' or rp + rs != len(data) :
+        raise DllPatchError('.rsrc is not the last section, resources cannot grow')
+    pe = struct.unpack_from('<I', data, 0x3C)[0]; opt = pe + 24
+    salign, falign = struct.unpack_from('<II', data, opt + 32)
+    pos = (vs + 7) & ~7                       # new data behind the used part of .rsrc
+    end = pos + len(new)
+    if end > rs :
+        grow = ((end - rs + falign - 1) // falign) * falign
+        data += bytes(grow)
+        rs += grow
+    data[rp + pos : rp + end] = new
+    struct.pack_into('<II', data, h + 8, max(vs, end), va)
+    struct.pack_into('<I', data, h + 16, rs)
+    struct.pack_into('<I', data, opt + 56, ((va + max(vs, end) + salign - 1) // salign) * salign)   # SizeOfImage
+    ddir = opt + (96 if struct.unpack_from('<H', data, opt)[0] == 0x10B else 112)
+    struct.pack_into('<I', data, ddir + 20, max(vs, end))                # resource directory size
+    struct.pack_into('<II', data, entry, va + pos, len(new))
+
+# --- RT_STRING: 16 counted UTF-16 strings
+def edit_string_table(raw : bytes, fn) -> bytes :
+    out = bytearray(); p = 0
+    for _ in range(16) :
+        n = struct.unpack_from('<H', raw, p)[0]; p += 2
+        txt = raw[p : p + 2 * n].decode('utf-16le'); p += 2 * n
+        new = fn(txt) if n else txt
+        out += struct.pack('<H', len(new)) + new.encode('utf-16le')
+    return bytes(out)
+
+# --- RT_DIALOG (DLGTEMPLATEEX)
+def edit_dialog(raw : bytes, fn) -> bytes :
+    if struct.unpack_from('<HH', raw, 0) != (1, 0xFFFF) : raise DllPatchError('dialog is not a DLGTEMPLATEEX')
+    out = bytearray(raw[:26]); p = 26
+    nitems = struct.unpack_from('<H', raw, 16)[0]
+    style = struct.unpack_from('<I', raw, 12)[0]
+    def sz_or_ord(edit) :
+        nonlocal p
+        w = struct.unpack_from('<H', raw, p)[0]
+        if w == 0xFFFF : r = raw[p : p + 4]; p += 4; return r
+        end = p
+        while struct.unpack_from('<H', raw, end)[0] : end += 2
+        txt = raw[p : end].decode('utf-16le'); p = end + 2
+        if edit : txt = fn(txt)
+        return txt.encode('utf-16le') + b'\0\0'
+    def align() :
+        nonlocal p
+        while len(out) % 4 : out.append(0)
+        p = (p + 3) & ~3
+    out += sz_or_ord(False); out += sz_or_ord(False); out += sz_or_ord(True)   # menu, class, title
+    if style & 0x40 :                          # DS_SETFONT: point size, weight, italic, charset, face
+        out += raw[p : p + 6]; p += 6; out += sz_or_ord(False)
+    for _ in range(nitems) :
+        align()
+        out += raw[p : p + 24]; p += 24
+        out += sz_or_ord(False); out += sz_or_ord(True)
+        n = struct.unpack_from('<H', raw, p)[0]
+        out += raw[p : p + 2 + n]; p += 2 + n
+    return bytes(out)
+
+# --- RT_VERSION: VS_VERSIONINFO tree
+def _vi_parse(raw, p) :
+    length, vlen, vtype = struct.unpack_from('<HHH', raw, p)
+    end = p + length; q = p + 6; k = q
+    while struct.unpack_from('<H', raw, k)[0] : k += 2
+    key = raw[q : k].decode('utf-16le'); q = (k + 2 + 3) & ~3
+    vbytes = vlen * 2 if vtype == 1 else vlen
+    value = raw[q : q + vbytes]; q = (q + vbytes + 3) & ~3
+    kids = []
+    while q < end :
+        kid, q2 = _vi_parse(raw, q); kids.append(kid); q = (q2 + 3) & ~3
+    return [key, vtype, value, kids], end
+
+def _vi_build(node) -> bytes :
+    key, vtype, value, kids = node
+    b = bytearray(6) + key.encode('utf-16le') + b'\0\0'
+    while len(b) % 4 : b.append(0)
+    b += value
+    vlen = len(value) // 2 if vtype == 1 else len(value)
+    for kid in kids :
+        while len(b) % 4 : b.append(0)
+        b += _vi_build(kid)
+    struct.pack_into('<HHH', b, 0, len(b), vlen, vtype)
+    return bytes(b)
+
+def edit_version(raw : bytes, fn) -> bytes :
+    root, _ = _vi_parse(raw, 0)
+    def walk(node) :
+        key, vtype, value, kids = node
+        if vtype == 1 and value :
+            txt = value.decode('utf-16le').rstrip('\0')
+            new = fn(key, txt)
+            if new != txt : node[2] = new.encode('utf-16le') + b'\0\0'
+        for k in kids : walk(k)
+    walk(root)
+    return _vi_build(root)
+
+def apply_names(data : bytearray, model : str | None, table_name : str | None) :
+    n = MODEL_NUMBER.get(model or '')
+    if not n :
+        return
+    sx = f'S-YXG{n}'
+    def text(t) : return t.replace('S-YXG50', sx)
+    def strings(t) :
+        if t == 'xg50' : return f'mu{n}'
+        if table_name and t.upper().endswith('.TBL') : return table_name
+        return text(t)
+    VERSION = {
+        'FileDescription'  : ('Yamaha S-YXG50 VSTi (4MB)', 'Yamaha S-YXG50 VSTi', f'Yamaha {sx} VSTi'),
+        'InternalName'     : ('S-YXG50-4MB', 'S-YXG50', sx),
+        'OriginalFilename' : ('S-YXG50-4MB.DLL', 'S-YXG50.DLL', f'{sx}.DLL'),
+        'ProductName'      : ('Yamaha S-YXG50 Portable VSTi', None, f'Yamaha {sx} Portable VSTi'),
+    }
+    def version(key, t) :
+        if key in VERSION and t in VERSION[key][:2] : return VERSION[key][2]
+        return t
+    done = []
+    for rtype, rid, edit, label in ((RT_DIALOG, 112, lambda r : edit_dialog(r, text), 'dialog 112'),
+                                     (RT_STRING, 1, lambda r : edit_string_table(r, strings), 'string table 1'),
+                                     (RT_VERSION, 1, lambda r : edit_version(r, version), 'version info')) :
+        entry = resource_entries(data, rtype).get(rid)
+        if entry is None : raise DllPatchError(f'{label} not found in the DLL')
+        old = resource_data(data, entry)
+        new = edit(old)
+        if new != old :
+            replace_resource_data(data, entry, new)
+            done.append(label)
+    print(f'  names ({sx}): ' + (', '.join(done) if done else 'already applied'))
+
+
+# version info: build date and credits (all models)
+#   fixed file version 2016,4,25,18     -> YYYY,MM,DD,0 (conversion date; binary, so 2026,10,3,0)
+#   FileVersion        2016.04.25.0018  -> YYYY.MM.DD
+#   LegalCopyright     ..., 2016 VEG    -> ..., 2016 VEG, 2026 Soundshock/NightFright
+CREDITS = '2016 VEG, 2026 Soundshock/NightFright'
+
+def apply_version_date(data : bytearray, today = None) :
+    import datetime
+    d = today or datetime.date.today()
+    entry = resource_entries(data, RT_VERSION).get(1)
+    if entry is None : raise DllPatchError('version info not found in the DLL')
+    old = resource_data(data, entry)
+    def strings(key, t) :
+        t = t.replace('2016.04.25.0018', f'{d.year:04}.{d.month:02}.{d.day:02}')
+        if '2016 VEG' in t and CREDITS not in t : t = t.replace('2016 VEG', CREDITS)
+        return t
+    new = bytearray(edit_version(old, strings))
+    # VS_FIXEDFILEINFO right after the root key (L"VS_VERSION_INFO", padded): dwFileVersionMS/LS
+    fixed = 6 + len('VS_VERSION_INFO\0') * 2
+    fixed = (fixed + 3) & ~3
+    assert struct.unpack_from('<I', new, fixed)[0] == 0xFEEF04BD
+    struct.pack_into('<HHHH', new, fixed + 8, d.month, d.year, 0, d.day)     # MS = (year, month), LS = (day, 0)
+    if bytes(new) != old :
+        replace_resource_data(data, entry, bytes(new))
+    print(f'  version: {d.year},{d.month},{d.day},0 / {d.year:04}.{d.month:02}.{d.day:02}, credits')
+
+
+# ----------------------------------------------------------------------------- embedded tables
+# --embed: table and wave file go into the DLL as RT_RCDATA resources named with their full file
+# names (as in the 5 MB syxg50.dll: SXGBIN41.TBL / SXGWAVE4.TBL). syxg50.dll looks for the table
+# name (ini [Config] SoftSynth, without ini: string table entry 7, see apply_names) as RT_RCDATA
+# resource first and only then as a file; the wave file name comes from the table header.
+RT_RCDATA = 10
+
+def read_resources(data) -> list :
+    # -> [(type, name, lang, codepage, bytes)], type/name: int id or str
+    pe = struct.unpack_from('<I', data, 0x3C)[0]
+    opt = pe + 24
+    ddir = opt + (96 if struct.unpack_from('<H', data, opt)[0] == 0x10B else 112)
+    base = rva_to_offset(data, struct.unpack_from('<I', data, ddir + 16)[0])
+    def entries(d) :
+        n = sum(struct.unpack_from('<HH', data, d + 12))
+        return [struct.unpack_from('<II', data, d + 16 + 8 * i) for i in range(n)]
+    def name(v) :
+        if not v & 0x80000000 : return v
+        o = base + (v & 0x7FFFFFFF); n = struct.unpack_from('<H', data, o)[0]
+        return bytes(data[o + 2 : o + 2 + 2 * n]).decode('utf-16le')
+    out = []
+    for t, p1 in entries(base) :
+        for n, p2 in entries(base + (p1 & 0x7FFFFFFF)) :
+            for l, p3 in entries(base + (p2 & 0x7FFFFFFF)) :
+                rva, size, cp, _ = struct.unpack_from('<IIII', data, base + p3)
+                off = rva_to_offset(data, rva)
+                out.append((name(t), name(n), l, cp, bytes(data[off : off + size])))
+    return out
+
+def build_resources(res : list, va : int) -> bytes :
+    # IMAGE_RESOURCE_DIRECTORY tree: directories, then name strings, data entries and data
+    def key(k) : return (0, k.upper()) if isinstance(k, str) else (1, k)
+    tree = {}
+    for t, n, l, cp, b in res : tree.setdefault(t, {}).setdefault(n, {})[l] = (cp, b)
+    dirs = bytearray(); strings = bytearray(); dentries = bytearray(); blobs = bytearray()
+    fix_str, fix_dir, fix_dat = [], [], []      # (position in dirs, index)
+    def size_dir(d) : return 16 + 8 * len(d)
+    # breadth-first layout
+    level1 = sorted(tree, key=key)
+    total_dirs = size_dir(level1) + sum(size_dir(tree[t]) for t in level1) + sum(size_dir(tree[t][n]) for t in level1 for n in tree[t])
+    str_list = []; data_list = []
+    def emit_dir(keys) :
+        pos = len(dirs)
+        named = [k for k in keys if isinstance(k, str)]
+        dirs.extend(struct.pack('<IIHHHH', 0, 0, 0, 0, len(named), len(keys) - len(named)))
+        for k in keys :
+            dirs.extend(bytes(8))
+        return pos
+    root = emit_dir(level1)
+    tpos = {t : emit_dir(sorted(tree[t], key=key)) for t in level1}
+    npos = {(t, n) : emit_dir(sorted(tree[t][n])) for t in level1 for n in sorted(tree[t], key=key)}
+    assert len(dirs) == total_dirs
+    str_off = {}
+    def sref(k) :
+        if k not in str_off :
+            str_off[k] = len(strings)
+            strings.extend(struct.pack('<H', len(k)) + k.encode('utf-16le'))
+            if len(strings) % 2 : strings.append(0)
+        return str_off[k]
+    def set_entry(dpos, i, k, target, is_dir) :
+        e = dpos + 16 + 8 * i
+        nm = (0x80000000 | (total_dirs + sref(k))) if isinstance(k, str) else k
+        struct.pack_into('<II', dirs, e, nm, (0x80000000 | target) if is_dir else target)
+    for i, t in enumerate(level1) : set_entry(root, i, t, tpos[t], True)
+    for t in level1 :
+        for i, n in enumerate(sorted(tree[t], key=key)) : set_entry(tpos[t], i, n, npos[(t, n)], True)
+    while len(strings) % 4 : strings.append(0)
+    dentry_base = total_dirs + len(strings)
+    nde = sum(len(tree[t][n]) for t in tree for n in tree[t])
+    data_base = dentry_base + 16 * nde
+    data_base = (data_base + 7) & ~7
+    k = 0
+    for t in level1 :
+        for n in sorted(tree[t], key=key) :
+            for i, l in enumerate(sorted(tree[t][n])) :
+                cp, b = tree[t][n][l]
+                set_entry(npos[(t, n)], i, l, dentry_base + 16 * k, False)
+                rva = va + data_base + len(blobs)
+                dentries.extend(struct.pack('<IIII', rva, len(b), cp, 0))
+                blobs.extend(b)
+                while len(blobs) % 8 : blobs.append(0)
+                k += 1
+    out = bytes(dirs) + bytes(strings) + bytes(dentries)
+    out += bytes(data_base - len(out))
+    return out + bytes(blobs)
+
+def embed_files(data : bytearray, files : list[tuple[str, bytes]]) -> bytearray :
+    # files: [(resource name, bytes)] -> RT_RCDATA, language neutral; existing RCDATA tables
+    # (the 5 MB syxg50.dll's SXGBIN41.TBL / SXGWAVE4.TBL) are replaced
+    def is_table(r) : return r[0] == RT_RCDATA and isinstance(r[1], str) and r[1].upper().endswith(('.TBL', '.UPCM'))
+    old = [r for r in read_resources(data) if is_table(r)]
+    res = [r for r in read_resources(data) if not is_table(r)]
+    if old : 
+        print('  removed old tables: ' + ', '.join(f'{r[1]} ({len(r[4]):,} bytes)' for r in old))
+    for name, b in files :
+        res.append((RT_RCDATA, name.upper(), 0, 0, b))
+    secs = sections(data)
+    h, vs, va, rs, rp = secs[-1]
+    if data[h : h + 5] != b'.rsrc' or rp + rs != len(data) :
+        raise DllPatchError('.rsrc is not the last section, the tables cannot be embedded')
+    rsrc = build_resources(res, va)
+    pe = struct.unpack_from('<I', data, 0x3C)[0]; opt = pe + 24
+    salign, falign = struct.unpack_from('<II', data, opt + 32)
+    raw = ((len(rsrc) + falign - 1) // falign) * falign
+    out = bytearray(data[:rp]) + rsrc + bytes(raw - len(rsrc))
+    struct.pack_into('<I', out, h + 8, len(rsrc))          # VirtualSize
+    struct.pack_into('<I', out, h + 16, raw)               # SizeOfRawData
+    struct.pack_into('<I', out, opt + 56, ((va + len(rsrc) + salign - 1) // salign) * salign)   # SizeOfImage
+    ddir = opt + (96 if struct.unpack_from('<H', out, opt)[0] == 0x10B else 112)
+    struct.pack_into('<II', out, ddir + 16, va, len(rsrc))
+    print(f'  embedded: ' + ', '.join(f'{n} ({len(b):,} bytes)' for n, b in files))
+    return out
+
+
 # ----------------------------------------------------------------------------- API
 
 def Is_Dll(path : Path) -> bool :
@@ -180,32 +681,56 @@ def Identify(path : Path) -> str :
     c = crc(data)
     if c in KNOWN :
         return KNOWN[c][1]
-    if len(data) not in SIZES :
+    # patched DLLs: .rsrc may have grown by a few 4 KB pages (names, see apply_names)
+    if not any(0 <= len(data) - n <= 0x10000 and (len(data) - n) % 0x1000 == 0 for n in SIZES) :
         raise DllPatchError(f'{path.name}: not a supported syxg50.dll (CRC32 {c}, {len(data):,} bytes), '
                             'expected syxg50.dll with 626,688 or 5,070,848 bytes')
     # a file that already carries (some of) the patches: checked patch by patch
     return f'{path.name}, not an original syxg50.dll (CRC32 {c}), checking patch by patch'
 
-def Patch(path : Path, full : bool) -> bytes :
+def Patch(path : Path, full : bool, model : str | None = None, table_name : str | None = None,
+          embed : list[tuple[str, bytes]] | None = None) -> bytes :
     # full = False: "Enhanced" (classic table layout), True: "Full" (big table layout)
     data = bytearray(path.read_bytes())
     Identify(path)
     print(f'patching {path.name}: ' + ('"Full" (loop length + table size limits)' if full else '"Enhanced" (loop length)'))
     apply(data, SYXG50_INI, 'ini [Config] / SoftSynth')
     apply(data, SYXG50_24BIT, '24-bit loop length')
+    apply(data, SYXG50_DRUMEG, 'drum setup EG offsets for ext drum voices')
+    text_virtual_size(data, DRUMEG_CAVE_END)
+    apply(data, SYXG50_FX, 'effect types without counterpart -> nearest type')
+    text_virtual_size(data, FX_CAVE_END)
+    apply(data, SYXG50_FXFADE, 'effect fade-in after a type change: 0.3-1 s -> 80-90 ms')
     if full :
         if len(data) == 5070848 :
             print('  note: 5 MB syxg50.dll, its embedded (classic) tables are not used, the ini selects the table')
         apply(data, SYXG50_BIG, 'table size limits (big layout)')
         text_virtual_size(data, BIG_CAVE_END)
+    apply_bitmaps(data, model)
+    apply_names(data, model, table_name)
+    apply_version_date(data)
+    if embed :
+        data = embed_files(data, embed)
     struct.pack_into('<I', data, pe_checksum_offset(data), pe_checksum(data))
     return bytes(data)
 
-def Write(dll_path : Path, out_dir : str, table_name : str, full : bool) :
+def Write(dll_path : Path, out_dir : str, table_name : str, full : bool, model : str | None = None,
+          embed : list[tuple[str, bytes]] | None = None, dll_name : str | None = None) :
     # the patched DLL keeps the name of the supplied DLL (any name, e.g. mu800.dll), the ini gets the
     # same name with .ini (the DLL looks for <its own name>.ini). The ini selects the table.
+    # embed (--embed): table and wave file go into the DLL (see embed_files). A DLL supplied as
+    # syxg50.dll is then written as syxg<n>.dll (e.g. syxg1000.dll), other names are kept, and no
+    # ini is needed: the DLL finds the table by the name in its string table (an old ini of that name
+    # is removed, it would point the DLL elsewhere).
+    # dll_name: fixed output name (multi-model conversion: syxg<n>.dll, with and without --embed)
     import os, shutil
     name = dll_path.name if dll_path.suffix else dll_path.name + '.dll'
+    if name.lower().endswith('.orig.dll') : name = name[:-9] + '.dll'
+    n = MODEL_NUMBER.get(model or '')
+    if embed and n and name.lower() == 'syxg50.dll' :
+        name = f'syxg{n}.dll'
+    if dll_name : 
+        name = dll_name
     stem = Path(name).stem
     out = Path(out_dir) / name
     src = dll_path
@@ -217,9 +742,20 @@ def Write(dll_path : Path, out_dir : str, table_name : str, full : bool) :
             shutil.copy2(dll_path, backup)
             print(f'dllpatch: original saved as {backup}')
         src = backup
-    data = Patch(src, full)
+    else :
+        # renamed output (--embed): patch from <supplied name>.orig.dll if an earlier run left one
+        orig = dll_path.with_name(f'{dll_path.stem}.orig{dll_path.suffix}')
+        if orig.exists() and not dll_path.name.lower().endswith('.orig.dll') : src = orig
+    data = Patch(src, full, model, table_name, embed)
     ini = out.with_name(f'{stem}.ini')
-    for path, content in ((out, data), (ini, INI_TEMPLATE.format(table=table_name).encode('ascii'))) :
-        state = 'replaced' if path.exists() else 'wrote'
-        path.write_bytes(content)
-        print(f'dllpatch: {state} {path}' + (f', CRC32 {crc(content)}' if path == out else ''))
+    state = 'replaced' if out.exists() else 'wrote'
+    out.write_bytes(data)
+    print(f'dllpatch: {state} {out}, CRC32 {crc(data)}' + (f', {len(data):,} bytes' if embed else ''))
+    if embed :
+        if ini.exists() :
+            ini.unlink()
+            print(f'dllpatch: removed {ini} (not needed with embedded tables)')
+    else :
+        state = 'replaced' if ini.exists() else 'wrote'
+        ini.write_bytes(INI_TEMPLATE.format(table=table_name).encode('ascii'))
+        print(f'dllpatch: {state} {ini}')

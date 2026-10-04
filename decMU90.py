@@ -24,6 +24,95 @@ def MU90_Waverom(rom_a : bytes, rom_b : bytes) -> bytes :
 # (SampleConvert.ConvertSample). The reversed sample is a one-shot.
 REVERSED_KEY = 0x40000000
 
+# * drum HPF (MU100 and later): XG drum setup "HPF Cutoff Frequency" is stored per drum voice
+# (MU100 +21, MU1000 +20; the MU90 has no HPF). syxg50.dll has no high-pass filter, so it is
+# baked into a filtered copy of the sample. Measured on the S-MU2000 (MU2000 firmware):
+# 2nd-order high-pass, Q ~1.0, cutoff at the output 2^(5.066 + 0.0591 * value) Hz
+# (value 55 = 319 Hz, 61 = 407 Hz, 69 = 565 Hz, 94 = 1.57 kHz), independent of the note pitch.
+# The sample is filtered in its own time base, so the cutoff is divided by the playback ratio
+# 2^((byte0 - root + tune note)/12 + tune cent/1200) (root +26, tune +27/+28, MU90 layout;
+# verified against the S-MU2000 recordings, within ~0.5 semitone).
+HPF_KEY_SHIFT = 36
+
+def Drum_HPF_Cutoff(value : int) -> float :
+    return 2 ** (5.066 + 0.0591 * value)
+
+def Apply_Drum_HPF(sample : Sample, drum : bytes | bytearray, value : int) -> None :
+    if not value :
+        return
+    s8 = lambda b : b - 256 if b > 127 else b
+    semis = drum[0] - drum[26] + s8(drum[27])
+    ratio = 2 ** (semis / 12 + s8(drum[28]) / 1200)
+    fc = min(Drum_HPF_Cutoff(value) / ratio, 18000.0)
+    sample.hpf_fc = max(1, round(fc))
+    # own sample-pool key: the filtered copy must not replace the plain sample
+    sample.address_src = sample.address_src + ((sample.hpf_fc + 1) << HPF_KEY_SHIFT)
+
+
+# * element HPF (MU128 engine: MU128 / MU1000 / MU2000): element byte +80 is a high-pass cutoff
+# (0 = off), same scale as the drum HPF and also fixed in Hz, independent of the note.
+# Measured on the S-MU2000 (Oboe +80=80: -21 dB at 250 Hz, -5 dB at 630 Hz at both C2 and C4;
+# Muted Guitar +80=49: -11 dB at 125 Hz): 2nd-order high-pass, Q ~1.0, 2^(5.066 + 0.0591 * value) Hz.
+# syxg50.dll has no HPF, so the multisample gets a filtered copy. The sample is filtered in its
+# own time base, which makes the cutoff follow the pitch within one wave: so the low keys of a
+# wave (fundamental below 3x the cutoff, where the cutoff is audible) are cut into pieces of
+# ELEMENT_HPF_SPAN keys, each with its own filtered copy set for its middle key (+-3 semitones);
+# the keys above share one copy, set for their lowest key. Keys outside ELEMENT_HPF_KEYS belong to
+# the outermost piece. Cutoffs are rounded to 1/6 octave, so copies are shared between elements
+# and pieces wherever they come out the same.
+ELEMENT_HPF_MIN = 16                # below ~62 Hz: no audible effect, left out
+ELEMENT_HPF_SPAN = 6
+ELEMENT_HPF_KEYS = (24, 108)
+
+def Rounded_HPF_Cutoff(fc : float) -> int :
+    import math
+    return max(1, round(2 ** (round(math.log2(max(fc, 1.0)) * 6) / 6)))
+
+def HPF_Sample(sample : Sample, fc : float) -> Sample :
+    import copy
+    fc = Rounded_HPF_Cutoff(min(fc, 18000.0))
+    s = copy.copy(sample)
+    s.address_book = set(sample.address_book)
+    s.names = set(sample.names)
+    s.hpf_fc = fc
+    s.hpf_element = True
+    s.address_src = sample.address_src + ((fc + 1) << HPF_KEY_SHIFT)
+    return s
+
+def Apply_Element_HPF(wavebank : WaveBank, samples : dict[int, Sample], value : int,
+                      element : bytes | bytearray) -> tuple[WaveBank, dict[int, Sample]] :
+    import copy, math
+    fc_out = Drum_HPF_Cutoff(value)
+    # wave key ranges are in key + coarse tune (the DLL and the MU pick the wave by the transposed key,
+    # see elemreduce.merge_wavebanks), so the critical key and the pitch ratio are taken in that domain
+    critical = 69 + 12 * math.log2(3 * fc_out / 440)    # waves below: fundamental < 3 x cutoff
+    lo_k, hi_k = ELEMENT_HPF_KEYS
+    waves : list[Wave] = []
+    out : dict[int, Sample] = {}
+    for w in wavebank.waves :
+        a, b = max(w.key_min, lo_k), min(w.key_max, hi_k)
+        if b < a :                  # wave entirely outside: one piece
+            a = b = hi_k if w.key_min > hi_k else w.key_max
+        pieces : list[tuple[int, int, float]] = []      # first key, last key, reference key
+        c = min(b + 1, max(a, math.ceil(critical)))     # first non-critical key
+        if c > a :
+            n = -(-(c - a) // ELEMENT_HPF_SPAN)
+            bounds = [a + round(i * (c - a) / n) for i in range(n + 1)]
+            pieces += [(bounds[i], bounds[i + 1] - 1, (bounds[i] + bounds[i + 1] - 1) / 2) for i in range(n)]
+        if c <= b :
+            pieces.append((c, b, c + 1))
+        for i, (k0, k1, ref) in enumerate(pieces) :
+            ratio = 2 ** ((ref - w.tune_note) / 12)
+            s = HPF_Sample(samples[w.loop_address_src], fc_out / ratio)
+            AddToSampleList(out, s)
+            nw = copy.copy(w)
+            nw.key_min = w.key_min if i == 0 else k0
+            nw.key_max = w.key_max if i == len(pieces) - 1 else k1
+            nw.loop_address_src = s.address_src
+            waves.append(nw)
+    return WaveBank(f'{wavebank.address_src}_hpf{value}', waves), out
+
+
 def Make_Reversed(sample : Sample) -> tuple[Sample, int, int] :
     sample.reverse = True
     sample.src_offset_negative = sample.offset_negative
@@ -271,8 +360,8 @@ class MU90(MUdecoder) :
                               offset_negative, offset_positive,
                               format=self.source,
                               address_book=set(address_book),)
+        drumvoice.vel_pitch, drumvoice.vel_lpf = drumvoice_data[22], drumvoice_data[23]   # see drumvel.py
 
-        
         return voice_address, drumvoice, sample
 
 

@@ -1,5 +1,5 @@
 from decBase import *
-from decMU90 import MU90, MU90_Waverom, Make_Reversed
+from decMU90 import MU90, MU90_Waverom, Make_Reversed, Apply_Drum_HPF, Apply_Element_HPF, ELEMENT_HPF_MIN
 
 # * Yamaha MU100 (xu50720 v1.11), 2026-09-30
 #
@@ -137,11 +137,17 @@ class MU100(MU90) :
             assert wavedata_address < self.wavedata.end
 
             wavebank, samples_wave = self.ProcessWaveData(data, wavedata_address)
-            wavebanks[wavedata_address] = wavebank
+            wavebank_key = wavedata_address
+            # * element HPF cutoff (+69, unused by the MU90): the same value as the MU128 / MU1000 element
+            # byte +80 (all 1,925 elements of the voices both have), baked into a filtered multisample
+            if element_data[69] >= ELEMENT_HPF_MIN : 
+                wavebank, samples_wave = Apply_Element_HPF(wavebank, samples_wave, element_data[69], element_data)
+                wavebank_key = wavebank.address_src
+            wavebanks[wavebank_key] = wavebank
             for sample in samples_wave.values() :
                 sample.address_book.add(element_address)
             samples = MergeSampleDicts(samples, samples_wave)
-            elements.append(Element(wavedata_address, bytearray(element_data), MU.MU90, waveID=wavebankID) )
+            elements.append(Element(wavebank_key, bytearray(element_data), MU.MU90, waveID=wavebankID) )
 
         voice = Voice(address, volume, name, elements, MU.MU90)
         return voice, wavebanks, samples
@@ -151,7 +157,13 @@ class MU100(MU90) :
     def ProcessDrumVoice(self, data : bytes | bytearray, address : int) -> tuple[int, DrumVoice, Sample] :
         # same layout as the MU90, only the ext voice offset table has 32-bit plain offsets
         address_book : set[int] = set([address])
-        drumvoice_data = data[address : address + 42]
+        drumvoice_data = bytearray(data[address : address + 42])
+        # * +29: signed level offset (see decMU1000.ProcessDrumVoice), 7 keys on the MU100
+        offs = drumvoice_data[29] - 256 if drumvoice_data[29] > 127 else drumvoice_data[29]
+        if offs : 
+            drumvoice_data[2] = max(0, min(127, drumvoice_data[2] + offs))
+        drumvoice_data[29] = 0
+        drumvoice_data = bytes(drumvoice_data)
         ExtVoice_SeqID = int.from_bytes(drumvoice_data[24 : 24+2], byteorder='big')
         voice_address : int = 0
 
@@ -172,7 +184,11 @@ class MU100(MU90) :
                         encoding_parameters=dpcm_parameters, format=MU.MU90, address_book=set(address_book))
         if drumvoice_data[34] & 0x80 :
             sample, offset_negative, offset_positive = Make_Reversed(sample)
+        # drum HPF cutoff (+21), baked into the sample (internal samples only)
+        if ExtVoice_SeqID == 0xFFFF : 
+            Apply_Drum_HPF(sample, drumvoice_data, drumvoice_data[21])
 
         drumvoice = DrumVoice(drumvoice_data, sample.address_src, voice_address,
                               offset_negative, offset_positive, format=MU.MU90, address_book=set(address_book))
+        drumvoice.vel_pitch, drumvoice.vel_lpf = drumvoice_data[22], drumvoice_data[23]   # see drumvel.py
         return voice_address, drumvoice, sample

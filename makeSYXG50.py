@@ -9,6 +9,9 @@ import buildtarget
 
 from utils import fmtbyte, fmtbytes
 
+# wavebank attribute holding the multisample number of each page (big layout paging)
+PAGE_INDEX = ('index', 'index1', 'index2')
+
 # * S-YXG50 Table format limitations:
 
 # * Voices: limited to 16 bits of offset (2 x 16 bit banks)
@@ -103,6 +106,20 @@ def WriteWaveData(wavebank : WaveBank, samples : list[Sample], target : MU) -> b
 
     return bytes(out)
 
+# * amp EG decay 2 going up (decay 2 level above decay 1 level, S-YXG50 element +74 > +73): the MU moves
+#   to the decay 1 level and then back up to the decay 2 level. syxg50.dll does that too, but it ends the
+#   note as soon as the envelope falls below level 64 (-46 dB, measured on the emulator: decay 1 level 63
+#   ends the note at any key and velocity, 64 keeps it), so a decay 1 level below 64 silenced the note
+#   right after the attack. Affected: Lite Org (an organ that sounded like a click), WireLead, synecho2,
+#   Bounce, Ana Echo (MU80 2 voices ... MU128/MU1000 5); never used in the S-YXG50 / MU50 data.
+#   The decay 1 level is raised to 64 (-46.3 instead of at most -47 dB on the way).
+def Rising_Decay2_Fix(data) : 
+    if data[73] < 64 and data[74] > data[73] : 
+        data = bytearray(data)
+        data[73] = 64
+        data = bytes(data)
+    return data
+
 # * convert voice / element first, then this will generically write it
 def WriteVoice(voice : Voice, target : MU) -> bytes : 
     assert target == MU.SYXG50
@@ -153,7 +170,8 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     drumkitIDX = (i for i in range(257))
     waveIDX = (i for i in range(257)) # next(waveIDX)
     waveIDX1 = (i for i in range(256, 513)) # second page (big layout, 512 multisamples)
-    extvoiceIDX = (i for i in range(350)) # next(extvoiceIDX)
+    waveIDX2 = (i for i in range(512, 769)) # third page (big layout, 768 multisamples)
+    extvoiceIDX = (i for i in range(0xFF00)) # next(extvoiceIDX)
 
     header = bytearray(100) # 0
     drumbank_prgmaps = bytearray() # 64
@@ -235,19 +253,19 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
                                         wavebank.get_samples(table.Sample_pool), 
                                         MU.SYXG50)
 
-            if getattr(voice, 'page', 0) == 0 : 
-                if wavebank.index < 0 : 
-                    wavebank.index = next(waveIDX)
-            else : 
-                if getattr(wavebank, 'index1', -1) < 0 : 
-                    wavebank.index1 = next(waveIDX1)
+            page = getattr(voice, 'page', 0)
+            attr = PAGE_INDEX[page]
+            if getattr(wavebank, attr, -1) < 0 : 
+                setattr(wavebank, attr, next((waveIDX, waveIDX1, waveIDX2)[page]))
 
-        # the element stores the wave number as one byte; page 1 numbers are stored minus 256
+        # the element stores the wave number as one byte; page n numbers are stored minus 256 * n
         class _PagedWB : 
             def __init__(self, wb, page) : 
-                self.index = wb.index if page == 0 else wb.index1 - 256
+                self.index = getattr(wb, PAGE_INDEX[page]) - 256 * page
         page = getattr(voice, 'page', 0)
         tablecnv.ConvertElements(voice, [_PagedWB(wb, page) for wb in voice.get_wavebanks(table.Wavebank_pool)], MU.SYXG50)
+        for element in voice.elements : 
+            element.data = Rising_Decay2_Fix(element.data)
         voice.data = WriteVoice(voice, MU.SYXG50)
 
 
@@ -311,26 +329,30 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
         if not drumvoice.ext_Voice_address : 
             drumvoice.get_sample(table.Sample_pool).used_by_drum = True
 
-    # * more than 256 multisamples (MU100+): two pages of 256, big layout only.
+    # * more than 256 multisamples (MU100+): up to three pages of 256, big layout only.
     # The "Full" patched syxg50.dll adds 256 to the wave number of every element that lies in
-    # voice bank B, as soon as the wavedata offset table has more than 256 entries.
-    # So: page 0 voices -> bank A, page 1 voices -> bank B, and each page gets its own
-    # wave numbers (a multisample used by both pages gets an entry in both, same data).
+    # voice bank B, as soon as the wavedata offset table has more than 256 entries, and another
+    # 256 for elements behind the page 2 start in bank B, when the table has more than 512 entries
+    # (the page 2 start, as a byte offset from bank B, is stored in wavedata offset entry 768).
+    # So: page 0 voices -> bank A, page 1 voices -> bank B, page 2 voices -> end of bank B, and each
+    # page gets its own wave numbers (a multisample used by two pages gets an entry in both, same data).
     paging = False
+    pages : list[set] = [set(), set(), set()]
     used_wb = {e.wavebank_address for v in table.Voice_pool.values() for e in v.elements}
     if len(used_wb) > 256 : 
         if not buildtarget.SYXG50_BIG : 
             raise Exception(f'{len(used_wb)} multisamples, the classic table layout can only address 256')
         paging = True
-        pages : list[set] = [set(), set()]
         for voice in table.Voice_pool.values() : 
             wbs = {e.wavebank_address for e in voice.elements}
-            voice.page = 0 if len(pages[0] | wbs) <= 256 else 1
+            voice.page = next((p for p in range(3) if len(pages[p] | wbs) <= 256), 3)
+            if voice.page > 2 : 
+                raise Exception('more than 768 multisamples needed')
             pages[voice.page] |= wbs
-            if len(pages[1]) > 256 : 
-                raise Exception('more than 512 multisamples needed')
-        print(f'multisamples: {len(used_wb)} -> two pages: {len(pages[0])} (bank A) + {len(pages[1])} (bank B), '
-              f'{len(pages[0] & pages[1])} shared  (needs the "Full" patched syxg50.dll)')
+        npages = 3 if pages[2] else 2
+        print(f'multisamples: {len(used_wb)} -> {npages} pages: {len(pages[0])} (bank A) + {len(pages[1])} (bank B)'
+              + (f' + {len(pages[2])} (bank B, page 2)' if pages[2] else '')
+              + f', {len(pages[0]) + len(pages[1]) + len(pages[2]) - len(used_wb)} shared  (needs the "Full" patched syxg50.dll)')
 
     # update metadata for regular voices
     # voices, wavebanks, and samples 
@@ -349,6 +371,16 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
         if drumvoice.converted : continue
 
         ConvertDrumVoice(table, drumvoice, extvoiceIDX, waveIDX, samplemonster)
+
+    # * drum velocity sensitivity: internal drum keys -> ext drum voices in bank B (see drumvel.py)
+    if True : 
+        import drumvel
+        # paging: the last page in use (page 2 opens when page 1 is nearly full)
+        dv_page = (2 if pages[2] or len(pages[1]) > 256 - 16 else 1) if paging else 0
+        free_ms = (256 - len(pages[dv_page])) if paging else (256 - sum(1 for wb in table.Wavebank_pool.values() if wb.index >= 0))
+        drumvel.Convert(table, extvoiceIDX, (waveIDX, waveIDX1, waveIDX2)[dv_page], dv_page, buildtarget.SYXG50_BIG, free_ms,
+                        lambda wb, samples : WriteWaveData(wb, samples, MU.SYXG50),
+                        lambda voice : WriteVoice(voice, MU.SYXG50))
 
 
     # * create voice & wavedata data tables
@@ -377,6 +409,10 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     # Place them first, the order of all other voices is unchanged.
     voices_ordered : list[Voice] = [v for v in table.Voice_pool.values() if v.extvoice_index >= 0] \
                                  + [v for v in table.Voice_pool.values() if v.extvoice_index < 0]
+    # paging: page 2 voices at the end of bank B (stable sort keeps the order inside each page)
+    page2_start = -1
+    if paging : 
+        voices_ordered.sort(key=lambda v : 1 if v.page == 2 else 0)
 
     if VOICE_PAD == 0 : 
         for voice in voices_ordered : 
@@ -387,6 +423,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
                 voice.offset = offs
                 voice.voicebank = 'bankA'
             else : 
+                if paging and voice.page == 2 and page2_start < 0 : page2_start = len(voices_bankB)
                 offs = len(voices_bankB)
                 assert offs <= 0xFFFF or paging # out of space!
                 voices_bankB = voices_bankB + voice.data
@@ -409,6 +446,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
                 voice.offset = offs
                 voice.voicebank = 'bankA'
             else : 
+                if paging and voice.page == 2 and page2_start < 0 : page2_start = len(voices_bankB)
                 offs = len(str_bytes) + len(voices_bankB)
                 assert offs <= 0xFFFF or paging # out of space!
                 voices_bankB = voices_bankB + str_bytes + voice.data
@@ -419,14 +457,14 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
 
     to_delete = []
     for key, wavebank in table.Wavebank_pool.items() :  # * debug
-        if wavebank.index < 0 and getattr(wavebank, 'index1', -1) < 0 : 
+        if all(getattr(wavebank, a, -1) < 0 for a in PAGE_INDEX) : 
             to_delete.append(key)
 
     for key in to_delete : del table.Wavebank_pool[key]
 
     # create wavedata table (each multisample once, even if it has a number in both pages)
     # relevant offset value stored in wavebank.offset
-    first_index = lambda wb : wb.index if wb.index >= 0 else wb.index1
+    first_index = lambda wb : min(i for i in (getattr(wb, a, -1) for a in PAGE_INDEX) if i >= 0)
     for wavebank in sorted(table.Wavebank_pool.values(), key=first_index) : 
         wavebank.offset = len(wavedata)
         wavedata = wavedata + wavebank.out_data
@@ -656,7 +694,10 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
         raise Exception('no assigned bank!')
 
 
-    for voicebank in table.voice_banks.values() : 
+    # all banks incl. the GS/XG duplicates made above: a duplicate gets its own index in the bank map, so
+    # its program map must be written too (MU80: MSB 126/127 point to the GS bank; the XG copy's program
+    # map stayed empty, all 128 programs read the 8-byte debug label at bank A offset 0 as a voice)
+    for voicebank in voicebanks_expanded : 
 
         # voicebank -> voices : dict[int, str | int] #  prg, voice hash (voice address)
         bank_addr = voicebank.index * 128 * ptr_size
@@ -679,19 +720,24 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     # * wavedata offset table
     # these are accessed via Voices and should already have unique identifiers in wavebank.index
 
-    highest_waveIDX = max([wb.index for wb in table.Wavebank_pool.values()] + 
-                          [getattr(wb, 'index1', -1) for wb in table.Wavebank_pool.values()])
+    highest_waveIDX = max(getattr(wb, a, -1) for wb in table.Wavebank_pool.values() for a in PAGE_INDEX)
     if not paging : 
         highest_waveIDX += 1   # unchanged from before: one spare entry at the end
+    if page2_start >= 0 : 
+        assert highest_waveIDX >= 512
+        highest_waveIDX = 768  # entry 768: page 2 start in bank B
     wavedata_offsets = bytearray((highest_waveIDX+1)*ptr_size)
     assert not paging or highest_waveIDX >= 256   # the DLL switches on paging by the table size
 
     for wavebank in table.Wavebank_pool.values() :
         assert wavebank.offset >= 0 
-        for index in (wavebank.index, getattr(wavebank, 'index1', -1)) : 
+        for index in (getattr(wavebank, a, -1) for a in PAGE_INDEX) : 
             if index < 0 : continue
+            assert index < 768
             addr = index * ptr_size
             wavedata_offsets[addr : addr+ptr_size] = wavebank.offset.to_bytes(ptr_size,'little')
+    if page2_start >= 0 : 
+        wavedata_offsets[768 * ptr_size : 769 * ptr_size] = page2_start.to_bytes(ptr_size, 'little')
 
 
     # * Construct header

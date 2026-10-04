@@ -1,5 +1,6 @@
 from decBase import *
-from decMU90 import MU90, MU90_Waverom, Make_Reversed
+import elemreduce
+from decMU90 import MU90, MU90_Waverom, Make_Reversed, Apply_Drum_HPF, Apply_Element_HPF, ELEMENT_HPF_MIN
 
 # * Yamaha MU1000 (program v2.01, h/l flash pair) and MU128 (v2.00), 2026-10-01
 #
@@ -9,7 +10,8 @@ from decMU90 import MU90, MU90_Waverom, Make_Reversed
 # - element: +0/+1 wave number (like MU90), then the S-YXG50 element layout almost 1:1:
 #       S-YXG50 +1..+4  = +2..+5,  +5 = +7 | 0x80 if +6 (LFO phase init),  +6..+77 = +8..+79
 #   (verified on 2,317 elements of voices shared with the MU100: all 77 bytes match)
-#   +80..+83 are new MU128 parameters without an S-YXG50 equivalent.
+#   +80 = element HPF cutoff (0 = off, baked into a filtered multisample, see decMU90.Apply_Element_HPF),
+#   +81..+83 (64, 127, 64 in all ROM voices) have no S-YXG50 equivalent.
 # - drum voice: 42 bytes, MU90 layout except byte 0, which moved to +23 (86% of 2,999 kit/key
 #   pairs with the MU100; the rest is re-voicing) and the EQ bytes +16..+23 (not used)
 # - wavedata: MU90 format, one table, 16-bit offsets
@@ -131,22 +133,107 @@ class MU1000(MU90) :
         wavebanks : dict[str | int, WaveBank] = {}
         samples : dict[int, Sample] = {}
 
-        # * S-YXG50 voices have at most 2 elements: 3- and 4-element voices keep the first two
-        for k in range(min(element_cnt, 2)) :
+        raw_elements = [bytes(data[address + HEADER_LENGTH + ELEMENT_LENGTH * k : address + HEADER_LENGTH + ELEMENT_LENGTH * (k + 1)])
+                        for k in range(element_cnt)]
+
+        def load(k : int) -> tuple[int, WaveBank, dict[int, Sample]] :
             element_address = address + HEADER_LENGTH + ELEMENT_LENGTH * k
-            element_data = data[element_address : element_address + ELEMENT_LENGTH]
+            element_data = raw_elements[k]
             wavebankID = (element_data[0] << 7) + element_data[1]
             wavedata_offset_address = self.wavedata_offsets.start + (wavebankID * 2)
             assert wavedata_offset_address < self.wavedata_offsets.end
             wavedata_address = self.decode_bytes(data, wavedata_offset_address, 16, 'big') + self.wavedata.start
             assert wavedata_address < self.wavedata.end
-
             wavebank, samples_wave = self.ProcessWaveData(data, wavedata_address)
-            wavebanks[wavedata_address] = wavebank
+            # * element HPF (+80): filtered copy of the multisample (see decMU90.Apply_Element_HPF)
+            if element_data[80] >= ELEMENT_HPF_MIN : 
+                wavebank, samples_wave = Apply_Element_HPF(wavebank, samples_wave, element_data[80], element_data)
             for sample in samples_wave.values() :
                 sample.address_book.add(element_address)
-            samples = MergeSampleDicts(samples, samples_wave)
-            elements.append(Element(wavedata_address, bytearray(element_data), MU.MU90, waveID=wavebankID) )
+            return wavebankID, wavebank, samples_wave
+
+        # * S-YXG50 voices have at most 2 elements: 3- and 4-element voices are folded into two (elemreduce.py)
+        outs = None
+        loudness = None
+        if element_cnt > 2 : 
+            # rank by loudness when the wave ROM is at hand (samples + element HPF), else by level
+            if getattr(self, 'waverom', None) is not None : 
+                loudness = {}
+                for k in range(element_cnt) : 
+                    if raw_elements[k][57] == 0 : loudness[k] = 0.0; continue
+                    _, wb_k, s_k = load(k)
+                    loudness[k] = elemreduce.element_loudness(raw_elements[k], elemreduce.wavebank_power(wb_k, s_k, self.waverom))
+                if any(v is None for v in loudness.values()) : loudness = None
+            outs = elemreduce.plan(raw_elements, loudness)
+            if outs is not None : 
+                print(f'{element_cnt} elements -> 2: {name.strip():8} ' + elemreduce.describe(raw_elements, outs))
+        if outs is None : 
+            for k in range(min(element_cnt, 2)) :
+                wavebankID, wavebank, samples_wave = load(k)
+                wavebanks[wavebank.address_src] = wavebank
+                samples = MergeSampleDicts(samples, samples_wave)
+                elements.append(Element(wavebank.address_src, bytearray(raw_elements[k]), MU.MU90, waveID=wavebankID) )
+        else : 
+            for o in outs :
+                primary = elemreduce.primary_member(o, raw_elements, loudness)
+                # stereo pair: keep the louder side (the L/R samples can differ by 10 dB and more)
+                waverom = getattr(self, 'waverom', None)
+                if o.pair_mate is not None and len(o.members) == 1 and waverom is not None : 
+                    pw = {i : elemreduce.wavebank_power(*load(i)[1:], waverom) for i in (primary, o.pair_mate)}
+                    if all(pw.values()) and elemreduce.element_power(raw_elements[o.pair_mate], pw[o.pair_mate]) \
+                                          > elemreduce.element_power(raw_elements[primary], pw[primary]) : 
+                        o.members = [(o.pair_mate, o.members[0][1])]
+                        primary, o.pair_mate = o.pair_mate, primary
+                edata = bytearray(raw_elements[primary])
+                edata[2] = min(r[0] for _, r in o.members)
+                edata[3] = max(r[1] for _, r in o.members)
+                edata[4], edata[5] = o.vels
+                if o.centre : 
+                    edata[67] = 7       # pan: 0..14, 7 = centre
+                loaded = {i : load(i) for i in sorted(set(m[0] for m in o.members))}
+                for _, (_, _, sw) in loaded.items() : 
+                    samples = MergeSampleDicts(samples, sw)
+                if len(o.members) == 1 : 
+                    wavebankID, wavebank, _ = loaded[primary]
+                else : 
+                    wavebankID = loaded[primary][0]
+                    member_samples = {}
+                    for i in set(m[0] for m in o.members) : member_samples.update(loaded[i][2])
+                    baked = {}
+                    # wave start offset (+77) per member, see elemreduce.start_offset_wavebank
+                    member_wbs = {i : loaded[i][1] for i, _ in o.members}
+                    offsets = {i : raw_elements[i][77] for i in member_wbs}
+                    if len(set(offsets.values())) > 1 : 
+                        member_wbs = {i : elemreduce.start_offset_wavebank(wb, offsets[i]) for i, wb in member_wbs.items()}
+                        edata[77] = 0
+                    wavebank, top = elemreduce.merge_wavebanks(
+                        [(member_wbs[i], r, raw_elements[i]) for i, r in o.members], raw_elements[primary],
+                        f'{address}_el' + '_'.join(f'{i}x{r[0]}-{r[1]}' for i, r in o.members),
+                        member_samples, baked)
+                    if baked : 
+                        samples = MergeSampleDicts(samples, baked)
+                        print(f'  {name.strip()}: amp EG baked into {len(baked)} sample copies')
+                    elemreduce.flatten_level(edata, top)
+                    edata[17] = 0           # merged: 100 % pitch scaling (see elemreduce.merge_wavebanks)
+                folded = ([o.pair_mate] if o.pair_mate is not None else []) + o.absorbed
+                if folded : 
+                    merged = len(o.members) > 1      # merged: flat KS, maybe above 127
+                    level = edata[57] + (elemreduce.KS_LEVEL_STEPS * (edata[62] - 64) if merged else 0)
+                    # weigh by the samples' loudness when the wave ROM is at hand, else by level only
+                    powers = {}
+                    if waverom is not None and not merged : 
+                        for i in [primary] + folded : 
+                            _, wb_i, s_i = loaded[i] if i in loaded else load(i)
+                            powers[i] = elemreduce.wavebank_power(wb_i, s_i, waverom)
+                    if powers and all(p for p in powers.values()) and edata[57] : 
+                        target = sum(elemreduce.element_power(raw_elements[i], powers[i]) for i in [primary] + folded)
+                        kept = (edata[57] / 128) ** 4 * powers[primary] * elemreduce.pan_power(edata[67])
+                        level = elemreduce.matched_level(kept, target, edata[57])
+                    else : 
+                        level = elemreduce.absorb_level(level, [raw_elements[i][57] for i in o.absorbed])
+                    elemreduce.flatten_level(edata, round(level), keep_ks = not merged)
+                wavebanks[wavebank.address_src] = wavebank
+                elements.append(Element(wavebank.address_src, edata, MU.MU90, waveID=wavebankID) )
 
         voice = Voice(address, volume, name, elements, MU.MU90)
         voice.source_elements = element_cnt
@@ -160,6 +247,14 @@ class MU1000(MU90) :
         # * back to the MU90 layout: byte 0 lives at +23 on the MU1000, EQ bytes +16..+23 unused
         drumvoice_data = bytearray(raw)
         drumvoice_data[0] = raw[23]
+        # * +29 (signed, 0 in the MU90 data): level offset, added to the level (+2), clamped 0..127.
+        # Used by 11 keys of the MU1000 Standard Kit (new cymbal/hi-hat samples, e.g. Ride 1:
+        # level 105, offset -59). Measured on the S-MU2000 (same drum data in its flash): within
+        # 0.1-1.5 dB of 40*log10(new/old level) for all 11 keys (Ride 1 -13.6 dB, Crash 1 -5.3 dB).
+        offs = raw[29] - 256 if raw[29] > 127 else raw[29]
+        if offs :
+            drumvoice_data[2] = max(0, min(127, raw[2] + offs))
+        drumvoice_data[29] = 0
         drumvoice_data = bytes(drumvoice_data)
 
         ExtVoice_SeqID = int.from_bytes(raw[24 : 24+2], byteorder='big')
@@ -181,7 +276,11 @@ class MU1000(MU90) :
                         encoding_parameters=dpcm_parameters, format=MU.MU90, address_book=set(address_book))
         if raw[34] & 0x80 :
             sample, offset_negative, offset_positive = Make_Reversed(sample)
+        # drum HPF cutoff (+20), baked into the sample (internal samples only)
+        if ExtVoice_SeqID == 0xFFFF : 
+            Apply_Drum_HPF(sample, drumvoice_data, raw[20])
 
         drumvoice = DrumVoice(drumvoice_data, sample.address_src, voice_address,
                               offset_negative, offset_positive, format=MU.MU90, address_book=set(address_book))
+        drumvoice.vel_pitch, drumvoice.vel_lpf = raw[21], raw[22]   # see drumvel.py
         return voice_address, drumvoice, sample

@@ -28,17 +28,21 @@ def assemble_waverom(list : list[Path]) -> bytes :
     return bytes(out)
 
 
+
+
+
+
 # Write bytes
 
 def FileExists(filename : str, root_dir) : 
-    outfile = Path(root_dir) / filename
+    outfile = Path(root_dir+'\\'+filename)
     if outfile.exists() : 
         return True
     return False
 
 def WriteBytesToFile(b : bytes | bytearray, filename : str, root_dir) : 
 
-    outfile = Path(root_dir) / filename
+    outfile = Path(root_dir+'\\'+filename)
     if outfile.exists() : 
         print(f'WriteBytesToFile: file {outfile} already exists! Skipping...')
         return
@@ -51,7 +55,7 @@ def WriteBytesToFile(b : bytes | bytearray, filename : str, root_dir) :
 
 def WriteTXT(s : str, filename : str, root_dir) : 
 
-    outfile = Path(root_dir) / filename
+    outfile = Path(root_dir+'\\'+filename)
     if outfile.exists() : 
         print(f'WriteTXT: file {outfile} already exists! Skipping...')
         return
@@ -64,10 +68,14 @@ def WriteTXT(s : str, filename : str, root_dir) :
 
 # UX
 
-def Friendly_error(s : str | None) : 
+def Friendly_error(s : str | None, code : int = 1) : 
+    import os
     print(s)
-    input('press any key to exit')
-    exit(1)
+    # no pause in the per-model runs of a multi-model conversion (main.py starts them, SXG_NO_PAUSE=1)
+    if not os.environ.get('SXG_NO_PAUSE') : 
+        try : input('press any key to exit')
+        except EOFError : pass
+    exit(code)
 
 
 

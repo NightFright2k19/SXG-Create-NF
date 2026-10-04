@@ -34,8 +34,8 @@ def ToBigDrumVoice(new_data : bytearray, drum : DrumVoice, sample : Sample | Non
         # +18..+20: start offset 24-bit BE, +21..+23: loop length 24-bit BE
         out[18:21] = drum.offset_negative.to_bytes(3, 'big')
         out[21:24] = drum.offset_positive.to_bytes(3, 'big')
-        # +24..+27: byte address (26 bits), top two bits = sample format (0x80 = 8 bit)
-        assert sample.out_loop_address < 0x4000000, 'drum sample beyond 64 MB'
+        # +24..+27: byte address (30 bits), top two bits = sample format (0x80 = 8 bit)
+        assert sample.out_loop_address < 0x40000000, 'drum sample beyond 1 GB'
         fmt = SampleFormat_to_Byte_SYXG50(sample.out_sample_type) & 0xC0
         out[24:28] = (sample.out_loop_address | (fmt << 24)).to_bytes(4, 'big')
     return out

@@ -1,3 +1,5 @@
+import sys
+import math
 # DPCM delta table, limits table, and decoding code based on Mame
 # license:BSD-3-Clause
 # copyright-holders:Olivier Galibert
@@ -296,7 +298,111 @@ def ExtractSample(sample : Sample, waves : bytes) -> bytes :
     return bytes(waves[sample.get_start_address() : sample.get_end_address()])
 
 
+def Apply_HPF(data : bytes, fmt : SampleFormat, fc : float, fs : float = 44100.0, Q : float = 1.0,
+              loop_start : int = 0, loop_len : int = 0) -> bytes :
+    # 2nd-order high-pass (RBJ biquad) over the whole converted sample, U16 LE or U8 data
+    # (plain Python, no extra packages)
+    import array
+    if fmt == SampleFormat.U16 :
+        a = array.array('H'); a.frombytes(data)
+        if sys.byteorder != 'little' : a.byteswap()
+        x = [v - 32768 for v in a]
+    elif fmt == SampleFormat.U8 :
+        x = [(v - 128) * 256 for v in data]
+    else :
+        raise ValueError(fmt)
+    w0 = 2 * math.pi * min(fc, 0.45 * fs) / fs
+    alpha = math.sin(w0) / (2 * Q); c = math.cos(w0)
+    a0 = 1 + alpha
+    b0 = (1 + c) / 2 / a0; b1 = -(1 + c) / a0; b2 = b0
+    a1 = -2 * c / a0; a2 = (1 - alpha) / a0
+    st = [0.0, 0.0, 0.0, 0.0]
+    def run(seq) :
+        x1, x2, y1, y2 = st
+        out = []
+        for v in seq :
+            o = b0 * v + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+            x2, x1, y2, y1 = x1, v, y1, o
+            out.append(o)
+        st[:] = [x1, x2, y1, y2]
+        return out
+    # looped sample: the loop is written in its steady state (the filter output of the endlessly
+    # repeated loop), so that the jump from the loop end back to the loop start stays seamless
+    if loop_len > 0 and loop_start + loop_len <= len(x) :
+        le = loop_start + loop_len
+        y = run(x[:le])
+        loop = x[loop_start:le]
+        for _ in range(max(1, -(-8192 // loop_len)) + 1) :
+            ly = run(loop)
+        y[loop_start:le] = ly
+        y += run(x[le:])
+    else :
+        y = run(x)
+    if fmt == SampleFormat.U16 :
+        out = array.array('H', (min(32767, max(-32768, round(o))) + 32768 for o in y))
+        if sys.byteorder != 'little' : out.byteswap()
+        return out.tobytes()
+    return bytes(min(127, max(-128, round(o / 256))) + 128 for o in y)
+
+
 def ConvertSample(sample : Sample, waverom : bytes, mu_src : MU, mu_dest : MU, experimental : bool = False, looptime : int = 0) -> bytes : 
+    # * baked amp EG (see elemreduce.Env_Sample): decode the plain wave, run its loop on, multiply the
+    # gain curve in (real time x playback ratio = sample time) and end in a short silent loop
+    if getattr(sample, 'env_bake', None) : 
+        import copy, array, math
+        gain_db, loop_db, ratio = sample.env_bake
+        plain = copy.copy(sample)
+        plain.env_bake = None
+        plain.offset_negative, plain.offset_positive = sample.src_neg, sample.src_pos + 2
+        plain.lead_in = 0; plain.adpcm_loop_len = 0
+        data = ConvertSample(plain, waverom, mu_src, mu_dest, experimental)
+        sample.format = mu_dest
+        u16 = sample.out_sample_type == SampleFormat.U16
+        if u16 : 
+            a = array.array('H', data[:len(data) // 2 * 2])
+            if sys.byteorder != 'little' : a.byteswap()
+            x = [v - 32768 for v in a]
+        else : 
+            x = [(v - 128) * 256 for v in data]
+        body, loop = x[:sample.src_neg + 1], x[sample.src_neg + 1 : sample.src_neg + 1 + sample.src_pos]
+        n = sample.offset_negative + 1
+        y = list(body)
+        while len(y) < n and loop : y += loop
+        y = (y + [0] * n)[:n]
+        step = 0.005 * 44100.0 * ratio            # samples per curve step
+        last = len(gain_db) - 1
+        for i in range(n) : 
+            p = i / step
+            j = int(p)
+            gdb = gain_db[last] if j >= last else gain_db[j] + (gain_db[j + 1] - gain_db[j]) * (p - j)
+            if loop_db is None and j >= last : gdb = -120.0
+            y[i] *= 10 ** (gdb / 20)
+        if loop_db is None : 
+            tail = [0.0] * (sample.offset_positive - 1)          # offset_positive already holds the 2 guard samples
+        else : 
+            gl = 10 ** (loop_db / 20)
+            tail = [v * gl for v in loop] + [loop[0] * gl if loop else 0.0]
+        y += tail
+        peak = max((abs(v) for v in y), default=0)
+        scale = 32767 / peak if peak > 32767 else 1.0           # boosted part would clip
+        if u16 : 
+            out = array.array('H', (min(65535, max(0, round(v * scale) + 32768)) for v in y))
+            if sys.byteorder != 'little' : out.byteswap()
+            return out.tobytes()
+        return bytes(min(255, max(0, round(v * scale / 256) + 128)) for v in y)
+
+    # * drum HPF (see decMU90.Apply_Drum_HPF): filter the finished sample (after reversing)
+    if getattr(sample, 'hpf_fc', 0) : 
+        import copy
+        plain = copy.copy(sample)
+        plain.hpf_fc = 0
+        data = ConvertSample(plain, waverom, mu_src, mu_dest, experimental, looptime)
+        sample.format = mu_dest
+        # loop: starts one sample after the body (see FeedSample), offset_positive includes 2 guard samples
+        loop_len = max(0, sample.offset_positive - 2)
+        loop_start = sample.offset_negative + getattr(sample, 'lead_in', 0) + 1
+        return Apply_HPF(data, sample.out_sample_type, sample.hpf_fc, loop_start=loop_start, loop_len=loop_len)
+
 
     assert mu_dest == MU.SYXG50
 
@@ -398,7 +504,7 @@ class SampleMonster() :
         # * ADPCM loops: emulate the hardware's continuous decoding (see ADPCM_Find_LeadIn)
         sample.lead_in = 0
         sample.adpcm_loop_len = 0
-        if sample.sample_type == SampleFormat.ADPCM and sample.offset_positive > 0 : 
+        if sample.sample_type == SampleFormat.ADPCM and sample.offset_positive > 0 and not getattr(sample, 'env_bake', None) : 
             sample.adpcm_loop_len = sample.offset_positive
             passes, settled = ADPCM_Find_LeadIn(sample, self.waveroms_src[sample.waverom_bank], sample.offset_positive)
             lead_in = passes * sample.offset_positive
@@ -407,11 +513,11 @@ class SampleMonster() :
             body_limit = 0xFFFF if (getattr(sample, 'used_by_drum', False) and not buildtarget.SYXG50_BIG) else 0xFFFFFF
             if sample.offset_negative + lead_in > body_limit : 
                 lead_in = 0
-            # syxg50.dll addresses the wave file with 24 bits (16 MB), the big layout with 26 bits (64 MB):
+            # syxg50.dll addresses the wave file with 24 bits (16 MB), the big layout with 30 bits (1 GB):
             # only spend lead-in while it fits
             if lead_in : 
                 projected = self.rom_end + (sample.offset_negative + lead_in + sample.offset_positive + 2) * bytes_per_sample
-                if projected + self.adpcm_reserve > (0x3FFFFFF if buildtarget.SYXG50_BIG else 0xFFFFFF) : 
+                if projected + self.adpcm_reserve > (0x3FFFFFFF if buildtarget.SYXG50_BIG else 0xFFFFFF) : 
                     lead_in = 0
                     self.adpcm_stats['skipped (16 MB limit)'] = self.adpcm_stats.get('skipped (16 MB limit)', 0) + 1
             sample.lead_in = lead_in

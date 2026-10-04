@@ -7,6 +7,31 @@ from cnv_fromBASE import TableConverter
 from typing import Literal, override
 from utils import fmtbyte, fmtbytes
 
+DRUM_ATTACK_NOHOLD = 0x60   # see ConvertDrumVoice
+
+# * MU drum decay slope (dB/s) by rate, measured on the S-MU2000 (Seq Click sweep, 9_Drum_Decay_Fast);
+# syxg50.dll's decay 2 in the no-hold mode follows the same curve. Below 0x31: halves every 8 steps.
+_DECAY_SLOPE = {0x31 : 32, 0x35 : 49, 0x39 : 65, 0x3D : 97, 0x41 : 130, 0x45 : 194, 0x49 : 259, 0x4D : 519,
+                0x51 : 713, 0x55 : 1165, 0x59 : 1685, 0x5D : 2585, 0x61 : 3630}
+DECAY1_DROP_DB = 0.75       # effective decay 1 share, fitted to Hi Q, Click Noise and Short Guiro (kit level test, S-MU2000)
+
+def drum_decay_slope(rate : int) -> float :
+    import math
+    pts = sorted(_DECAY_SLOPE.items())
+    if rate >= 0x7E : return 1e6
+    if rate <= pts[0][0] : return pts[0][1] * 2 ** ((rate - pts[0][0]) / 8)
+    if rate >= pts[-1][0] : return pts[-1][1] * 2 ** ((rate - pts[-1][0]) / 8)
+    for (r0, s0), (r1, s1) in zip(pts, pts[1:]) :
+        if r0 <= rate <= r1 :
+            return math.exp(math.log(s0) + (rate - r0) / (r1 - r0) * (math.log(s1) - math.log(s0)))
+
+def fast_decay2_rate(d1 : int, d2 : int) -> int :
+    # one decay in the no-hold mode with the energy of the MU's short decay 1 + fast decay 2
+    import math
+    t1 = DECAY1_DROP_DB / drum_decay_slope(d1)
+    target = 4.343 / (t1 + 4.343 / drum_decay_slope(d2))
+    return min(range(0x7E), key=lambda r : abs(math.log(drum_decay_slope(r)) - math.log(target)))
+
 class fromMU90(TableConverter) : 
 
     source : MU = MU.MU90
@@ -43,6 +68,22 @@ class fromMU90(TableConverter) :
         # analyze_drum_eg.py: S-YXG50 = MU90 - 0x21 for 426 of 460 matched drum voices
         if not ext_voice : 
             new_data[13] = max(0, new_data[13] - 0x21)
+            # * instant attack (0x7F) with decay 1 = decay 2: syxg50.dll holds the key at full level for
+            # 18-120 ms before the decay starts (rate dependent), the MU starts decaying after 2-15 ms
+            # (S-MU2000, Seq Click sweep 0x31-0x61). Attack bytes 0x60-0x77 select a mode of
+            # syxg50.dll without that hold, which goes straight to decay 2, so it is exact when both
+            # decay rates are the same (Seq Click: 4-7 dB too loud before, now within 1-2 dB).
+            if drum.data[13] == 0x7F and drum.data[14] == drum.data[15] : 
+                new_data[13] = DRUM_ATTACK_NOHOLD
+            # * fast decay 2 (0x7E = cut, or 0x50.. after a decay 1 below 0x40) after a decay 1 of 0x30 or
+            # faster: the MU plays decay 1 only briefly (~1-2 dB) and then decay 2, syxg50.dll adds its
+            # hold first (Hi Q, Click Noise, Short Guiro: 3.5-7.5 dB too much energy). No-hold mode with
+            # one decay of the same energy instead. Slower decay 1 (one-shot percussion with decay 2 =
+            # 0x7E) and Mute Triangle (0x43/0x53) already match and stay as they are.
+            elif drum.data[13] == 0x7F and drum.data[14] >= 0x30 and \
+                 (drum.data[15] >= 0x7E or (0x50 <= drum.data[15] and drum.data[14] < 0x40)) : 
+                new_data[13] = DRUM_ATTACK_NOHOLD
+                new_data[14] = new_data[15] = fast_decay2_rate(drum.data[14], drum.data[15])
         
         # +16: external voice seqID MSB 
         # +17: external voice seqID LSB

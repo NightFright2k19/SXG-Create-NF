@@ -159,8 +159,14 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
         new_table_name = f'{stem}X.TBL'
         new_waverom_name = f'{stem}X.UPCM'
 
+    table_decoder.waverom = in_wave_bytes     # source samples, for loudness estimates (elemreduce)
     table = decode.Create_Table(table_decoder, mu_src, table_decoder.data, wave_roms)
     PrintTableInfo(table)
+    hpf = [s for s in table.Sample_pool.values() if getattr(s, 'hpf_fc', 0)]
+    if hpf : 
+        n_el = sum(1 for s in hpf if getattr(s, 'hpf_element', False))
+        print(f'HPF: {len(hpf)} filtered sample copies ({len(hpf) - n_el} drum keys, {n_el} voice elements; '
+              f'cutoff {min(s.hpf_fc for s in hpf)}-{max(s.hpf_fc for s in hpf)} Hz in sample time base)')
 
 
     table_bin, samplemonster = makeSYXG50.MakeSYXG50(table, 
@@ -172,29 +178,42 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
 
 
 
-    WriteBytesToFile(table_bin, new_table_name, root_dir=out_path)
+    embed = buildtarget.EMBED
+    if embed and not dll : 
+        Friendly_error('--embed needs a syxg50.dll among the input files')
+        exit(1)
+    if not embed : 
+        WriteBytesToFile(table_bin, new_table_name, root_dir=out_path)
 
-    # patched DLL + ini: "Enhanced" (24-bit loop length) for the classic layout, "Full" for the big one
-    print('S-YXG50 table layout: ' + ('big (MU100 and later)' if buildtarget.SYXG50_BIG else 'classic'))
-    if dll : 
+    def patch_dll(embed_files = None) : 
         try : 
-            dllpatch.Write(dll, out_path, new_table_name, buildtarget.SYXG50_BIG)
+            dllpatch.Write(dll, out_path, new_table_name, buildtarget.SYXG50_BIG, mu_src_original.name, embed_files,
+                           dll_name=buildtarget.DLL_NAME)
         except (dllpatch.DllPatchError, AssertionError) as e : 
             Friendly_error(f'DLL not patched: {e}')
             exit(1)
 
+    # patched DLL + ini: "Enhanced" (24-bit loop length) for the classic layout, "Full" for the big one
+    print('S-YXG50 table layout: ' + ('big (MU100 and later)' if buildtarget.SYXG50_BIG else 'classic'))
+    if dll and not embed : 
+        patch_dll()
+
 
     # create rehex (debug) - the S-YXG50 decoder can't read the big layout
-    if not buildtarget.SYXG50_BIG : 
+    if not buildtarget.SYXG50_BIG and not embed : 
         out_table_decoder = decSYXG50.SYXG50.From_Bytes(table_bin)
         WriteTXT(out_table_decoder.get_rehex_json(), new_table_name+r'.rehex-meta', root_dir=out_path)
 
-    if FileExists(new_waverom_name, root_dir=out_path) : 
+    if not embed and FileExists(new_waverom_name, root_dir=out_path) : 
         Friendly_error(f'\'{new_waverom_name}\' already exists, exiting early')
         exit(1)
 
     # * construct our (deferred) new waverom
     waverom = samplemonster.Generate()
-    WriteBytesToFile(waverom, new_waverom_name, root_dir=out_path)
+    if embed : 
+        # --embed: both go into the DLL, no separate files
+        patch_dll([(new_table_name, bytes(table_bin)), (new_waverom_name, bytes(waverom))])
+    else : 
+        WriteBytesToFile(waverom, new_waverom_name, root_dir=out_path)
 
 
