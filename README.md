@@ -144,11 +144,11 @@ The S-YXG50's own tables and `Vampire.dll` are recognised as well, but they are 
 | MU50 | classic | "Enhanced" | `SXGMU50a1.TBL` | `SXGMU50a1.UPCM` | 6.7 MB |
 | MU80 | classic | "Enhanced" | `SXGMU80a1.TBL` | `SXGMU80a1.UPCM` | 12.7 MB |
 | MU90 / MU90B | classic | "Enhanced" | `SXGMU90t.TBL` | `SXGMU90.UPCM` | 13.3 MB |
-| MU100 | big | "Full" | `SXGMU100X.TBL` | `SXGMU100X.UPCM` | 51.8 MB (was 32.4 MB) |
+| MU100 | big | "Full" | `SXGMU100X.TBL` | `SXGMU100X.UPCM` | 51.8 MB |
 | MU100 `--mu-basic` | big | "Full" | `SXGMU100BX.TBL` | `SXGMU100BX.UPCM` | |
-| MU128 | big | "Full" | `SXGMU128X.TBL` | `SXGMU128X.UPCM` | 70.8 MB (was 38.4 MB) |
+| MU128 | big | "Full" | `SXGMU128X.TBL` | `SXGMU128X.UPCM` | 70.8 MB |
 | MU128 `--mu-basic` | big | "Full" | `SXGMU128BX.TBL` | `SXGMU128BX.UPCM` | |
-| MU1000 | big | "Full" | `SXGMU1KX.TBL` | `SXGMU1KX.UPCM` | 87.3 MB (was 51.2 MB) |
+| MU1000 | big | "Full" | `SXGMU1KX.TBL` | `SXGMU1KX.UPCM` | 87.3 MB |
 | MU1000 `--mu-basic` | big | "Full" | `SXGMU1KBX.TBL` | `SXGMU1KBX.UPCM` | |
 
 With `--embed`, the DLL contains both files and is correspondingly large (MU90 14 MB, MU100 53 MB, MU128 72 MB, MU1000 88 MB).
