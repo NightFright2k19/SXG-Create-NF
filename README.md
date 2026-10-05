@@ -536,9 +536,9 @@ New modules used by the conversion: `elemreduce.py` (voices with 3/4 elements, E
 
 - **Soundshock** – original [SXG-Create](https://github.com/Soundshock/SXG-Create)
 - **tarboh** – [S-MU2000](https://github.com/tarboh/S-MU2000), the reference for the sound comparisons
+- **TaleTN** – [MUTable](https://github.com/TaleTN/MUTable), MU series data table documentation (MU50 ext drum voice table, MU2000 scaling tables)
 - **VEG** – [S-YXG50](https://veg.by/en/projects/syxg50/) (`syxg50.dll`)
 - **Yamaha** – MU series tone generators and the S-YXG50 sound engine
-- **TaleTN** – [MUTable](https://github.com/TaleTN/MUTable), MU series data table documentation (MU50 ext drum voice table, MU2000 scaling tables)
 
 DPCM delta table, DPCM limits table, and delta format decoding code based on MAME, copyright (c) MAME contributors, and related contributions by TaleTN, tarboh, and hockinsk under the BSD-3 license.
 
