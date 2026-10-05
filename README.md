@@ -33,7 +33,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **MU90 / MU90B** completed (was work in progress): word-interleaved wave ROMs (two 16-bit halves of a 32-bit bus), all four sample formats (16 bit, 12 bit, 8 bit, ADPCM), 42-byte drum voices, the bank map order XG (LSB) / SFX (MSB) / GS, and the MU90B program ROM.
 - **MU100** (new): three 32-bit wave ROM pairs in one address space, three wavedata tables with their own offset tables, 32-bit voice program maps, MU100 Native and MU Basic voice maps.
 - **MU128 and MU1000** (new): program flash from high/low 16-bit halves, 84-byte elements (mapped almost 1:1, verified on 2,317 elements shared with the MU100), 42-byte drum voices with byte 0 moved to `+23`, voice maps MU Native / MU Basic, GS, MSB 48 and GM2.
-- **MU2000** detected; its program ROM lacks a table, so the MU1000 set (same sound data) is used instead.
+- **MU2000** detected, but not converted: it has the same sound data as the MU1000, so the MU1000 set is used instead (see [Supported models](#supported-models-and-rom-sets)).
 - **MU Basic voice map** for MU100 / MU128 / MU1000: the MU90-compatible map is built into the same table as the native one and can be switched in the Setup dialog (MU Native is the default). The earlier `--mu-basic` switch was removed.
 
 ### Table formats
@@ -42,6 +42,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **24-bit loop lengths** (both layouts): loops longer than 65,535 samples (MU80 pads, MU90) are written in full instead of being clamped.
 - **Ext drum voices** are placed in voice bank A (the DLL reads their offsets as 16 bit from bank A).
 - **Duplicated voice banks** (GS <-> XG side) get their own program map. The MU80's MSB 126/127 pointed to an empty map, so all 128 programs read the 8-byte debug label in front of the first voice as a voice.
+- **MU50 ext drum voices** are read from the program ROM's own table (location from TaleTN's MUTable) instead of a hand-made list. Two entries of that list were wrong: the GS-mode C/M Kit keys 81 / 102 and SFX Set keys 57 / 78 played SynMalet and Bird 2 instead of FootStep and Tweet.
 
 ### Sample conversion
 
@@ -159,7 +160,7 @@ The script waits for a key press at the end (so a drag & drop window stays open)
 
 File names are only examples; the files are recognised by their CRC32.
 
-> **MU2000:** it has the same voice data as the MU1000. Its program ROM stores the element filter/level scaling as an index into a table that is missing from the dump, so SXG-Create uses the MU1000 set instead (skipped when both are present, or a message asking for the MU1000 set).
+> **MU2000:** it has the same voice data as the MU1000 (1,635 voices, 1,027 drum voices, 2,901 samples, the same wave ROMs). Only the element filter/level scaling is stored differently: instead of 4 break points, each element holds an index into 1,377 tables of 128 notes, which lie in the upper half of the 4 MB firmware image (at `0x23CED0`, location from TaleTN's MUTable). An earlier version of this README said this table was missing from the ROM dump; that was wrong. The tables are the MU1000's break points interpolated per note, so they convert back to break points (1,376 of 1,377 exactly, one within 1 step on one note). A test conversion of the MU2000 set rendered bit-identically to the MU1000 conversion (464 voices, 6,496 notes) with a byte-identical wave file. Since the result is the same, SXG-Create uses the MU1000 set (the MU2000 set is skipped when both are present, otherwise a message asks for the MU1000 set).
 
 The S-YXG50's own tables and `Vampire.dll` are recognised as well, but they are not a conversion source.
 
@@ -303,10 +304,10 @@ The S-YXG50 sound engine itself, including its MMX/SSE paths, is not changed bey
 
 ### File names
 
-- **Same name as supplied:** the patched DLL keeps the name of the supplied file, e.g. `mu800.dll` gives a patched `mu800.dll`. A name without an extension gets `.dll` added.
-- **Several models in one run:** the DLLs are named after the model (`syxg80.dll` ... `syxg1000.dll`, MU50: `syxgmu50.dll`, because `syxg50.dll` is the original's name), and the supplied DLL stays unchanged.
+- **`syxg50.dll` is never overwritten:** a DLL supplied as `syxg50.dll` (or `syxg50.orig.dll`) is written under the model's name: `syxgmu50.dll` (MU50, because `syxg50.dll` is the original's name), `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.dll` or `syxg1000.dll`, in single and multi-model runs, with and without `--embed`. The supplied `syxg50.dll` stays unchanged.
+- **Other names are kept:** e.g. `mu800.dll` gives a patched `mu800.dll`. A name without an extension gets `.dll` added.
 - **ini:** it gets the same name with `.ini` (`mu800.ini`). The DLL looks for the ini under its own name, so if you rename the DLL later, rename the ini as well.
-- **DLL already in the output folder:** it is replaced by the patched version, and the original is kept once as `<name>.orig.dll`. Later runs patch from that backup, so switching between models (Enhanced <-> Full) always starts from the original.
+- **DLL with another name already in the output folder:** it is replaced by the patched version, and the original is kept once as `<name>.orig.dll`. Later runs patch from that backup, so switching between models (Enhanced <-> Full) always starts from the original.
 - **DLL in another folder:** it stays unchanged, and the patched copy is written to the output folder.
 
 ### The ini
@@ -335,7 +336,7 @@ DisableGUI=0
 
 - Table and wave file are stored in the patched DLL as `RT_RCDATA` resources under their file names, the same way the 5 MB `syxg50.dll` stores its own tables. Those old tables (`SXGBIN41.TBL`, `SXGWAVE4.TBL`) are removed first.
 - The default table name in the DLL's string table is set to the new table, so the DLL finds it without an ini. No ini is written, and an existing ini of the same name is removed (an ini with a `SoftSynth` entry would make the DLL look for an external file instead).
-- A DLL supplied as `syxg50.dll` is written as `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.dll` or `syxg1000.dll`; other names are kept.
+- A DLL supplied as `syxg50.dll` is written under the model's name (`syxgmu50.dll`, `syxg80.dll` ... `syxg1000.dll`, see [File names](#file-names)); other names are kept.
 - One file to copy, at the cost of DLL size (MU1000: about 88 MB).
 
 ### How the DLL loads the table
@@ -393,6 +394,7 @@ The MU hardware keeps decoding through a loop, carrying the decoder state from o
 
 - **Identical to Yamaha's own S-YXG50 table** in all voice and drum parameters (see [Verification](#verification-against-the-s-mu2000-and-the-s-yxg50)), but with the MU50's original sample data.
 - **Default table name:** the MU50 DLL keeps the S-YXG50 names, but its string table now names `SXGMU50a1.TBL` instead of `SXGBIN41.TBL`. Before, a MU50 DLL that was started without a `SoftSynth` entry (embedded with `--embed`, or a host that does not find the ini) looked for the missing `SXGBIN41.TBL` and failed to load.
+- **Ext drum voices** (drum keys that play a normal voice, e.g. the SFX kits): the MU50 program ROM has a table of 87 voice addresses at `0x3B3CA` (32-bit, byte-swapped ROM); SXG-Create used a hand-reconstructed list before. The two disagreed on two entries that the MU50 kits use: ext voice 10 is FootStep (was SynMalet) and 31 is Tweet (was Bird 2), used by the TG300B C/M Kit (GS drum program 128, keys 81 / 102) and the TG300B SFX Set (program 57, keys 57 / 78). A rebuilt MU50 table differs from the previous one in exactly these 4 keys; all 52,224 voice slots and the other 25,371 drum keys are unchanged.
 
 ### MU80
 
@@ -492,7 +494,7 @@ These are limits of the S-YXG50 engine, or changes that were tried and rejected 
 - **Rising decay 2:** the dip is limited to -46 dB (decay 1 level 64), because the DLL ends notes below that level; Bounce and Ana Echo have shallower gaps between their repeats than on the hardware.
 - **Drum attack without hold for MU50/MU80:** the MU90+ correction is not applied to MU50/MU80. Yamaha's own MU50-based S-YXG50 table uses the hold, and whether the real MU50/MU80 decay immediately like the MU90 could not be verified without recordings.
 - **Voice map switch:** a change takes effect at the next program change, not on notes or channels already playing (the DLL resolves the voice when the program is selected).
-- **MU2000:** its program ROM needs a table that is not in the dump; the MU1000 set is used instead (same sound).
+- **MU2000:** not converted directly. Its scaling tables are in the ROM and convert back to the MU1000's break points (a test build sounded identical to the MU1000), but as the result is the same, the MU1000 set is used instead.
 - **MU50 DOC bank:** the 'DOC' voice bank and drum kit are not converted. Some DOC drum voices appear to be missing data, so it would need reconstruction.
 - **Remaining deviations:** most measured voices are within about ±2.5 dB of the S-MU2000; a few effect types and merged voices are 2-3 dB off. Some differences come from engine details that a table cannot change (e.g. the LFO phase).
 
@@ -536,6 +538,7 @@ New modules used by the conversion: `elemreduce.py` (voices with 3/4 elements, E
 - **tarboh** – [S-MU2000](https://github.com/tarboh/S-MU2000), the reference for the sound comparisons
 - **VEG** – [S-YXG50](https://veg.by/en/projects/syxg50/) (`syxg50.dll`)
 - **Yamaha** – MU series tone generators and the S-YXG50 sound engine
+- **TaleTN** – [MUTable](https://github.com/TaleTN/MUTable), MU series data table documentation (MU50 ext drum voice table, MU2000 scaling tables)
 
 DPCM delta table, DPCM limits table, and delta format decoding code based on MAME, copyright (c) MAME contributors, and related contributions by TaleTN, tarboh, and hockinsk under the BSD-3 license.
 

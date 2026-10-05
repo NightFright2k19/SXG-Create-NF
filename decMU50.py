@@ -21,10 +21,11 @@ class MU50(MUdecoder) :
             # 30 byte tables, ext voice bytes @ +16 +17
             drum_voices = TableData(0x6C788, 0x6F0E5),
 
-            # MIA, reconstructed by hand using S-YXG50 as a reference
-            # 0x56 / 86 highest value, table length should be 172 or around that, 
-            # if it's like SXG it should contain offsets to the voice table, and the values are *not* multiplied by 2
-            drumvoice_ext_offsets = TABLEDATA_BLANK, # MIA
+            # ext drum voices (SFX voices): 87 x 32-bit BE absolute addresses of the voices
+            # (location from TaleTN/MUTable, mu50.cpp). Replaces the hand-made dataenum.MU50extVoiceTable,
+            # which had two entries wrong (0x0A: SynMalet instead of FootStep, 0x1F: Bird 2 instead of Tweet;
+            # used by the TG300B C/M Kit keys 81 / 102 and the TG300B SFX Set keys 57 / 78)
+            drumvoice_ext_offsets = TableData(0x3B3CA, 0x3B3CA + 87*4 - 1),
 
             # 128 x 3 tables
             # order is slightly unusual: GS, XG, SFX

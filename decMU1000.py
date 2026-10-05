@@ -21,7 +21,9 @@ from decMU90 import MU90, MU90_Waverom, Make_Reversed, Apply_Drum_HPF, Apply_Ele
 #   MU Basic = the MU90-compatible voice set (unrevoiced names like "GrandPno"), MU Native = "GrandP #" etc.
 #
 # The MU2000 has the same voice data, but its program ROM stores the filter/level scaling of
-# every element (+36..+43, +58..+65) as an index into a table that is not in the ROM dump.
+# every element (+36..+43, +58..+65) as an index into 1,377 tables of 128 notes (firmware 0x23CED0,
+# see TaleTN's MUTable), the MU1000's break points interpolated per note. Not converted: the result
+# would be the same as the MU1000 conversion (checked with a test build).
 
 def MU1000_Program(high : bytes, low : bytes) -> bytes :
     # 32-bit bus: word n = high[2n:2n+2] + low[2n:2n+2], then byte swapped like the other MU ROMs

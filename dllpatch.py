@@ -802,17 +802,18 @@ def Write(dll_path : Path, out_dir : str, table_name : str, full : bool, model :
           embed : list[tuple[str, bytes]] | None = None, dll_name : str | None = None) :
     # the patched DLL keeps the name of the supplied DLL (any name, e.g. mu800.dll), the ini gets the
     # same name with .ini (the DLL looks for <its own name>.ini). The ini selects the table.
-    # embed (--embed): table and wave file go into the DLL (see embed_files). A DLL supplied as
-    # syxg50.dll is then written as syxg<n>.dll (e.g. syxg1000.dll), other names are kept, and no
+    # A DLL supplied as syxg50.dll (or its backup syxg50.orig.dll) is written under the model's name
+    # (syxgmu50.dll, syxg80.dll ... syxg1000.dll, see Model_Dll_Name), with and without --embed, so the
+    # original syxg50.dll is never overwritten; other names are kept.
+    # embed (--embed): table and wave file go into the DLL (see embed_files), and no
     # ini is needed: the DLL finds the table by the name in its string table (an old ini of that name
     # is removed, it would point the DLL elsewhere).
     # dll_name: fixed output name (multi-model conversion: syxg<n>.dll, with and without --embed)
     import os, shutil
     name = dll_path.name if dll_path.suffix else dll_path.name + '.dll'
     if name.lower().endswith('.orig.dll') : name = name[:-9] + '.dll'
-    n = MODEL_NUMBER.get(model or '')
-    if embed and n and name.lower() == 'syxg50.dll' :
-        name = f'syxg{n}.dll'
+    if name.lower() == 'syxg50.dll' and (model in MODEL_NUMBER or model == 'MU50') :
+        name = Model_Dll_Name(model)
     if dll_name : 
         name = dll_name
     stem = Path(name).stem
@@ -827,7 +828,7 @@ def Write(dll_path : Path, out_dir : str, table_name : str, full : bool, model :
             print(f'dllpatch: original saved as {backup}')
         src = backup
     else :
-        # renamed output (--embed): patch from <supplied name>.orig.dll if an earlier run left one
+        # renamed output (syxg50.dll -> syxg<n>.dll): patch from <supplied name>.orig.dll if an earlier run left one
         orig = dll_path.with_name(f'{dll_path.stem}.orig{dll_path.suffix}')
         if orig.exists() and not dll_path.name.lower().endswith('.orig.dll') : src = orig
     data = Patch(src, full, model, table_name, embed)

@@ -226,7 +226,13 @@ class MUdecoder() :
                 address_book.add(voice_address)
 
             elif self.source == MU.MU50 : 
-                voice_address = self.voices.start + (MU50extVoiceTable[ExtVoice_SeqID] * 2)
+                if self.drumvoice_ext_offsets.end :      # table in the ROM: 32-bit absolute addresses
+                    voice_offset_address = self.drumvoice_ext_offsets.start + (ExtVoice_SeqID * 4)
+                    assert voice_offset_address + 3 <= self.drumvoice_ext_offsets.end
+                    voice_address = int.from_bytes(data[voice_offset_address : voice_offset_address + 4], byteorder='big')
+                    address_book.add(voice_offset_address)
+                else : 
+                    voice_address = self.voices.start + (MU50extVoiceTable[ExtVoice_SeqID] * 2)
                 address_book.add(voice_address)
 
         offset_negative = int.from_bytes(drumvoice_data[19 : 19+2], byteorder='big') # always BE

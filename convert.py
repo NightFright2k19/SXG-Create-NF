@@ -143,9 +143,8 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             mu_src = MU.MU90
 
         case MU.MU2000 : 
-            Friendly_error('MU2000: same voice data as the MU1000, but the program ROM stores the element '
-                           'filter/level scaling as an index into a table that is not in the ROM dump. '
-                           'Please convert the MU1000 ROM set, the result is the same sound set.')
+            Friendly_error('MU2000: same voice data as the MU1000 (only the filter/level scaling is stored as '
+                           'per-note tables). Please convert the MU1000 ROM set, the result is the same sound set.')
             exit(1)
 
         case _ : 
