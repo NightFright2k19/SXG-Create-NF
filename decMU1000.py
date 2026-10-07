@@ -71,6 +71,10 @@ _LAYOUTS = {
 ELEMENT_LENGTH = 84
 
 
+DRUM_LEVEL_GAIN_DB = 0.82
+DRUM_LEVEL_FACTOR = 10 ** (DRUM_LEVEL_GAIN_DB / 40)
+
+
 @dataclass
 class MU1000(MU90) :
 
@@ -257,6 +261,11 @@ class MU1000(MU90) :
         if offs :
             drumvoice_data[2] = max(0, min(127, raw[2] + offs))
         drumvoice_data[29] = 0
+        # * drum level +0.82 dB: in syxg50.dll every drum key plays 0.82 dB (median) below the S-MU2000 with the
+        # same data, for all kits, levels, velocities and EG modes (drum sweep, 31 XG + 8 SFX kits, 2,453 keys;
+        # melodic voices have no such offset). Level law 40*log10(level), so scale the level byte, clamped at 127.
+        if drumvoice_data[2] :
+            drumvoice_data[2] = min(127, round(drumvoice_data[2] * DRUM_LEVEL_FACTOR))
         drumvoice_data = bytes(drumvoice_data)
 
         ExtVoice_SeqID = int.from_bytes(raw[24 : 24+2], byteorder='big')

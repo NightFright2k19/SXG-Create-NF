@@ -73,6 +73,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **Effects:** missing effect types mapped to the nearest available type, return levels scaled per type (calibrated against the S-MU2000) and recomputed on a type change, fade-in after a type change shortened from 0.3-1 s to 80-90 ms.
 - **Drum setup EG offsets** for ext drum voices no longer act twice as strong.
 - **Voice map switch** ("Full"): checkbox "MU Basic voice map" in the Setup dialog switches MU100 / MU128 / MU1000 tables between MU Native and MU Basic, saved with the host's plugin state like the other Setup options (no files written); optional start value `MUBasic=1` in the ini; works with external and embedded tables. A change takes effect immediately for new notes on all parts (no program change needed).
+- **MU1000 drum level:** all drum keys raised by 0.82 dB to match the S-MU2000 (drum sweep of all kits: median -0.82 -> -0.03 dB).
 - **Resources:** panel bitmap per model, names in About dialog / string table / version info (S-YXG<n>), default table name (MU50 too), conversion date and credits in the version info.
 
 ### Usage and command line
@@ -415,6 +416,7 @@ The MU hardware keeps decoding through a loop, carrying the decoder state from o
 
 - **HPF cutoff** (MU100 and later, drum voice byte `+21` / MU1000 `+20`): baked into a filtered copy of the drum sample. Measured on the S-MU2000: 2nd-order high-pass, Q about 1.0, cutoff at the output 2^(5.066 + 0.0591 x value) Hz (value 55 = 319 Hz, 94 = 1.57 kHz), independent of the note pitch. The sample is filtered in its own time base, so the cutoff is divided by its playback ratio.
 - **Level offset** (MU100 and later, drum voice byte `+29`, signed): added to the key's level. Used by 11 keys of the MU1000/MU128 Standard Kit (e.g. Ride 1, Crash 1/2, Chinese, Ride 2, hi-hats) and 7 MU100 keys; without it the Ride 1 was 13.6 dB too loud.
+- **Drum level (MU1000):** syxg50.dll plays every drum key about 0.8 dB below the S-MU2000 with the same data, for all kits, levels, velocities and EG modes (melodic voices have no such offset). The level byte is raised by 0.82 dB (x 1.048 on the 40*log10 level curve, clamped at 127). Drum sweep of all 39 XG/SFX kits (2,453 keys): median -0.82 -> -0.03 dB. Only measured for the MU1000 (the S-MU2000 has the MU1000 drum data), other models are unchanged.
 - **Instant attack with equal decay rates:** syxg50.dll holds a drum key at full level for 18-120 ms before its decay starts, the MU decays after a few ms. For keys with attack `0x7F` and decay 1 = decay 2 (223 kit/key pairs in the MU1000 kits tested, e.g. Seq Click, Analog Kit hi-hat and toms) the converter selects an attack mode of the DLL without that hold (`0x60`). Seq Click: 4-7 dB too loud before, now within 1-2 dB of the S-MU2000.
 - **Short decay 1 before a fast decay 2** (Hi Q, Click Noise, Short Guiro): the MU leaves decay 1 after about 1-2 dB, so these keys get the no-hold mode with one decay of the same energy (3.5-8 dB too loud before, now within 2 dB).
 - **Velocity Pitch Sense / Velocity LPF Cutoff Sense:** syxg50.dll has no such drum parameters. Drum keys that use them are converted to ext drum voices whose element reproduces the drum playback of the DLL and adds the velocity dependency with constant pitch and filter EGs (`drumvel.py`). MU1000: 162 drum keys -> 158 ext drum voices.
@@ -470,6 +472,7 @@ syxg50.dll plays at most 2 elements per voice. Taking the first two (as before) 
 | Effect types without counterpart (e.g. Symphonic as chorus, Dist+Delay tail) | +5.0 dB / +11.8 dB | +0.3 dB / +1.8 dB |
 | Effect return levels (late tail, 12_Effect_Test) | median 2.2 dB off | 0.4 dB |
 | Effect onset after a type change (0.12-0.5 s, 91 types) | 3.8 dB off (3.7 dB too weak) | 1.1 dB off (0.4 dB) |
+| Drum level, all MU1000 kits (39 kits, 2,453 keys) | -0.82 dB median, 0.88 dB median deviation | -0.03 dB, 0.48 dB; 1.9 % of the keys more than 3 dB off, none more than 6 dB |
 
 The voices with stereo pairs measure about 2-3 dB louder in a mono recording, because the uncorrelated L/R pair of the original loses 3 dB in mono; in stereo the power is the same.
 
