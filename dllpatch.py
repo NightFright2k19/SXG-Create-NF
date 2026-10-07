@@ -195,7 +195,7 @@ SYXG50_FXFADE = [
 #     returns a copy with 3 more bytes 'V','M',mode (bank 0x21 -> 0x24, program 5 -> 8 bytes); setChunk
 #     (0x10002BB0) takes the mode from such a chunk and passes the original size on. Old 0x21 / 5 byte
 #     chunks are still accepted and keep the start value.
-#   The switch takes effect at the next program change / bank select of a part.
+#   The switch takes effect immediately (SYXG50_VMAPNOW below) for new notes.
 #   State in the .data section behind its used part (0x10056DC0, chunk copy at 0x10056E00, VirtualSize
 #   enlarged to 0x5E40). All code is position independent (call/pop), generated from vmap2.asm with
 #   mkvmap4.py (keystone).
@@ -218,6 +218,19 @@ SYXG50_VOICEMAP = [
               '8b 44 24 04 50 e8 16 4d fc ff 60 e8 00 00 00 00 5d 81 ed c0 f6 03 10 8b 74 24 24 31 c0 8d 7e 20 b9 11 00 00 00 03 07 83 c7 04 e2 f9 8d 7c 06 64 c6 85 c1 6d 05 10 00 81 3f 4d 41 50 32 0f 85 9b 00 00 00 89 bd c4 6d 05 10 8b 85 d0 52 05 10 89 85 c8 6d 05 10 8b 85 cc 52 05 10 89 85 cc 6d 05 10 8b 85 f8 52 05 10 89 85 d0 6d 05 10 8b 85 e8 52 05 10 89 85 d4 6d 05 10 8b 85 d8 52 05 10 89 85 d8 6d 05 10 8b 85 d4 52 05 10 89 85 dc 6d 05 10 8b 85 e4 52 05 10 89 85 e0 6d 05 10 8b 85 e0 52 05 10 89 85 e4 6d 05 10 c6 85 c1 6d 05 10 01 0f b6 47 04 50 8d 85 18 fa 03 10 50 8d 85 ec 19 05 10 50 e8 84 39 ff ff 85 c0 0f 95 c0 88 85 c0 6d 05 10 88 85 c2 6d 05 10 e8 04 00 00 00 61 c2 04 00 60 e8 00 00 00 00 5d 81 ed 98 f7 03 10 80 bd c1 6d 05 10 01 0f 85 ce 00 00 00 80 bd c0 6d 05 10 00 74 65 8b b5 c4 6d 05 10 8d 46 08 89 85 d0 52 05 10 8d 86 88 00 00 00 89 85 cc 52 05 10 8d 86 08 01 00 00 89 85 f8 52 05 10 8d 86 88 01 00 00 89 85 e8 52 05 10 8d 86 08 02 00 00 89 85 d8 52 05 10 8d 86 88 02 00 00 89 85 d4 52 05 10 8d 86 08 03 00 00 89 85 e4 52 05 10 8d 86 88 03 00 00 89 85 e0 52 05 10 eb 60 8b 85 c8 6d 05 10 89 85 d0 52 05 10 8b 85 cc 6d 05 10 89 85 cc 52 05 10 8b 85 d0 6d 05 10 89 85 f8 52 05 10 8b 85 d4 6d 05 10 89 85 e8 52 05 10 8b 85 d8 6d 05 10 89 85 d8 52 05 10 8b 85 dc 6d 05 10 89 85 d4 52 05 10 8b 85 e0 6d 05 10 89 85 e4 52 05 10 8b 85 e4 6d 05 10 89 85 e0 52 05 10 61 c3 31 c0 eb 05 b8 01 00 00 00 50 ff 74 24 0c ff 74 24 0c e8 6d 19 ff ff 58 60 e8 00 00 00 00 5d 81 ed 9a f8 03 10 8b 5c 24 24 89 c7 68 20 04 00 00 53 ff 95 78 01 04 10 80 bd c1 6d 05 10 01 74 0b 6a 00 50 ff 95 b0 01 04 10 eb 1f 0f b6 85 c0 6d 05 10 85 ff 74 07 0f b6 85 c2 6d 05 10 50 68 20 04 00 00 53 ff 95 d0 01 04 10 61 c2 08 00 0f b7 44 24 14 8b 74 24 0c 3d 20 04 00 00 75 05 e9 22 14 ff ff 3d f6 03 00 00 e9 f4 12 ff ff 60 e8 00 00 00 00 5d 81 ed 0f f9 03 10 80 bd c1 6d 05 10 01 75 39 8b 5c 24 2c 68 20 04 00 00 53 ff 95 78 01 04 10 6a 00 6a 00 68 f0 00 00 00 50 ff 95 74 01 04 10 83 f8 01 0f 94 c0 3a 85 c0 6d 05 10 74 0b 88 85 c0 6d 05 10 e8 3a fe ff ff 61 8b 4c 24 08 8b 41 08 e9 5c 12 ff ff ff 74 24 08 ff 74 24 08 e8 48 00 00 00 60 e8 00 00 00 00 5d 81 ed 78 f9 03 10 80 bd c1 6d 05 10 01 75 2e 89 c1 83 f9 21 77 27 8b 54 24 24 8b 32 8d bd 00 6e 05 10 89 3a f3 a4 c6 07 56 c6 47 01 4d 8a 8d c0 6d 05 10 88 4f 02 83 c0 03 89 44 24 1c 61 c2 08 00 56 89 ce 8b 56 18 e9 91 31 fc ff 60 e8 00 00 00 00 5d 81 ed cb f9 03 10 80 bd c1 6d 05 10 01 75 31 8b 44 24 28 83 f8 08 74 05 83 f8 24 75 23 8b 74 24 24 66 81 7c 06 fd 56 4d 75 16 83 6c 24 28 03 8a 44 06 ff 24 01 88 85 c0 6d 05 10 e8 86 fd ff ff 61 89 c8 8a 4c 24 0c e9 9e 31 fc ff 4d 55 42 61 73 69 63 00'),
 ]
 VMAP_CAVE_END = 0x3FA20
+# * voice map switch takes effect immediately: the MIDI channel event entry (0x10007560, audio thread) compares the
+#   XG bank map row pointer (0x100552D8) with the last one it saw (0x10056DE8). When the row was switched (Settings
+#   page / plugin state), all 16 parts re-run their program change with their current program (part +0x6A, handler
+#   table 0x10041BB0[4], honours "receive program change"), before the event is handled. Notes already sounding keep
+#   their voice. Generated from vmapnow.asm (keystone), position independent.
+SYXG50_VMAPNOW = [
+    (0x07560, '8a 44 24 08 3c 10', 'e9 bb 84 03 00 90'),
+    (0x3FA20, ' '.join(['00'] * 91),
+              '60 e8 00 00 00 00 5d 81 ed 26 fa 03 10 8b 85 d8 52 05 10 8b 95 e8 6d 05 10 39 d0 74 32 89 85 e8 6d 05 10 '
+              '85 d2 74 28 8b 74 24 24 31 db 69 fb 1c 01 00 00 8d bc 3e e0 01 00 00 6a 00 0f b6 47 6a 50 57 56 ff 95 c0 '
+              '1b 04 10 43 83 fb 10 72 de 61 8a 44 24 08 3c 10 e9 eb 7a fc ff'),
+]
+VMAPNOW_CAVE_END = 0x3FA7B
 VMAP_DATA_END = 0x56E40
 VMAP_CONTROL_ID = 0x420
 VMAP_CONTROL_TEXT = 'MU Basic voice map'
@@ -247,6 +260,8 @@ def add_voicemap_checkbox(raw : bytes) -> bytes :
 def apply_voicemap(data : bytearray) :
     apply(data, SYXG50_VOICEMAP, 'voice map switch (MU Native / MU Basic, Settings page)')
     text_virtual_size(data, VMAP_CAVE_END)
+    apply(data, SYXG50_VMAPNOW, 'voice map switch: immediate (re-selects the programs of all parts)')
+    text_virtual_size(data, VMAPNOW_CAVE_END)
     data_virtual_size(data, VMAP_DATA_END)
     entry = resource_entries(data, RT_DIALOG).get(111)
     if entry is None : raise DllPatchError('dialog 111 not found in the DLL')
