@@ -1,6 +1,7 @@
 from decBase import *
 import elemreduce
 import drumtrim
+import voicetrim
 from decMU90 import MU90, MU90_Waverom, Make_Reversed, Apply_Drum_HPF, Apply_Element_HPF, ELEMENT_HPF_MIN
 
 # * Yamaha MU1000 (program v2.01, h/l flash pair) and MU128 (v2.00), 2026-10-01
@@ -241,6 +242,11 @@ class MU1000(MU90) :
                     elemreduce.flatten_level(edata, round(level), keep_ks = not merged)
                 wavebanks[wavebank.address_src] = wavebank
                 elements.append(Element(wavebank.address_src, edata, MU.MU90, waveID=wavebankID) )
+
+        # * measured level trim of this voice (element mixing in syxg50.dll, see voicetrim.py)
+        raw = bytes(data[address : address + HEADER_LENGTH + ELEMENT_LENGTH * element_cnt])
+        for el, lvl in zip(elements, voicetrim.Trim_Levels(raw, [el.data[57] for el in elements])) : 
+            el.data[57] = lvl
 
         voice = Voice(address, volume, name, elements, MU.MU90)
         voice.source_elements = element_cnt
