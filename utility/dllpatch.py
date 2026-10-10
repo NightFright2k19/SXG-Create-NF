@@ -277,17 +277,29 @@ def apply_voicemap(data : bytearray) :
 #     The page (0x10030AF0) fills the list on WM_INITDIALOG and on CBN_SELENDOK marks the reset as pending
 #     (.data 0x10056E40, selection kept in 0x10056E41). The process / processReplacing wrappers (0x100010A0 /
 #     0x100010C0, audio thread) send a pending reset through the SysEx entry of the engine (the same path as
-#     a SysEx event from the host) before the block is rendered. Generated from dev/gui/reset.asm with
-#     dev/gui/mkreset.py (keystone), position independent.
-SYXG50_RESET = [
+#     a SysEx event from the host) before the block is rendered.
+# * Panel (all models): preset buttons in the title strip, program down / up on MIDI channel 1 (part 1), with a
+#   3-digit readout 001-128 and the label "PRESET". The buttons (WM_LBUTTONDOWN / UP of the panel window
+#   0x10032260) add a pending step (.data 0x10056E42), the audio thread sends the program change (current
+#   program of part 1 +- 1, wrapping 128 -> 1) through the engine's short message entry, the same path as a
+#   host event; the bank stays. The readout is drawn on WM_PAINT and in the panel's idle redraw from the
+#   program of part 1 (byte +0x366 of the synth object, engine +8). Static parts (buttons, readout frame,
+#   label) are pasted into bitmap 101 from bitmaps/PresetPanel.bmp, the pressed buttons
+#   (bitmaps/PresetButtons.bmp) are appended to bitmap 106 (SETUP button) on its right. Both pictures come from dev/gui/mkpreset.py.
+# Generated from dev/gui/gui.asm with dev/gui/mkgui.py (keystone), position independent.
+SYXG50_GUI = [
     (0x010C0, '8b 44 24 04 8b 48 40', 'e9 bb e9 03 00 90 90'),
     (0x010A0, '8b 44 24 04 8b 48 40', 'e9 ec e9 03 00 90 90'),
-    (0x30AF0, '8b 44 24 0c 83 c0 b2', 'e9 fd ef 00 00 90 90'),
-    (0x3FA80, ' '.join(['00'] * 361),
-              'e8 1d 00 00 00 8b 44 24 04 8b 48 40 e9 36 16 fc ff e8 0c 00 00 00 8b 44 24 04 8b 48 40 e9 05 16 fc ff 60 e8 00 00 00 00 5d 81 ed a8 fa 03 10 0f b6 85 40 6e 05 10 85 c0 74 36 c6 85 40 6e 05 10 00 8b 54 24 28 8b 4a 40 8b 89 b0 00 00 00 85 c9 74 1e 83 f8 01 75 0a 8d b5 cf fb 03 10 6a 0b eb 08 8d b5 da fb 03 10 6a 09 56 51 8b 11 ff 52 0c 61 c3 8b 44 24 0c 3d 10 01 00 00 74 67 3d 11 01 00 00 0f 85 bf 00 00 00 66 81 7c 24 10 21 04 0f 85 b2 00 00 00 66 83 7c 24 12 09 75 3f 60 e8 00 00 00 00 5d 81 ed 23 fb 03 10 68 21 04 00 00 ff 74 24 2c ff 95 78 01 04 10 6a 00 6a 00 68 47 01 00 00 50 ff 95 74 01 04 10 83 f8 01 77 0d 88 85 41 6e 05 10 40 88 85 40 6e 05 10 61 b8 01 00 00 00 c2 14 00 60 e8 00 00 00 00 5d 81 ed 6a fb 03 10 68 21 04 00 00 ff 74 24 2c ff 95 78 01 04 10 89 c3 8d 85 e3 fb 03 10 50 6a 00 68 43 01 00 00 53 ff 95 74 01 04 10 8d 85 e6 fb 03 10 50 6a 00 68 43 01 00 00 53 ff 95 74 01 04 10 6a 00 0f b6 85 41 6e 05 10 50 68 4e 01 00 00 53 ff 95 74 01 04 10 61 8b 44 24 0c 83 c0 b2 e9 28 0f ff ff f0 41 10 42 12 40 00 7f 00 41 f7 f0 43 10 4c 00 00 7e 00 f7 47 53 00 58 47 00'),
+    (0x30AF0, '8b 44 24 0c 83 c0 b2', 'e9 a9 f2 00 00 90 90'),
+    (0x3246B, '8b 74 24 54 8a 86 8c 00 00 00', 'e9 b5 d6 00 00 90 90 90 90 90'),
+    (0x32427, '8b 74 24 54 8a 86 8c 00 00 00', 'e9 80 d7 00 00 90 90 90 90 90'),
+    (0x3233D, '8d 4c 24 10 51', 'e9 ac d8 00 00'),
+    (0x320EE, '5b 8b 8d 88 00 00 00', 'e9 0e db 00 00 90 90'),
+    (0x3FA80, ' '.join(['00'] * 1045),
+              'e8 1d 00 00 00 8b 44 24 04 8b 48 40 e9 36 16 fc ff e8 0c 00 00 00 8b 44 24 04 8b 48 40 e9 05 16 fc ff 60 e8 00 00 00 00 5d 81 ed a8 fa 03 10 8b 54 24 28 8b 4a 40 8b 89 b0 00 00 00 89 8d 44 6e 05 10 85 c9 74 5d 31 c0 86 85 40 6e 05 10 85 c0 74 1e 83 f8 01 75 0a 8d b5 7b fe 03 10 6a 0b eb 08 8d b5 86 fe 03 10 6a 09 56 51 8b 11 ff 52 0c 8b 8d 44 6e 05 10 31 c0 86 85 42 6e 05 10 84 c0 74 21 0f be c0 8b 51 08 0f b6 92 66 03 00 00 01 d0 83 e0 7f c1 e0 08 0d c0 00 00 00 50 51 8b 11 ff 52 08 61 c3 8b 44 24 64 0f bf c8 c1 f8 10 83 f8 01 7c 69 83 f8 10 7d 64 ba 01 00 00 00 81 f9 a4 00 00 00 7c 57 81 f9 b3 00 00 00 7c 15 ba 02 00 00 00 81 f9 dd 00 00 00 7c 42 81 f9 ec 00 00 00 7d 3a 60 e8 00 00 00 00 5d 81 ed 69 fb 03 10 88 95 43 6e 05 10 b0 01 80 fa 01 75 02 f6 d8 f0 00 85 42 6e 05 10 8b 5c 24 78 53 ff 95 a4 01 04 10 53 e8 7c 00 00 00 61 e9 16 29 ff ff 8b 74 24 54 8a 86 8c 00 00 00 e9 c9 28 ff ff 60 e8 00 00 00 00 5d 81 ed b2 fb 03 10 80 bd 43 6e 05 10 00 74 1c c6 85 43 6e 05 10 00 ff 95 a0 01 04 10 ff 74 24 78 e8 3b 00 00 00 61 e9 d5 28 ff ff 61 8b 74 24 54 8a 86 8c 00 00 00 e9 43 28 ff ff ff 74 24 10 e8 d1 00 00 00 8d 4c 24 10 51 e9 41 27 ff ff 5b 57 e8 c0 00 00 00 8b 8d 88 00 00 00 e9 e2 24 ff ff 60 e8 00 00 00 00 5d 81 ed 19 fc 03 10 ff 74 24 24 ff 95 a8 01 04 10 85 c0 74 50 89 c6 56 ff 95 1c 00 04 10 85 c0 74 38 89 c7 0f b6 9d 43 6e 05 10 b8 01 00 00 00 b9 a4 00 00 00 ba a0 00 00 00 e8 2a 00 00 00 b8 02 00 00 00 b9 dd 00 00 00 ba af 00 00 00 e8 16 00 00 00 57 ff 95 24 00 04 10 56 ff 74 24 28 ff 95 ac 01 04 10 61 c2 04 00 51 52 39 d8 75 19 ff b5 38 53 05 10 57 ff 95 20 00 04 10 5a 59 68 20 00 cc 00 6a 00 52 eb 17 ff b5 20 53 05 10 57 ff 95 20 00 04 10 5a 59 68 20 00 cc 00 6a 01 51 57 6a 0f 6a 0f 6a 01 51 56 ff 95 18 00 04 10 c3 60 e8 00 00 00 00 5d 81 ed ce fc 03 10 8b 74 24 24 56 ff 95 1c 00 04 10 85 c0 0f 84 97 00 00 00 89 c7 ff b5 3c 53 05 10 57 ff 95 20 00 04 10 8b 8d 44 6e 05 10 85 c9 75 25 b8 0a 00 00 00 b9 b9 00 00 00 e8 73 00 00 00 b8 0a 00 00 00 b9 c3 00 00 00 e8 64 00 00 00 b8 0a 00 00 00 eb 48 8b 49 08 0f b6 99 66 03 00 00 43 89 d8 31 d2 b9 64 00 00 00 f7 f1 b9 b9 00 00 00 e8 3d 00 00 00 89 d8 31 d2 b9 0a 00 00 00 f7 f1 31 d2 f7 f1 89 d0 b9 c3 00 00 00 e8 22 00 00 00 89 d8 31 d2 b9 0a 00 00 00 f7 f1 89 d0 b9 cd 00 00 00 e8 0b 00 00 00 57 ff 95 24 00 04 10 61 c2 04 00 6b c0 0a 68 20 00 cc 00 6a 00 50 57 6a 0d 6a 0a 6a 02 51 56 ff 95 18 00 04 10 c3 8b 44 24 0c 3d 10 01 00 00 74 67 3d 11 01 00 00 0f 85 bf 00 00 00 66 81 7c 24 10 21 04 0f 85 b2 00 00 00 66 83 7c 24 12 09 75 3f 60 e8 00 00 00 00 5d 81 ed cf fd 03 10 68 21 04 00 00 ff 74 24 2c ff 95 78 01 04 10 6a 00 6a 00 68 47 01 00 00 50 ff 95 74 01 04 10 83 f8 01 77 0d 88 85 41 6e 05 10 40 88 85 40 6e 05 10 61 b8 01 00 00 00 c2 14 00 60 e8 00 00 00 00 5d 81 ed 16 fe 03 10 68 21 04 00 00 ff 74 24 2c ff 95 78 01 04 10 89 c3 8d 85 8f fe 03 10 50 6a 00 68 43 01 00 00 53 ff 95 74 01 04 10 8d 85 92 fe 03 10 50 6a 00 68 43 01 00 00 53 ff 95 74 01 04 10 6a 00 0f b6 85 41 6e 05 10 50 68 4e 01 00 00 53 ff 95 74 01 04 10 61 8b 44 24 0c 83 c0 b2 e9 7c 0c ff ff f0 41 10 42 12 40 00 7f 00 41 f7 f0 43 10 4c 00 00 7e 00 f7 47 53 00 58 47 00'),
 ]
-RESET_CAVE_END = 0x3FBE9
-RESET_DATA_END = 0x56E48
+GUI_CAVE_END = 0x3FE95
+GUI_DATA_END = 0x56E48
 RESET_CONTROL_ID = 0x421
 EFFECT_SWITCHES = {      # id: (text, x, width); y = 80, height 10 as before
     0x3FB : ('Reverb (CC 91)', 12, 66),
@@ -608,7 +620,7 @@ def build_dialog(head : bytes, items : list[dict]) -> bytes :
     return bytes(out)
 
 def edit_settings_page(raw : bytes, full : bool) -> bytes :
-    # dialog 111: effect switch names, "Reset" label + drop-down (see SYXG50_RESET)
+    # dialog 111: effect switch names, "Reset" label + drop-down (see SYXG50_GUI)
     head, items = dialog_items(raw)
     ids = [it['id'] for it in items]
     for it in items :
@@ -625,10 +637,49 @@ def edit_settings_page(raw : bytes, full : bool) -> bytes :
         items += [label, combo]
     return build_dialog(head, items)
 
-def apply_reset(data : bytearray, full : bool) :
-    apply(data, SYXG50_RESET, 'Settings page: GS / XG reset drop-down')
-    text_virtual_size(data, RESET_CAVE_END)
-    data_virtual_size(data, RESET_DATA_END)
+PRESET_PANEL_POS = (160, 1)            # PresetPanel.bmp in bitmap 101
+PRESET_BUTTONS_X = 160                 # PresetButtons.bmp appended to bitmap 106 (160 x 16 -> 190 x 16)
+
+def dib_rows(dib : bytes) -> tuple[int, int, int, list[bytearray]] :
+    # 24-bit DIB -> (width, height, header size, rows top-down without padding)
+    hs, w, h, _, bpp = struct.unpack_from('<IiiHH', dib, 0)
+    if bpp != 24 : raise DllPatchError(f'bitmap is {bpp} bit, expected 24')
+    stride = ((w * 24 + 31) // 32) * 4; rows = abs(h)
+    out = [bytearray(dib[hs + r * stride : hs + r * stride + 3 * w]) for r in range(rows)]
+    if h > 0 : out.reverse()
+    return w, rows, hs, out
+
+def rows_to_dib(w : int, rows : list) -> bytes :
+    stride = ((w * 24 + 31) // 32) * 4
+    body = b''.join(bytes(r) + b'\0' * (stride - 3 * w) for r in reversed(rows))
+    return struct.pack('<IiiHHIIiiII', 40, w, len(rows), 1, 24, 0, len(body), 3780, 3780, 0, 0) + body
+
+def apply_preset_bitmaps(data : bytearray) :
+    # bitmap 101: the static part of the preset control; bitmap 106: pressed buttons appended on the right
+    res = find_resources(data, RT_BITMAP)
+    off, size = res[101]
+    w, h, hs, rows = dib_rows(bytes(data[off : off + size]))
+    pw, ph, panel = bmp_to_dib24((BITMAP_DIR / 'PresetPanel.bmp').read_bytes())
+    _, _, _, prows = dib_rows(panel)
+    x, y = PRESET_PANEL_POS
+    for r in range(ph) : rows[y + r][3 * x : 3 * (x + pw)] = prows[r]
+    new = rows_to_dib(w, rows)
+    if len(new) != size : raise DllPatchError('bitmap 101 changed size')
+    data[off : off + size] = new
+    entry = resource_entries(data, RT_BITMAP).get(106)
+    old = resource_data(data, entry)
+    w, h, hs, rows = dib_rows(old)
+    if w == PRESET_BUTTONS_X :
+        bw, bh, btn = bmp_to_dib24((BITMAP_DIR / 'PresetButtons.bmp').read_bytes())
+        _, _, _, brows = dib_rows(btn)
+        rows = [rows[r] + (brows[r] if r < bh else rows[r][-3:] * bw) for r in range(h)]
+        replace_resource_data(data, entry, rows_to_dib(w + bw, rows))
+
+def apply_gui(data : bytearray, full : bool) :
+    apply(data, SYXG50_GUI, 'Settings page reset drop-down, panel preset buttons')
+    apply_preset_bitmaps(data)
+    text_virtual_size(data, GUI_CAVE_END)
+    data_virtual_size(data, GUI_DATA_END)
     entry = resource_entries(data, RT_DIALOG).get(111)
     if entry is None : raise DllPatchError('dialog 111 not found in the DLL')
     old = resource_data(data, entry); new = edit_settings_page(old, full)
@@ -896,8 +947,8 @@ def Patch(path : Path, full : bool, model : str | None = None, table_name : str 
         apply(data, SYXG50_BIG, 'table size limits (big layout)')
         text_virtual_size(data, BIG_CAVE_END)
         apply_voicemap(data)
-    apply_reset(data, full)
     apply_bitmaps(data, model)
+    apply_gui(data, full)
     apply_names(data, model, table_name)
     apply_version_date(data)
     if embed :

@@ -1,4 +1,4 @@
-# mkreset.py syxg50.dll reset.asm -> SYXG50_RESET list for dllpatch.py (pip: keystone-engine)
+# mkgui.py syxg50.dll gui.asm -> SYXG50_GUI list for dllpatch.py (pip: keystone-engine)
 import keystone, sys
 ks = keystone.Ks(keystone.KS_ARCH_X86, keystone.KS_MODE_32)
 B = 0x10000000; CAVE = 0x3FA80
@@ -12,8 +12,10 @@ def label(name) :
 def site(off, target, n) :
     c = bytes(ks.asm(f'jmp {target:#x}', B + off)[0]); assert len(c) <= n
     return off, d[off:off + n], c + b'\x90' * (n - len(c))
-sites = [site(0x010C0, label('proc_hook'), 7), site(0x010A0, label('procacc_hook'), 7), site(0x30AF0, label('dlg_hook'), 7)]
-print('SYXG50_RESET = [')
+sites = [site(0x010C0, label('proc_hook'), 7), site(0x010A0, label('procacc_hook'), 7), site(0x30AF0, label('dlg_hook'), 7),
+         site(0x3246B, label('lbd_hook'), 10), site(0x32427, label('lbu_hook'), 10), site(0x3233D, label('paint_hook'), 5),
+         site(0x320EE, label('idle_hook'), 7)]
+print('SYXG50_GUI = [')
 for off, old, new in sites : print(f"    (0x{off:05X}, '{old.hex(' ')}', '{new.hex(' ')}'),")
 print(f"    (0x{CAVE:05X}, ' '.join(['00'] * {len(code)}),\n              '{code.hex(' ')}'),")
-print(']'); print(f'RESET_CAVE_END = 0x{CAVE + len(code):05X}')
+print(']'); print(f'GUI_CAVE_END = 0x{CAVE + len(code):05X}')
