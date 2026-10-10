@@ -17,6 +17,8 @@
 # Every internal drum key with one of the two parameters != 0x40 becomes an ext drum voice with
 # one element that reproduces the internal drum playback of syxg50.dll (sample, pitch, cutoff,
 # resonance, amp EG, level, velocity curve, pan) plus the two velocity EGs.
+# The same ext drum voice, with a second identical element, gives keys the level boost that the
+# drum level byte cannot (drumtrim.py: keys at the top level step that measure too quiet).
 #
 # Pitch: for ext drum voices syxg50.dll tracks the key 0x40 + drum setup coarse tune, not the
 # played key. With note shift n the element plays wave slot n, so several drum samples share one
@@ -98,6 +100,17 @@ def amp_eg(d : bytes) -> tuple[int, int, int] | None :
     return attack, decay1, decay2
 
 
+# * level boost (drumtrim.py: keys that need more than the top drum level step, whose sample is
+# already at full scale): a second, identical element adds to the first one in phase. Measured on
+# the emulator (drum sweep, 84 boosted keys): gain = 20*log10(1 + BOOST_K * (level / 127)^2), so the
+# second element is BOOST_K louder than its level alone says (up to +8 dB at level 127).
+BOOST_K = 1.5
+
+def boost_level(db : float) -> int :
+    if db <= 0 : return 0
+    return max(1, min(127, round(127 * ((10 ** (db / 20) - 1) / BOOST_K) ** 0.5)))
+
+
 def make_element(wave_index : int, note : int, d : bytes, vp : VelPlan, eg : tuple[int, int, int]) -> bytes :
     e = bytearray(78)
     e[0] = wave_index
@@ -142,7 +155,8 @@ def Convert(table, extvoiceIDX, waveIDX, page : int, big : bool, free_multisampl
     for dv in table.DrumVoice_pool.values() :
         if dv.ext_Voice_address : continue
         vp, vl = getattr(dv, 'vel_pitch', 0x40), getattr(dv, 'vel_lpf', 0x40)
-        if vp == 0x40 and vl == 0x40 : continue
+        boost = 0 if getattr(dv, 'fast_decay', False) else boost_level(getattr(dv, 'level_boost', 0.0))
+        if vp == 0x40 and vl == 0x40 and not boost : continue
         d = bytes(dv.data)
         eg = amp_eg(d)
         if eg is None : skipped += 1; continue
@@ -154,7 +168,7 @@ def Convert(table, extvoiceIDX, waveIDX, page : int, big : bool, free_multisampl
         sample = dv.get_sample(table.Sample_pool)
         lead = getattr(sample, 'lead_in', 0)
         wkey = (sample.address_src, dv.offset_negative - lead, dv.offset_positive, q, total - 100 * q)
-        jobs.append((dv, d, p, eg, wkey, sample))
+        jobs.append((dv, d, p, eg, wkey, sample, boost))
     if not jobs : return
 
     # pack the waves. The drum setup coarse tune shifts the key the element tracks (syxg50.dll
@@ -168,7 +182,7 @@ def Convert(table, extvoiceIDX, waveIDX, page : int, big : bool, free_multisampl
     nblocks = 128 // B
     packs : list[dict] = []          # block -> (wkey, sample)
     where : dict = {}                # wkey -> (pack, centre note)
-    for dv, d, p, eg, wkey, sample in jobs :
+    for dv, d, p, eg, wkey, sample, boost in jobs :
         if wkey in where : continue
         q = wkey[3]
         ok = [j for j in range(nblocks) if 0 <= j * B + R - q <= 127]
@@ -208,19 +222,20 @@ def Convert(table, extvoiceIDX, waveIDX, page : int, big : bool, free_multisampl
         wavebanks.append(wb)
 
     voices : dict[bytes, Voice] = {}
-    for dv, d, p, eg, wkey, sample in jobs :
+    for dv, d, p, eg, wkey, sample, boost in jobs :
         pi, n = where[wkey]
         wb = wavebanks[pi]
         edata = make_element(getattr(wb, ('index', 'index1', 'index2')[page]) - 256 * page, n, d, p, eg)
-        voice = voices.get(edata)
+        edatas = [edata] + ([edata[:55] + bytes([boost]) + edata[56:]] if boost else [])
+        voice = voices.get(b''.join(edatas))
         if voice is None :
-            voice = Voice(f'drumvel_v{len(voices)}', 0x7F, 'DrumVel', [Element(wb.address_src, edata, MU.SYXG50, waveID=-1)], MU.SYXG50)
+            voice = Voice(f'drumvel_v{len(voices)}', 0x7F, 'DrumVel', [Element(wb.address_src, e, MU.SYXG50, waveID=-1) for e in edatas], MU.SYXG50)
             voice.converted = True
             voice.page = page
             voice.data = write_voice(voice)
             voice.extvoice_index = next(extvoiceIDX)
             table.Voice_pool[voice.address_src] = voice
-            voices[edata] = voice
+            voices[b''.join(edatas)] = voice
         dv.ext_Voice_address = voice.address_src
         dv.extvoice_index = voice.extvoice_index
         out = bytearray(d)
@@ -228,5 +243,6 @@ def Convert(table, extvoiceIDX, waveIDX, page : int, big : bool, free_multisampl
         out[18:30] = bytes(12)
         dv.data = bytes(out)
 
-    print(f'drum velocity: {len(jobs)} drum keys -> {len(voices)} ext drum voices, '
+    nb = sum(1 for j in jobs if j[6])
+    print(f'drum velocity: {len(jobs)} drum keys' + (f' ({nb} for a level boost)' if nb else '') + f' -> {len(voices)} ext drum voices, '
           f'{len(where)} waves in {len(packs)} multisamples (coarse tune range +-{R})' + (f', {skipped} kept internal (special attack)' if skipped else ''))
