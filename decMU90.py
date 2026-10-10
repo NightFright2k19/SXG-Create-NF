@@ -79,14 +79,34 @@ def HPF_Sample(sample : Sample, fc : float) -> Sample :
     s.address_src = sample.address_src + ((fc + 1) << HPF_KEY_SHIFT)
     return s
 
+# * static pitch EG: all five PEG levels equal (rates do not matter then) and no PEG velocity
+# sensitivity, so the element always plays this many semitones away from key + coarse tune.
+# Depth 0..3 = +-3 / 6 / 12 / 24 semitones at level 0 / 127 (measured in syxg50.dll: linear in
+# the level, 64 = 0). E.g. Parasite element 2: coarse tune -24, PEG depth 3, all levels 127 = +24.
+# Element layouts: MU128 / MU1000 (84 bytes) and MU90 / MU100 (70 bytes, see cnv_fromMU90).
+def Static_PEG_Semitones(element : bytes | bytearray) -> float :
+    if len(element) == 84 :
+        depth, vel_sens, levels = element[19], element[20], element[28 : 33]
+    elif len(element) == 70 :
+        depth, vel_sens, levels = element[9] >> 6, (element[10] >> 4) - 7 + 64, element[21 : 26]
+    else :
+        return 0.0
+    level = levels[0]
+    if vel_sens != 64 or any(l != level for l in levels) or level == 64 :
+        return 0.0
+    return 3 * 2 ** depth * (level - 64) / (63 if level > 64 else 64)
+
 def Apply_Element_HPF(wavebank : WaveBank, samples : dict[int, Sample], value : int,
                       element : bytes | bytearray) -> tuple[WaveBank, dict[int, Sample]] :
     import copy, math
     fc_out = Drum_HPF_Cutoff(value)
     # wave key ranges are in key + coarse tune (the DLL and the MU pick the wave by the transposed key,
-    # see elemreduce.merge_wavebanks), so the critical key and the pitch ratio are taken in that domain
-    critical = 69 + 12 * math.log2(3 * fc_out / 440)    # waves below: fundamental < 3 x cutoff
-    lo_k, hi_k = ELEMENT_HPF_KEYS
+    # see elemreduce.merge_wavebanks), so the critical key and the pitch ratio are taken in that domain.
+    # A static pitch EG moves the played pitch away from that key without changing the wave choice:
+    # Parasite (coarse -24, PEG +24) had its cutoff set two octaves too high, -13 dB at C4.
+    peg = Static_PEG_Semitones(element)
+    critical = 69 + 12 * math.log2(3 * fc_out / 440) - peg     # waves below: fundamental < 3 x cutoff
+    lo_k, hi_k = (round(k - peg) for k in ELEMENT_HPF_KEYS)     # played keys 24..108
     waves : list[Wave] = []
     out : dict[int, Sample] = {}
     for w in wavebank.waves :
@@ -102,7 +122,7 @@ def Apply_Element_HPF(wavebank : WaveBank, samples : dict[int, Sample], value : 
         if c <= b :
             pieces.append((c, b, c + 1))
         for i, (k0, k1, ref) in enumerate(pieces) :
-            ratio = 2 ** ((ref - w.tune_note) / 12)
+            ratio = 2 ** ((ref + peg - w.tune_note) / 12)
             s = HPF_Sample(samples[w.loop_address_src], fc_out / ratio)
             AddToSampleList(out, s)
             nw = copy.copy(w)
