@@ -1,5 +1,6 @@
 from decBase import *
 import elemreduce
+import drumtrim
 from decMU90 import MU90, MU90_Waverom, Make_Reversed, Apply_Drum_HPF, Apply_Element_HPF, ELEMENT_HPF_MIN
 
 # * Yamaha MU1000 (program v2.01, h/l flash pair) and MU128 (v2.00), 2026-10-01
@@ -264,8 +265,9 @@ class MU1000(MU90) :
         # * drum level +0.82 dB: in syxg50.dll every drum key plays 0.82 dB (median) below the S-MU2000 with the
         # same data, for all kits, levels, velocities and EG modes (drum sweep, 31 XG + 8 SFX kits, 2,453 keys;
         # melodic voices have no such offset). Level law 40*log10(level), so scale the level byte, clamped at 127.
+        # * plus the measured trim of this drum voice (frequency balance of syxg50.dll, see drumtrim.py)
         if drumvoice_data[2] :
-            drumvoice_data[2] = min(127, round(drumvoice_data[2] * DRUM_LEVEL_FACTOR))
+            drumvoice_data[2] = drumtrim.Trimmed_Level(min(127, round(drumvoice_data[2] * DRUM_LEVEL_FACTOR)), raw)
         drumvoice_data = bytes(drumvoice_data)
 
         ExtVoice_SeqID = int.from_bytes(raw[24 : 24+2], byteorder='big')
