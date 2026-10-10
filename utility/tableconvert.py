@@ -518,6 +518,7 @@ class fromMU90(TableConverter) :
                  (drum.data[15] >= 0x7E or (0x50 <= drum.data[15] and drum.data[14] < 0x40)) : 
                 new_data[13] = DRUM_ATTACK_NOHOLD
                 new_data[14] = new_data[15] = fast_decay2_rate(drum.data[14], drum.data[15])
+                drum.fast_decay = True     # drumvel.py: no level boost (its element EG differs here)
         
         # +16: external voice seqID MSB 
         # +17: external voice seqID LSB

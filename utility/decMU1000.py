@@ -266,8 +266,9 @@ class MU1000(MU90) :
         # same data, for all kits, levels, velocities and EG modes (drum sweep, 31 XG + 8 SFX kits, 2,453 keys;
         # melodic voices have no such offset). Level law 40*log10(level), so scale the level byte, clamped at 127.
         # * plus the measured trim of this drum voice (frequency balance of syxg50.dll, see drumtrim.py)
+        boost = 0.0
         if drumvoice_data[2] :
-            drumvoice_data[2] = drumtrim.Trimmed_Level(min(127, round(drumvoice_data[2] * DRUM_LEVEL_FACTOR)), raw)
+            drumvoice_data[2], boost = drumtrim.Trimmed_Level(min(127, round(drumvoice_data[2] * DRUM_LEVEL_FACTOR)), raw)
         drumvoice_data = bytes(drumvoice_data)
 
         ExtVoice_SeqID = int.from_bytes(raw[24 : 24+2], byteorder='big')
@@ -296,4 +297,5 @@ class MU1000(MU90) :
         drumvoice = DrumVoice(drumvoice_data, sample.address_src, voice_address,
                               offset_negative, offset_positive, format=MU.MU90, address_book=set(address_book))
         drumvoice.vel_pitch, drumvoice.vel_lpf = raw[21], raw[22]   # see drumvel.py
+        drumvoice.level_boost = boost if ExtVoice_SeqID == 0xFFFF else 0.0
         return voice_address, drumvoice, sample

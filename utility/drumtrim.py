@@ -14,7 +14,8 @@
 # syxg50.dll does not play the drum level byte on a smooth curve: it is quantized in steps of
 # 0.5-1 dB (DRUM_LEVEL_STEPS, measured on the emulator: levels 115-119 all play at -1.7 dB,
 # 120-124 at -0.8 dB, 125-127 at 0 dB). So the trimmed level is the byte whose step comes
-# closest to the measured level plus the trim. Boosts stop at the top step (125-127, 140 voices).
+# closest to the measured level plus the trim. Internal keys that still need more at the top step
+# (125-127) get a second element as an ext drum voice (drumvel.py, issue #4).
 
 # (lowest level byte of the step, dB relative to level 127), from the top
 DRUM_LEVEL_STEPS = ((125, 0.0), (120, -0.8), (115, -1.7), (110, -2.8), (106, -3.3), (101, -3.9), (97, -4.6), (92, -5.3),
@@ -28,14 +29,22 @@ DRUM_LEVEL_STEPS = ((125, 0.0), (120, -0.8), (115, -1.7), (110, -2.8), (106, -3.
 def Level_dB(level : int) -> float :
     return next(db for low, db in DRUM_LEVEL_STEPS if level >= low)
 
-def Trimmed_Level(level : int, raw : bytes | bytearray) -> int :
+# * keys at the top step that need more: they become ext drum voices (drumvel.py) with a second,
+# identical element that adds the missing gain
+BOOST_MIN_DB = 0.3
+
+def Trimmed_Level(level : int, raw : bytes | bytearray) -> tuple[int, float] :
+    # -> (level byte, boost in dB still missing at the top step)
     import zlib
     trim = TRIM_DB10.get(zlib.crc32(raw), 0) / 10
     if not trim or not level : 
-        return level
+        return level, 0.0
     target = Level_dB(level) + trim
     # nearest step; within it the byte closest to the old one
-    return min(range(1, 128), key=lambda b : (round(abs(Level_dB(b) - target), 2), abs(b - level)))
+    new = min(range(1, 128), key=lambda b : (round(abs(Level_dB(b) - target), 2), abs(b - level)))
+    boost = target - Level_dB(new)
+    return new, (boost if boost >= BOOST_MIN_DB and new >= DRUM_LEVEL_STEPS[0][0] else 0.0)
+
 
 TRIM_DB10 : dict[int, int] = {
     0x0047428A: -5, 0x00D1D15E: +3, 0x00EDB896: -3, 0x01157FA0: +2, 0x013B5F99: +10, 0x01E2509D: -6, 0x01E5B2FD: -7, 0x025D055C: +3,
