@@ -1,6 +1,10 @@
-import argparse # todo
+import sys
 from sys import argv
 from pathlib import Path
+
+# all modules except this one live in the 'utility' folder next to this script
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE / 'utility'))
 
 from dataCRCs import TableIn, ROMLIST
 from utils import calccrc32, Friendly_error
@@ -11,18 +15,20 @@ import convert
 import dllpatch
 
 # input: MU roms (in any order), optionally one syxg50.dll (any file name, recognised by its content).
-# ROMs are also searched in the folder 'roms' next to this script (subfolders included). When the ROM
+# ROMs are also searched in the folder 'source' next to this script (subfolders included). When the ROM
 # sets of several models are found, all of them are converted, each DLL named after its model
 # (syxg80.dll, syxg90.dll, syxg100.dll, syxg128.dll, syxg1000.dll; MU50: syxgmu50.dll).
 # The table layout follows the model: classic for MU50 / MU80 / MU90, big for MU100 / MU128 / MU1000.
-# With a DLL, a patched copy with the same name ("Enhanced" or "Full", see dllpatch.py) and a matching
-# <name>.ini are written next to the table.
+# With a DLL, a patched copy ("Enhanced" or "Full", see dllpatch.py) and a matching <name>.ini are
+# written next to the table. Everything is written to the folder 'output' next to this script.
 
 # * only one target for now
 BUILD_TARGET = MU.SYXG50
 
-# ROM files are also taken from a folder "roms" next to this script (subfolders included)
-ROMS_DIR = Path(__file__).resolve().parent / 'roms'
+# ROM files (and the original syxg50.dll) are taken from a folder "source" next to this script
+# (subfolders included); converted files go to "output"
+SOURCE_DIR = HERE / 'source'
+OUTPUT_DIR = HERE / 'output'
 ROM_MAX_SIZE = 64 << 20         # larger files can't be MU ROMs (skipped there, not CRC'd)
 
 def Print_Input_Roms() :
@@ -32,10 +38,10 @@ def Print_Input_Roms() :
             s = s + str(table_ref) + '\n'
     print(s)
 
-def Roms_Dir_Files() -> list[Path] :
-    if not ROMS_DIR.is_dir() :
+def Source_Dir_Files() -> list[Path] :
+    if not SOURCE_DIR.is_dir() :
         return []
-    return sorted(p for p in ROMS_DIR.rglob('*') if p.is_file() and p.stat().st_size <= ROM_MAX_SIZE)
+    return sorted(p for p in SOURCE_DIR.rglob('*') if p.is_file() and p.stat().st_size <= ROM_MAX_SIZE)
 
 def take_flag(args : list[str], flag : str) -> tuple[bool, list[str]] :
     found = flag in [a.lower() for a in args]
@@ -65,7 +71,7 @@ def main() :
     single_run = out_dir is not None
 
     # wildcards (*.bin): the Windows command line passes them unexpanded, so they are expanded here;
-    # a pattern without matches is skipped (the ROMs may all be in the roms folder)
+    # a pattern without matches is skipped (the ROMs may all be in the source folder)
     import glob
     expanded : list[str] = []
     for file in args : 
@@ -87,22 +93,22 @@ def main() :
             exit(1)
         files.append(Path(file))
 
-    # ROMs (and a DLL, if none was given) from the "roms" folder next to the script
-    from_roms_dir : set[Path] = set()
+    # ROMs (and a DLL, if none was given) from the "source" folder next to the script
+    from_source_dir : set[Path] = set()
     if not single_run :
         given = {f.resolve() for f in files}
-        extra = [p for p in Roms_Dir_Files() if p.resolve() not in given]
+        extra = [p for p in Source_Dir_Files() if p.resolve() not in given]
         if extra :
-            print(f'roms folder: {len(extra)} files in {ROMS_DIR}')
+            print(f'source folder: {len(extra)} files in {SOURCE_DIR}')
             files += extra
-            from_roms_dir = set(extra)
+            from_source_dir = set(extra)
 
     # a DLL among the inputs: patched and written next to the table
     dlls = [f for f in files if dllpatch.Is_Dll(f)]
     files = [f for f in files if f not in dlls]
-    # a DLL given on the command line wins over one in the roms folder
-    if any(d not in from_roms_dir for d in dlls) :
-        dlls = [d for d in dlls if d not in from_roms_dir]
+    # a DLL given on the command line wins over one in the source folder
+    if any(d not in from_source_dir for d in dlls) :
+        dlls = [d for d in dlls if d not in from_source_dir]
     # the <name>.orig.dll backup from an earlier run next to <name>.dll: use <name>.dll (patched from the backup)
     names = {(d.parent, d.name.lower()) for d in dlls}
     dlls = [d for d in dlls if not (d.name.lower().endswith('.orig.dll') and (d.parent, d.name[:-9].lower() + '.dll') in names)]
@@ -151,12 +157,11 @@ def main() :
     if not decodable :
         Friendly_error(f'ROM detected, but decode not supported for {found[0].name}!')
 
-    # output folder: next to a program ROM given on the command line; for ROMs from the roms folder
-    # next to the DLL (if any), else next to this script
+    # output folder: "output" next to this script (created if needed)
     def output_folder(paths_program : list[Path]) -> str :
         if out_dir is not None : return out_dir
-        if paths_program[0] not in from_roms_dir : return str(paths_program[0].parent)
-        return str(dll.parent if dll else Path(__file__).resolve().parent)
+        OUTPUT_DIR.mkdir(exist_ok=True)
+        return str(OUTPUT_DIR)
 
     if len(decodable) == 1 :
         table_type = decodable[0]
@@ -169,7 +174,7 @@ def main() :
 
     # * several models: each one is converted in a run of its own (a separate process, the converter keeps
     # per-model state in module globals); the DLLs and inis are named after the model (syxg80.dll ...)
-    import subprocess, sys, os
+    import subprocess, os
     print(f'{len(decodable)} models detected: {", ".join(t.name for t in decodable)}')
     results = []
     for table_type in decodable :

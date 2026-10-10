@@ -1,0 +1,2 @@
+Place your MU ROM files and the original syxg50.dll (626,688 bytes) here.
+Subfolders are searched as well. See README.md for the supported ROM sets.

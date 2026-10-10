@@ -89,7 +89,7 @@ def plan(vel_pitch : int, vel_lpf : int, cutoff : int) -> VelPlan :
 def amp_eg(d : bytes) -> tuple[int, int, int] | None :
     # internal drum amp EG of syxg50.dll (0x100123CB, XG mode) -> element rates (0x10012210)
     x = d[13]
-    if x >= 0x60 and d[14] == d[15] : x = 0x5E   # no-hold mode of an instant attack (cnv_fromMU90)
+    if x >= 0x60 and d[14] == d[15] : x = 0x5E   # no-hold mode of an instant attack (tableconvert.fromMU90)
     if x >= 0x60 : return None             # special attack mode, not reproducible with an element
     R = 2 * (x >> 1) + 0x21
     attack = 0x3F if R >= 0x7F else max(1, min(0x3E, (R + 1) // 2))

@@ -8,6 +8,7 @@ This document is the reference for the current state of SXG-Create: what changed
 
 - [Changes compared to the original SXG-Create](#changes-compared-to-the-original-sxg-create)
 - [Quick start](#quick-start)
+- [Folder layout](#folder-layout)
 - [Command line parameters](#command-line-parameters)
 - [Supported models and ROM sets](#supported-models-and-rom-sets)
 - [Output files and table layouts](#output-files-and-table-layouts)
@@ -80,56 +81,81 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 ### Usage and command line
 
 - **`--embed`:** table and wave data are stored inside the patched DLL (old `SXGBIN41.TBL` / `SXGWAVE4.TBL` removed), no ini needed.
-- **`roms` folder:** ROMs are also read from `roms` next to `main.py`, including subfolders.
+- **`source` folder:** ROMs and the original `syxg50.dll` are read from `source` next to `main.py`, including subfolders.
 - **Several models in one run:** all complete ROM sets found are converted, DLLs/inis named `syxg80.dll` ... `syxg1000.dll` (MU50: `syxgmu50.dll`); MU2000 is skipped when the MU1000 set is there.
 - **Wildcards** (`*.bin`) are expanded by the script; `SXG_NO_PAUSE=1` skips the final key press.
-- **Output folder** next to the program ROM, or next to the DLL / `main.py` for ROMs from the `roms` folder.
-- **Investigation tools** added: `analyze_drum_eg.py`, `analyze_voice_params.py`, `analyze_sample_flags.py`, `list_long_loops.py`.
+- **`output` folder:** all generated files are written to `output` next to `main.py`.
+- **Folder layout:** only `main.py` stays in the root; all modules are in `utility`, development tools in `utility/dev` (see [Folder layout](#folder-layout)). The table converters are merged into `tableconvert.py`, the table creation into `decBase.py`, the MU80 investigation tools into `utility/dev/analyze_mu80.py`.
+- **Autobuild releases:** every change to `main.py` or `utility` on `main` creates a versioned release (`autobuild-rN`) with just the files needed for a conversion.
 
 ---
 
 ## Quick start
 
+1. Download the latest **Autobuild** release (or clone the repository) and extract it.
+2. Put your MU ROM files and the original `syxg50.dll` (626,688 bytes) into the `source` folder. Subfolders are fine, e.g. one per model.
+3. Run:
+
 ```
-python main.py <ROM files...> [syxg50.dll] [--embed]
+python main.py [--embed]
 ```
 
-You can also drag & drop all files onto `main.py`.
+The converted files end up in the `output` folder.
 
-- **Inputs:** ROM files in any order. SXG-Create detects the model from the CRC32 of the files, so the file names don't matter.
-- **`roms` folder:** ROMs in a folder `roms` next to `main.py` (any subfolders) are used as well. Files larger than 64 MB in it are ignored.
-- **Optional DLL:** one `syxg50.dll` under any file name. SXG-Create writes a patched copy plus a matching `.ini` (or, with `--embed`, a DLL that contains the table).
-- **Output folder:** next to the (first) program ROM given on the command line. For ROMs from the `roms` folder: next to the DLL, or next to `main.py` when no DLL is given.
+- **Inputs:** ROM files in any order. SXG-Create detects the model from the CRC32 of the files, so the file names don't matter. Files larger than 64 MB in `source` are ignored.
+- **Command line:** ROM files and a DLL can also be given on the command line (or dropped onto `main.py`); they are used together with the contents of `source`.
+- **DLL:** one `syxg50.dll` under any file name. SXG-Create writes a patched copy plus a matching `.ini` (or, with `--embed`, a DLL that contains the table). Without a DLL, only the table and wave file are written.
+- **Output folder:** always `output` next to `main.py` (created if needed).
 - **Requirements:** Python 3.12 or newer. No extra packages.
 
 ### Example (MU1000)
 
 ```
-python main.py mu1000-v2.01-h.bin mu1000-v2.01-l.bin xv364a0.ic49 xv365a0.ic50 xw848a0.ic53 xw849a0.ic54 syxg50.dll
+source/mu1000-v2.01-h.bin  source/mu1000-v2.01-l.bin  source/xv364a0.ic49  source/xv365a0.ic50
+source/xw848a0.ic53  source/xw849a0.ic54  source/syxg50.dll
+
+python main.py
 ```
 
-This writes:
+This writes to `output`:
 
 ```
 SXGMU1KX.TBL     table
 SXGMU1KX.UPCM    wave data
-syxg50.dll       patched DLL ("Full"); the original is kept as syxg50.orig.dll
-syxg50.ini       SoftSynth=SXGMU1KX.TBL
+syxg1000.dll     patched DLL ("Full")
+syxg1000.ini     SoftSynth=SXGMU1KX.TBL
 ```
 
 Copy all four files into one folder.
 
-### Example (all models from the `roms` folder, embedded)
+### Example (all models, embedded)
 
 ```
-roms/mu50/...  roms/mu80/...  roms/mu90/...  roms/mu100/...  roms/mu128/...  roms/mu1000/...
+source/mu50/...  source/mu80/...  source/mu90/...  source/mu100/...  source/mu128/...  source/mu1000/...  source/syxg50.dll
 
-python main.py syxg50.dll --embed
+python main.py --embed
 ```
 
-This writes `syxgmu50.dll`, `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.dll` and `syxg1000.dll`, each a self-contained DLL with its table and wave data inside. The supplied `syxg50.dll` stays unchanged. At the end a summary lists each model as done or failed.
+This writes `syxgmu50.dll`, `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.dll` and `syxg1000.dll` to `output`, each a self-contained DLL with its table and wave data inside. The supplied `syxg50.dll` stays unchanged. At the end a summary lists each model as done or failed.
 
-> **zsh / bash:** an unquoted `*.bin` that matches nothing makes zsh stop with "no matches found" before Python starts. Leave the pattern out (the `roms` folder is searched anyway), quote it (`'*.bin'`) or use `roms/**/*.bin`.
+> **zsh / bash:** an unquoted `*.bin` that matches nothing makes zsh stop with "no matches found" before Python starts. Leave the pattern out (the `source` folder is searched anyway), quote it (`'*.bin'`) or use `source/**/*.bin`.
+
+---
+
+## Folder layout
+
+```
+main.py              the converter (run this)
+README.md, LICENSE
+source/              your ROM files and the original syxg50.dll (not part of the repository)
+output/              generated tables, wave files, patched DLLs and inis (created on the first run)
+utility/             the converter modules (decoders, table converters, table writer, sample conversion, DLL patcher)
+utility/bitmaps/     panel pictures for the patched DLLs
+utility/dev/         development tools, not needed for a conversion and not in the release archive
+.github/workflows/   autobuild release
+```
+
+**Autobuild:** every push to `main` that changes `main.py` or `utility` (except `utility/dev`) creates a pre-release `autobuild-rN` with `sxg_create_nf_autobuild_rN.zip`. It contains `main.py`, `README.md`, `LICENSE`, `source/place_roms_here.txt` and the `utility` modules and bitmaps. Older autobuilds are deleted. The workflow can also be started by hand (Actions, "Run workflow").
 
 ---
 
@@ -137,8 +163,8 @@ This writes `syxgmu50.dll`, `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.
 
 | Parameter | Meaning |
 |---|---|
-| `<ROM files>` | Program ROM(s) and wave ROMs of one or more models, in any order (see [Supported models](#supported-models-and-rom-sets)). Optional if the `roms` folder holds them. Wildcards are allowed. |
-| `<dll>` | Optional. A `syxg50.dll`, under any file name (`syxg50.dll`, `mu800.dll`, ...). It is recognised by its content, not its name. A DLL in the `roms` folder is used if none is given on the command line. See [DLL patching](#dll-patching). |
+| `<ROM files>` | Optional. Program ROM(s) and wave ROMs of one or more models, in any order (see [Supported models](#supported-models-and-rom-sets)), in addition to the `source` folder. Wildcards are allowed. |
+| `<dll>` | Optional. A `syxg50.dll`, under any file name (`syxg50.dll`, `mu800.dll`, ...). It is recognised by its content, not its name. A DLL in the `source` folder is used if none is given on the command line. See [DLL patching](#dll-patching). |
 | `--embed` | **New.** Puts table and wave file into the patched DLL as resources instead of writing them as files (see [Embedded tables](#embedded-tables---embed)). Needs a DLL. |
 
 The table layout and the DLL patch level are chosen automatically from the detected model. `--out-dir` and `--dll-name` exist as well, but only for the per-model runs that `main.py` starts itself in a multi-model conversion.
@@ -254,7 +280,7 @@ Any input file that starts with `MZ` is taken as the DLL and identified by its c
 - **Already-patched DLLs:** a DLL with the right size but an unknown CRC (one that already carries these patches) is accepted and checked patch by patch. Every patch must find either its original bytes or the patched bytes, otherwise the DLL is rejected. So a DLL patched by an older version gets the new patches on top.
 - **Other DLLs:** these are rejected, including `YMF-754Hi.dll`.
 - **5 MB version:** this one works too. Its embedded (classic) table is not used, because the ini names the external table; with `--embed` its tables are replaced.
-- **One DLL per run:** if both `<name>.dll` and its backup `<name>.orig.dll` are passed (e.g. by dropping a whole folder), `<name>.dll` is used. A DLL given on the command line wins over one in the `roms` folder.
+- **One DLL per run:** if both `<name>.dll` and its backup `<name>.orig.dll` are passed (e.g. by dropping a whole folder), `<name>.dll` is used. A DLL given on the command line wins over one in the `source` folder.
 
 ### Patch levels (chosen automatically)
 
@@ -297,7 +323,7 @@ Any input file that starts with `MZ` is taken as the DLL and identified by its c
 
 **Resources**
 
-- **Bitmaps:** bitmap 101 (the panel picture) becomes `bitmaps/Bitmap101_<model>.bmp` for MU80, MU90, MU100, MU128 and MU1000 (MU50 keeps the original), bitmap 105 becomes `bitmaps/Bitmap105.bmp` for every model. Keep the `bitmaps` folder next to the scripts. Replacement pictures must have the size of the original (400x90 and 110x13); any uncompressed 8-, 24- or 32-bit BMP works. They are stored as 24-bit DIBs in place.
+- **Bitmaps:** bitmap 101 (the panel picture) becomes `utility/bitmaps/Bitmap101_<model>.bmp` for MU80, MU90, MU100, MU128 and MU1000 (MU50 keeps the original), bitmap 105 becomes `utility/bitmaps/Bitmap105.bmp` for every model. Keep the `bitmaps` folder in `utility`. Replacement pictures must have the size of the original (400x90 and 110x13); any uncompressed 8-, 24- or 32-bit BMP works. They are stored as 24-bit DIBs in place.
 - **Names** (MU80 ... MU1000; MU50 keeps the S-YXG50 names, only its default table name is set): the About dialog and string table say S-YXG<n> instead of S-YXG50 (e.g. S-YXG1000), the internal name `xg50` becomes `mu<n>`, the default table name in the string table becomes the table just built, and the version info reads "Yamaha S-YXG<n> VSTi", "S-YXG<n>", "S-YXG<n>.DLL" and "Yamaha S-YXG<n> Portable VSTi". Hosts may list the plugin under its new name after a rescan.
 - **Version info** (all models): the file version `2016,4,25,18` becomes the conversion date (`YYYY,MM,DD,0`), the FileVersion string `2016.04.25.0018` becomes `YYYY.MM.DD`, and the copyright reads "... 2016 VEG, 2026 Soundshock/NightFright".
 
@@ -310,8 +336,8 @@ The S-YXG50 sound engine itself, including its MMX/SSE paths, is not changed bey
 - **`syxg50.dll` is never overwritten:** a DLL supplied as `syxg50.dll` (or `syxg50.orig.dll`) is written under the model's name: `syxgmu50.dll` (MU50, because `syxg50.dll` is the original's name), `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.dll` or `syxg1000.dll`, in single and multi-model runs, with and without `--embed`. The supplied `syxg50.dll` stays unchanged.
 - **Other names are kept:** e.g. `mu800.dll` gives a patched `mu800.dll`. A name without an extension gets `.dll` added.
 - **ini:** it gets the same name with `.ini` (`mu800.ini`). The DLL looks for the ini under its own name, so if you rename the DLL later, rename the ini as well.
-- **DLL with another name already in the output folder:** it is replaced by the patched version, and the original is kept once as `<name>.orig.dll`. Later runs patch from that backup, so switching between models (Enhanced <-> Full) always starts from the original.
-- **DLL in another folder:** it stays unchanged, and the patched copy is written to the output folder.
+- **DLL with another name already in the `output` folder:** it is replaced by the patched version, and the original is kept once as `<name>.orig.dll`. Later runs patch from that backup, so switching between models (Enhanced <-> Full) always starts from the original.
+- **DLL in another folder** (e.g. `source`): it stays unchanged, and the patched copy is written to `output`.
 
 ### The ini
 
@@ -483,7 +509,7 @@ The voices with stereo pairs measure about 2-3 dB louder in a mono recording, be
 - **MU50 against the S-YXG50's own table** (`SXGBIN41.TBL`, Yamaha's port of the MU50 sound set): the converted voice and drum parameters are identical for all 438 XG voices and 303 drum keys. The wave tuning matches within 1-2 cents (the S-YXG50 table writes some fine tunes from the next note down, e.g. note 50 / +52 cents instead of note 49 / +209, measured as the same pitch in the DLL). Rendered in the DLL, 80 % of 1,313 notes are within 0.1 dB of the original S-YXG50, and 3 are more than 3 dB apart.
 - **MU80:** its voices are revoiced against the MU50 (scattered differences, no systematic offset), so the S-YXG50 table is no reference there.
 - **MU90 / MU100 / MU128 / MU1000:** all XG voices were rendered (keys 36/60/84) and compared where two models share a voice (same bank, program and name): MU128 vs MU1000 1,014 voices, MU100 vs MU128 939, MU90 vs MU100 505. The converted voice data of MU128 and MU1000 is identical for all shared voices; MU100 differs in 4 (Whistle, Ocarina, DrawOrg2, Dim&Cool: different ROM data). After the MU100 element HPF fix, every remaining level difference above 2 dB was traced to identical data played after a different preceding voice (LFO phase), not to the conversion. No clipping voices; the only silent one (Lite Org) led to the rising decay 2 fix.
-- **Builds:** the multi-model run with `--embed` (MU90, MU100, MU128, MU1000 from the `roms` folder) and the MU50, MU80 and MU90B sets convert without errors. Rebuilds after each change were compared byte by byte against the previous build, so that only the intended bytes changed.
+- **Builds:** the multi-model run with `--embed` (MU90, MU100, MU128, MU1000 from the `source` folder) and the MU50, MU80 and MU90B sets convert without errors. Rebuilds after each change were compared byte by byte against the previous build, so that only the intended bytes changed.
 
 ---
 
@@ -522,18 +548,20 @@ These are limits of the S-YXG50 engine, or changes that were tried and rejected 
 
 ## Investigation tools
 
-Optional, not needed for conversion.
+Optional, not needed for conversion, in `utility/dev` (not in the release archive).
 
-| Script | Purpose |
+`python utility/dev/analyze_mu80.py <tool> <files...>`
+
+| Tool | Purpose |
 |---|---|
-| `analyze_drum_eg.py` | compares MU80 drum voices with the S-YXG50 drum voices of the same kit and key (drum EG calibration), writes `drum_eg_compare.csv` |
-| `analyze_voice_params.py` | compares converted MU80 voice elements byte by byte with the S-YXG50 voices in the same slot, writes `voice_param_compare.csv` |
-| `analyze_sample_flags.py` | collects evidence on bit 6 of the MU80 sample format byte, writes `sample_flags.csv` |
-| `list_long_loops.py` | lists MU80 voices with loops longer than 65,535 samples |
+| `drum-eg` | compares MU80 drum voices with the S-YXG50 drum voices of the same kit and key (drum EG calibration), writes `drum_eg_compare.csv` |
+| `voice-params` | compares converted MU80 voice elements byte by byte with the S-YXG50 voices in the same slot, writes `voice_param_compare.csv` |
+| `sample-flags` | collects evidence on bit 6 of the MU80 sample format byte, writes `sample_flags.csv` |
+| `long-loops` | lists MU80 voices with loops longer than 65,535 samples |
 
-Usage is described at the top of each script. Most take the MU80 ROMs plus the 5 MB `syxg50.dll` (or `SXGBIN41.TBL` + `SXGWAVE4.TBL`).
+Usage is described at the top of each section. Most take the MU80 ROMs plus the 5 MB `syxg50.dll` (or `SXGBIN41.TBL` + `SXGWAVE4.TBL`). `utility/dev/voicemap` holds the assembler sources of the voice map patch (`vmap2.asm`) and the scripts that turn them into patch bytes.
 
-New modules used by the conversion: `elemreduce.py` (voices with 3/4 elements, EG baking) and `drumvel.py` (drum velocity sensitivity). The folder `bitmaps` holds the panel pictures for the DLL.
+Modules used by the conversion (in `utility`): decoders `decBase.py` (incl. table creation), `decMU50.py` ... `decMU1000.py`, `decSYXG50.py`; table converters `tableconvert.py`; table writer `makeSYXG50.py`; samples `SampleConvert.py`; `elemreduce.py` (voices with 3/4 elements, EG baking), `drumvel.py` (drum velocity sensitivity), `dllpatch.py` (DLL patcher), `convert.py`, `dataCRCs.py`, `dataenum.py`, `table.py`, `utils.py`, `buildtarget.py`. The folder `utility/bitmaps` holds the panel pictures for the DLL.
 
 ---
 

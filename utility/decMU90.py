@@ -83,7 +83,7 @@ def HPF_Sample(sample : Sample, fc : float) -> Sample :
 # sensitivity, so the element always plays this many semitones away from key + coarse tune.
 # Depth 0..3 = +-3 / 6 / 12 / 24 semitones at level 0 / 127 (measured in syxg50.dll: linear in
 # the level, 64 = 0). E.g. Parasite element 2: coarse tune -24, PEG depth 3, all levels 127 = +24.
-# Element layouts: MU128 / MU1000 (84 bytes) and MU90 / MU100 (70 bytes, see cnv_fromMU90).
+# Element layouts: MU128 / MU1000 (84 bytes) and MU90 / MU100 (70 bytes, see tableconvert.fromMU90).
 def Static_PEG_Semitones(element : bytes | bytearray) -> float :
     if len(element) == 84 :
         depth, vel_sens, levels = element[19], element[20], element[28 : 33]

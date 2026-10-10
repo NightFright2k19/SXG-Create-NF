@@ -4,24 +4,20 @@ from dataenum import *
 
 
 # contains decoding information, makes table object
-import decode 
+import decBase
 import decMU80 
 import decMU50
 import decSYXG50 
 import decMU90 
 import decMU100
 import decMU1000
-import cnv_fromMU1000
 from decBase import PrintTableInfo
 
 # makes S-YXG50 using table object
 import makeSYXG50 
 
 # converts tables (used by makeSYXG50)
-import cnv_fromMU50 
-import cnv_fromMU80
-import cnv_fromMU90
-import cnv_fromSYXG50
+import tableconvert
 
 from utils import WriteBytesToFile, WriteTXT, FileExists, Dejumble, Friendly_error
 
@@ -49,7 +45,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             new_waverom_name='SXGMU80a1.UPCM' # 15 bytes max
   
             table_decoder = decMU80.MU80.From_Bytes(Dejumble(open( program_roms[0], mode='rb').read() ) )
-            table_converter=cnv_fromMU80.fromMU80(MU.MU80)
+            table_converter=tableconvert.fromMU80(MU.MU80)
             
             for path in wave_roms : 
                 in_wave_bytes = in_wave_bytes + bytes(open(path, mode='rb').read() )
@@ -62,7 +58,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             new_waverom_name='SXGMU50a1.UPCM'
     
             table_decoder = decMU50.MU50.From_Bytes(Dejumble(open( program_roms[0], mode='rb').read() ) )
-            table_converter=cnv_fromMU50.fromMU50(MU.MU50)
+            table_converter=tableconvert.fromMU50(MU.MU50)
             for path in wave_roms : 
                 in_wave_bytes = in_wave_bytes + bytes(open(path, mode='rb').read() )
  
@@ -73,7 +69,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             new_waverom_name='SYXGTESTa1.UPCM'
 
             table_decoder = decSYXG50.SYXG50.From_Bytes(open( program_roms[0], mode='rb').read() )
-            table_converter=cnv_fromSYXG50.fromSYXG50(MU.SYXG50)
+            table_converter=tableconvert.fromSYXG50(MU.SYXG50)
             for path in wave_roms : 
                 in_wave_bytes = in_wave_bytes + bytes(open(path, mode='rb').read() )
                      
@@ -90,7 +86,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             new_waverom_name='SXGMU90.UPCM'
 
             table_decoder = decMU90.MU90.From_Bytes(Dejumble(open( program_roms[0], mode='rb').read() ) )
-            table_converter=cnv_fromMU90.fromMU90(MU.MU90)
+            table_converter=tableconvert.fromMU90(MU.MU90)
 
             # * the two wave ROMs are the two halves of a 32-bit bus (see decMU90.MU90_Waverom)
             assert len(wave_roms) == 2
@@ -110,7 +106,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             prg100 = Dejumble(open( program_roms[0], mode='rb').read() )
             table_decoder = decMU100.MU100.From_Bytes(prg100, False)
             alt_decoder = decMU100.MU100.From_Bytes(prg100, True)
-            table_converter=cnv_fromMU90.fromMU90(MU.MU90)
+            table_converter=tableconvert.fromMU90(MU.MU90)
             assert len(wave_roms) == 6
             rd = lambda p : open(p, mode='rb').read()
             in_wave_bytes = decMU100.MU100_Waverom([(rd(wave_roms[0]), rd(wave_roms[1])), 
@@ -135,7 +131,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             prg = decMU1000.MU1000_Program(open(program_roms[0], mode='rb').read(), open(program_roms[1], mode='rb').read())
             table_decoder = decMU1000.MU1000.From_Bytes(Dejumble(prg), model, False)
             alt_decoder = decMU1000.MU1000.From_Bytes(Dejumble(prg), model, True)
-            table_converter = cnv_fromMU1000.fromMU1000(MU.MU90)
+            table_converter = tableconvert.fromMU1000(MU.MU90)
             assert len(wave_roms) == 4
             rd = lambda p : open(p, mode='rb').read()
             in_wave_bytes = decMU1000.MU1000_Waverom([(rd(wave_roms[0]), rd(wave_roms[1])), 
@@ -159,12 +155,12 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
         new_waverom_name = f'{stem}X.UPCM'
 
     table_decoder.waverom = in_wave_bytes     # source samples, for loudness estimates (elemreduce)
-    table = decode.Create_Table(table_decoder, mu_src, table_decoder.data, wave_roms)
+    table = decBase.Create_Table(table_decoder, mu_src, table_decoder.data, wave_roms)
     alt_table = None
     if alt_decoder is not None : 
         # second voice map (MU Basic): same ROM, its voices / banks / rows are merged in (makeSYXG50.Merge_Alt_Table)
         alt_decoder.waverom = in_wave_bytes
-        alt_table = decode.Create_Table(alt_decoder, mu_src, alt_decoder.data, wave_roms)
+        alt_table = decBase.Create_Table(alt_decoder, mu_src, alt_decoder.data, wave_roms)
     PrintTableInfo(table)
     hpf = [s for s in table.Sample_pool.values() if getattr(s, 'hpf_fc', 0)]
     if hpf : 
