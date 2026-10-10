@@ -141,7 +141,7 @@ jobs:
             **INSTRUCTIONS**
             - Extract the archive. Keep `main.py` next to the folders `source` and `utility`.
             - Place your MU ROM files and the original `syxg50.dll` (626,688 bytes) in `source` (subfolders are fine).
-            - Run the script (Python 3.12 or newer, no extra packages): **python main.py**
+            - Run the script (Python 3.12 or newer, no extra packages): **python main.py --embed**
             - The converted files (table, wave file, patched DLL and ini) end up in a new folder named `output`.
             - See README.md for details.
 
