@@ -1,7 +1,7 @@
 from typing import Generator
 
 from table import *
-from cnv_fromBASE import TableConverter, ToBigDrumVoice
+from tableconvert import TableConverter, ToBigDrumVoice
 import SampleConvert
 
 import decSYXG50

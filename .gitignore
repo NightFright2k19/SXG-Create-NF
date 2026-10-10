@@ -1,1 +1,4 @@
-/__pycache__
+__pycache__/
+output/
+source/*
+!source/place_roms_here.txt

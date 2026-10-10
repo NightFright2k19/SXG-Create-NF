@@ -1,0 +1,178 @@
+name: SXG-Create-NF Autobuild
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'main.py'
+      - 'utility/**'
+      - '!utility/dev/**'
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sxg-create-nf-autobuild
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Create release archive
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check Python syntax
+        run: python3 -m py_compile main.py utility/*.py
+
+      - name: Determine next release number
+        id: version
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              { owner, repo, per_page: 100 }
+            );
+
+            let maxRevision = 0;
+            for (const release of releases) {
+              const match = release.tag_name.match(/^autobuild-r(\d+)$/);
+              if (match) {
+                maxRevision = Math.max(maxRevision, parseInt(match[1], 10));
+              }
+            }
+
+            const nextRevision = maxRevision + 1;
+            core.setOutput('revision', nextRevision);
+            core.setOutput('tag', `autobuild-r${nextRevision}`);
+            core.setOutput('zip', `sxg_create_nf_autobuild_r${nextRevision}.zip`);
+
+            console.log(`Latest autobuild: r${maxRevision}`);
+            console.log(`Next autobuild: r${nextRevision}`);
+
+      - name: Prepare release package
+        env:
+          ZIP_NAME: ${{ steps.version.outputs.zip }}
+        run: |
+          set -euo pipefail
+
+          PACKAGE_DIR="$GITHUB_WORKSPACE/package"
+          rm -rf "$PACKAGE_DIR" "$ZIP_NAME"
+          mkdir -p "$PACKAGE_DIR/source" "$PACKAGE_DIR/utility/bitmaps"
+
+          # files in the ZIP root, next to the main script
+          for file in main.py README.md LICENSE; do
+            if [ ! -f "$file" ]; then
+              echo "ERROR: Required file '$file' was not found."
+              exit 1
+            fi
+            cp "$file" "$PACKAGE_DIR/"
+          done
+
+          # ROM / DLL placeholder
+          cp source/place_roms_here.txt "$PACKAGE_DIR/source/"
+
+          # converter modules and DLL bitmaps (utility/dev is for development only)
+          shopt -s nullglob
+          modules=(utility/*.py)
+          bitmaps=(utility/bitmaps/*.bmp)
+          if [ ${#modules[@]} -eq 0 ] || [ ${#bitmaps[@]} -eq 0 ]; then
+            echo "ERROR: utility modules or bitmaps missing."
+            exit 1
+          fi
+          cp "${modules[@]}" "$PACKAGE_DIR/utility/"
+          cp "${bitmaps[@]}" "$PACKAGE_DIR/utility/bitmaps/"
+
+          echo "Package contents:"
+          find "$PACKAGE_DIR" -type f -printf '%P\n' | sort
+
+          (cd "$PACKAGE_DIR" && zip -9 -r -X "../$ZIP_NAME" .)
+          ls -lh "$ZIP_NAME"
+
+      - name: Verify ZIP contents
+        env:
+          ZIP_NAME: ${{ steps.version.outputs.zip }}
+        run: |
+          set -euo pipefail
+
+          actual_files="$(unzip -Z1 "$ZIP_NAME" | awk '!/\/$/ { print }' | sort)"
+          printf '%s\n' "$actual_files"
+
+          unexpected_files="$(
+            printf '%s\n' "$actual_files" \
+              | grep -Ev '^(main\.py|README\.md|LICENSE|source/place_roms_here\.txt|utility/[^/]+\.py|utility/bitmaps/[^/]+\.bmp)$' \
+              || true
+          )"
+          if [ -n "$unexpected_files" ]; then
+            echo "ERROR: Unexpected files found in ZIP:"
+            printf '%s\n' "$unexpected_files"
+            exit 1
+          fi
+
+          # the package must import cleanly on its own
+          mkdir -p check && cd check && unzip -q "../$ZIP_NAME"
+          python3 -c "import sys; sys.path.insert(0, 'utility'); import convert, dllpatch, dataCRCs"
+          echo "ZIP contents verified successfully."
+
+      - name: Create GitHub release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.version.outputs.tag }}
+          name: Autobuild r${{ steps.version.outputs.revision }}
+          prerelease: true
+          artifacts: ${{ steps.version.outputs.zip }}
+          artifactErrorsFailBuild: true
+          body: |
+            This automated release contains the latest files to convert **Yamaha MU** ROMs into tables and patched DLLs for the **S-YXG50** soft synth.
+
+            **SUPPORTED MODELS**
+            - MU50, MU80, MU90 / MU90B, MU100 / MU100B, MU128, MU1000 (MU2000: uses the MU1000 set)
+
+            **INSTRUCTIONS**
+            - Extract the archive. Keep `main.py` next to the folders `source` and `utility`.
+            - Place your MU ROM files and the original `syxg50.dll` (626,688 bytes) in `source` (subfolders are fine).
+            - Run the script (Python 3.12 or newer, no extra packages): **python main.py**
+            - The converted files (table, wave file, patched DLL and ini) end up in a new folder named `output`.
+            - See README.md for details.
+
+      - name: Delete previous Autobuild releases and tags
+        uses: actions/github-script@v8
+        env:
+          CURRENT_REVISION: ${{ steps.version.outputs.revision }}
+          CURRENT_TAG: ${{ steps.version.outputs.tag }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const currentRevision = parseInt(process.env.CURRENT_REVISION, 10);
+            const currentTag = process.env.CURRENT_TAG;
+
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              { owner, repo, per_page: 100 }
+            );
+
+            for (const release of releases) {
+              const match = release.tag_name.match(/^autobuild-r(\d+)$/);
+              if (!match || release.tag_name === currentTag) continue;
+              if (parseInt(match[1], 10) >= currentRevision) continue;
+
+              console.log(`Deleting old Autobuild release ${release.tag_name}.`);
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
+
+              try {
+                await github.rest.git.deleteRef({ owner, repo, ref: `tags/${release.tag_name}` });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
