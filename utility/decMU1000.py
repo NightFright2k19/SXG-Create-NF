@@ -248,6 +248,7 @@ class MU1000(MU90) :
         levels, boost = voicetrim.Trim_Levels(raw, [el.data[57] for el in elements])
         for el, lvl in zip(elements, levels) : 
             el.data[57] = lvl
+            voicetrim.Key_Trim(raw, el.data)
         if boost : 
             for el in elements : 
                 wb, new_samples = elemreduce.gain_wavebank(wavebanks[el.wavebank_address], samples, boost)

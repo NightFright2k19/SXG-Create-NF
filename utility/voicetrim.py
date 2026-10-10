@@ -103,3 +103,40 @@ def Trim_Levels(raw : bytes | bytearray, levels : list[int]) -> tuple[list[int],
     top = max(levels)
     missing = -trim - 40 * math.log10(max(new) / top)
     return new, round(missing, 1) if missing >= 0.3 else 0.0
+
+
+# * key-dependent part (issue #6): voices whose deviation runs smoothly over the keyboard (measured every
+# 6 keys from 24 to 102, after the trims above) get it corrected through the element level key scaling.
+# Fitted piecewise linear at KEY_TRIM_KEYS; only voices where the fit removes at least 1 dB rms and 40 %
+# of the deviation are listed. Jagged curves (element pairs on the same wave, e.g. StBrtPno, NylnGtDt:
+# the two copies add up differently from note to note) cannot be fixed this way.
+# The new key scaling keeps the element's own curve (elemreduce.effective_level) and multiplies the
+# correction in, with its breakpoints at KEY_TRIM_KEYS.
+#
+# key as above, value: deviation in 0.1 dB at KEY_TRIM_KEYS (S-YXG minus S-MU2000)
+KEY_TRIM_KEYS = (30, 54, 78, 102)
+KEY_TRIM_DB10 = {
+    0x6594c392 : (  51,  -16,   -1,   12),   # AsprateD
+    0x21555869 : (  24,  -12,  -20,  -39),   # ChoEP K
+    0x812ffc26 : (  41,    8,   -2,    5),   # DimChors
+    0xa97b7320 : ( -35,  -25,  -10,   18),   # DstCutNz
+    0x50878d88 : ( -86,  -12,   -3,   -7),   # Frost
+    0xcfcdedc5 : (  -6,    1,  -19,  -44),   # HeinzUni
+    0xa183fc1e : ( -32,   -5,    9,    6),   # Insects
+    0xa44571d7 : (  19,  -35,  -35,    5),   # MuteStlG
+    0x99787da3 : (   5,  -58,   11,   -5),   # SlapBa2#
+    0x1f2a176e : (  17,   -7,  -37,  -48),   # Trcrtps
+    0x9e35ea84 : (  43,   -4,  -12,    3),   # WrnchDbl
+}
+
+def Key_Trim(raw : bytes | bytearray, edata : bytearray) -> None :
+    import elemreduce
+    dev = KEY_TRIM_DB10.get(zlib.crc32(raw))
+    if dev is None or not edata[57] : 
+        return
+    offs = []
+    for key, d in zip(KEY_TRIM_KEYS, dev) : 
+        eff = min(145.0, elemreduce.effective_level(edata, key) * 10 ** (-d / 10 / 40))
+        offs.append(max(0, min(127, round((eff - edata[57]) / elemreduce.KS_LEVEL_STEPS) + 64)))
+    edata[58:62] = bytes(KEY_TRIM_KEYS)
+    edata[62:66] = bytes(offs)
