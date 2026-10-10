@@ -268,6 +268,33 @@ def apply_voicemap(data : bytearray) :
     old = resource_data(data, entry); new = add_voicemap_checkbox(old)
     if new != old : replace_resource_data(data, entry, new)
 
+# * Settings page (dialog 111, all models):
+#   - the effect switches name their controller: "Reverb (CC 91)", "Chorus (CC 93)", "Variation (CC 94)"
+#     (wider, spread over the "Effects" frame)
+#   - "Reset" drop-down (combo box id 0x421, GS / XG, default GS): picking an entry sends that reset, GS reset
+#     F0 41 10 42 12 40 00 7F 00 41 F7 or XG System On F0 43 10 4C 00 00 7E 00 F7. MU50 / MU80 / MU90: in the
+#     place of the voice map switch of the big models; MU100 / MU128 / MU1000: right of "MU Basic voice map".
+#     The page (0x10030AF0) fills the list on WM_INITDIALOG and on CBN_SELENDOK marks the reset as pending
+#     (.data 0x10056E40, selection kept in 0x10056E41). The process / processReplacing wrappers (0x100010A0 /
+#     0x100010C0, audio thread) send a pending reset through the SysEx entry of the engine (the same path as
+#     a SysEx event from the host) before the block is rendered. Generated from dev/gui/reset.asm with
+#     dev/gui/mkreset.py (keystone), position independent.
+SYXG50_RESET = [
+    (0x010C0, '8b 44 24 04 8b 48 40', 'e9 bb e9 03 00 90 90'),
+    (0x010A0, '8b 44 24 04 8b 48 40', 'e9 ec e9 03 00 90 90'),
+    (0x30AF0, '8b 44 24 0c 83 c0 b2', 'e9 fd ef 00 00 90 90'),
+    (0x3FA80, ' '.join(['00'] * 361),
+              'e8 1d 00 00 00 8b 44 24 04 8b 48 40 e9 36 16 fc ff e8 0c 00 00 00 8b 44 24 04 8b 48 40 e9 05 16 fc ff 60 e8 00 00 00 00 5d 81 ed a8 fa 03 10 0f b6 85 40 6e 05 10 85 c0 74 36 c6 85 40 6e 05 10 00 8b 54 24 28 8b 4a 40 8b 89 b0 00 00 00 85 c9 74 1e 83 f8 01 75 0a 8d b5 cf fb 03 10 6a 0b eb 08 8d b5 da fb 03 10 6a 09 56 51 8b 11 ff 52 0c 61 c3 8b 44 24 0c 3d 10 01 00 00 74 67 3d 11 01 00 00 0f 85 bf 00 00 00 66 81 7c 24 10 21 04 0f 85 b2 00 00 00 66 83 7c 24 12 09 75 3f 60 e8 00 00 00 00 5d 81 ed 23 fb 03 10 68 21 04 00 00 ff 74 24 2c ff 95 78 01 04 10 6a 00 6a 00 68 47 01 00 00 50 ff 95 74 01 04 10 83 f8 01 77 0d 88 85 41 6e 05 10 40 88 85 40 6e 05 10 61 b8 01 00 00 00 c2 14 00 60 e8 00 00 00 00 5d 81 ed 6a fb 03 10 68 21 04 00 00 ff 74 24 2c ff 95 78 01 04 10 89 c3 8d 85 e3 fb 03 10 50 6a 00 68 43 01 00 00 53 ff 95 74 01 04 10 8d 85 e6 fb 03 10 50 6a 00 68 43 01 00 00 53 ff 95 74 01 04 10 6a 00 0f b6 85 41 6e 05 10 50 68 4e 01 00 00 53 ff 95 74 01 04 10 61 8b 44 24 0c 83 c0 b2 e9 28 0f ff ff f0 41 10 42 12 40 00 7f 00 41 f7 f0 43 10 4c 00 00 7e 00 f7 47 53 00 58 47 00'),
+]
+RESET_CAVE_END = 0x3FBE9
+RESET_DATA_END = 0x56E48
+RESET_CONTROL_ID = 0x421
+EFFECT_SWITCHES = {      # id: (text, x, width); y = 80, height 10 as before
+    0x3FB : ('Reverb (CC 91)', 12, 66),
+    0x3FC : ('Chorus (CC 93)', 84, 66),
+    0x3FD : ('Variation (CC 94)', 156, 72),
+}
+
 KNOWN = {
     # CRC32 of the original file -> (kind, description)
     '38A60E61' : ('syxg50', 'syxg50.dll, external tables (626,688 bytes)'),
@@ -544,6 +571,70 @@ def edit_dialog(raw : bytes, fn) -> bytes :
         out += raw[p : p + 2 + n]; p += 2 + n
     return bytes(out)
 
+# --- RT_DIALOG items: parsed into dicts and written back (DLGTEMPLATEEX)
+def dialog_items(raw : bytes) -> tuple[bytes, list[dict]] :
+    # -> (header incl. title / font, items); item: style, exstyle, help, x, y, cx, cy, id, cls, text, extra (raw)
+    if struct.unpack_from('<HH', raw, 0) != (1, 0xFFFF) : raise DllPatchError('dialog is not a DLGTEMPLATEEX')
+    p = 26
+    def sz_or_ord() :
+        nonlocal p
+        w = struct.unpack_from('<H', raw, p)[0]
+        if w == 0xFFFF : r = struct.unpack_from('<H', raw, p + 2)[0]; p += 4; return r
+        end = p
+        while struct.unpack_from('<H', raw, end)[0] : end += 2
+        txt = raw[p : end].decode('utf-16le'); p = end + 2
+        return txt
+    sz_or_ord(); sz_or_ord(); sz_or_ord()
+    if struct.unpack_from('<I', raw, 12)[0] & 0x40 : p += 6; sz_or_ord()
+    head = raw[:p]; items = []
+    for _ in range(struct.unpack_from('<H', raw, 16)[0]) :
+        p = (p + 3) & ~3
+        hid, ex, style, x, y, cx, cy, cid = struct.unpack_from('<IIIhhhhI', raw, p); p += 24
+        cls = sz_or_ord(); text = sz_or_ord()
+        n = struct.unpack_from('<H', raw, p)[0]; extra = raw[p + 2 : p + 2 + n]; p += 2 + n
+        items.append(dict(help = hid, exstyle = ex, style = style, x = x, y = y, cx = cx, cy = cy, id = cid,
+                          cls = cls, text = text, extra = extra))
+    return head, items
+
+def build_dialog(head : bytes, items : list[dict]) -> bytes :
+    out = bytearray(head)
+    struct.pack_into('<H', out, 16, len(items))
+    def sz_or_ord(v) :
+        return struct.pack('<HH', 0xFFFF, v) if isinstance(v, int) else v.encode('utf-16le') + b'\0\0'
+    for it in items :
+        while len(out) % 4 : out.append(0)
+        out += struct.pack('<IIIhhhhI', it['help'], it['exstyle'], it['style'], it['x'], it['y'], it['cx'], it['cy'], it['id'])
+        out += sz_or_ord(it['cls']) + sz_or_ord(it['text']) + struct.pack('<H', len(it['extra'])) + it['extra']
+    return bytes(out)
+
+def edit_settings_page(raw : bytes, full : bool) -> bytes :
+    # dialog 111: effect switch names, "Reset" label + drop-down (see SYXG50_RESET)
+    head, items = dialog_items(raw)
+    ids = [it['id'] for it in items]
+    for it in items :
+        if it['id'] in EFFECT_SWITCHES :
+            it['text'], it['x'], it['cx'] = EFFECT_SWITCHES[it['id']]
+        if it['id'] == VMAP_CONTROL_ID :
+            it['cx'] = 80                       # room for the Reset drop-down on its right
+    if RESET_CONTROL_ID not in ids :
+        x = 98 if full else 10
+        label = dict(help = 0, exstyle = 0, style = 0x50020000, x = x, y = 143, cx = 24, cy = 10, id = 0xFFFFFFFF,
+                     cls = 0x82, text = 'Reset', extra = b'')
+        combo = dict(help = 0, exstyle = 0, style = 0x50210003, x = x + 24, y = 141, cx = 36, cy = 40,
+                     id = RESET_CONTROL_ID, cls = 0x85, text = '', extra = b'')
+        items += [label, combo]
+    return build_dialog(head, items)
+
+def apply_reset(data : bytearray, full : bool) :
+    apply(data, SYXG50_RESET, 'Settings page: GS / XG reset drop-down')
+    text_virtual_size(data, RESET_CAVE_END)
+    data_virtual_size(data, RESET_DATA_END)
+    entry = resource_entries(data, RT_DIALOG).get(111)
+    if entry is None : raise DllPatchError('dialog 111 not found in the DLL')
+    old = resource_data(data, entry); new = edit_settings_page(old, full)
+    if new != old : replace_resource_data(data, entry, new)
+    print('  Settings page: effect switches named with their CC numbers')
+
 # --- RT_VERSION: VS_VERSIONINFO tree
 def _vi_parse(raw, p) :
     length, vlen, vtype = struct.unpack_from('<HHH', raw, p)
@@ -805,6 +896,7 @@ def Patch(path : Path, full : bool, model : str | None = None, table_name : str 
         apply(data, SYXG50_BIG, 'table size limits (big layout)')
         text_virtual_size(data, BIG_CAVE_END)
         apply_voicemap(data)
+    apply_reset(data, full)
     apply_bitmaps(data, model)
     apply_names(data, model, table_name)
     apply_version_date(data)
