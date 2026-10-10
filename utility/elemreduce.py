@@ -449,3 +449,21 @@ def Env_Sample(sample, wave, gain_db : list, loop_db, ratio : float) :
         s.offset_negative, s.offset_positive = wave.offset_negative + k * wave.offset_positive, wave.offset_positive
     s.address_src = sample.address_src + (_env_ids[key] << ENV_KEY_SHIFT)
     return s
+
+
+def gain_wavebank(wavebank, samples : dict, gain_db : float) :
+    """copy of a multisample with every wave's sample raised by gain_db (Env_Sample with a flat curve;
+       ConvertSample scales a copy back down where it would clip). -> (wavebank, new samples)"""
+    import copy
+    waves, new_samples = [], {}
+    for w in wavebank.waves :
+        nw = copy.copy(w)
+        # one-shot: the curve runs over the whole sample (it ends in silence after the curve)
+        steps = 1 if w.offset_positive else int(w.offset_negative / (EG_STEP * ENV_FS)) + 2
+        es = Env_Sample(samples[w.loop_address_src], w, [gain_db] * steps, gain_db if w.offset_positive else None, 1.0)
+        if w.offset_positive : es.offset_negative = w.offset_negative     # flat gain: no extra loop passes
+        new_samples[es.address_src] = es
+        nw.loop_address_src = es.address_src
+        nw.offset_negative, nw.offset_positive = es.offset_negative, es.offset_positive
+        waves.append(nw)
+    return type(wavebank)(f'{wavebank.address_src}_g{round(gain_db * 10)}', waves), new_samples

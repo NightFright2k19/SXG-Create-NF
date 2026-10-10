@@ -245,8 +245,16 @@ class MU1000(MU90) :
 
         # * measured level trim of this voice (element mixing in syxg50.dll, see voicetrim.py)
         raw = bytes(data[address : address + HEADER_LENGTH + ELEMENT_LENGTH * element_cnt])
-        for el, lvl in zip(elements, voicetrim.Trim_Levels(raw, [el.data[57] for el in elements])) : 
+        levels, boost = voicetrim.Trim_Levels(raw, [el.data[57] for el in elements])
+        for el, lvl in zip(elements, levels) : 
             el.data[57] = lvl
+        if boost : 
+            for el in elements : 
+                wb, new_samples = elemreduce.gain_wavebank(wavebanks[el.wavebank_address], samples, boost)
+                wavebanks[wb.address_src] = wb
+                samples = MergeSampleDicts(samples, new_samples)
+                el.wavebank_address = wb.address_src
+            wavebanks = {el.wavebank_address : wavebanks[el.wavebank_address] for el in elements}
 
         voice = Voice(address, volume, name, elements, MU.MU90)
         voice.source_elements = element_cnt
