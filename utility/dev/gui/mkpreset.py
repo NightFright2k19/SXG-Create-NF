@@ -1,6 +1,6 @@
 # mkpreset.py <Bitmap101 any model>.bmp <Bitmap105.bmp> out_dir  (pip: pillow)
-# Draws the preset control (issue #16) for the panel title strip: two shaded arrow buttons (normal and
-# pressed), the frame of the 3-digit readout and the label "PRESET". Writes
+# Draws the preset control (issues #16, #23) for the panel title strip: two shaded arrow buttons (normal and
+# pressed) and the frame of the 3-digit readout, centred on the YAMAHA logo (rows 5-17), no label. Writes
 #   PresetPanel.bmp    the title strip area with the control in its normal state (pasted into bitmap 101)
 #   PresetButtons.bmp  pressed versions of both buttons side by side (blitted while a button is held)
 #   preview.png        4x enlarged preview with "001" in the readout
@@ -10,16 +10,8 @@ import sys, os
 X0, Y0, W, H = 160, 1, 80, 21          # area replaced in bitmap 101 (title strip between logo and model name)
 BTN = 15                                # button size
 BL, BX, BR = 164, 182, 221              # left button x, readout box x, right button x (readout 37 x 15)
-BY = 1
+BY = 4                                  # control rows 4-18, same centre line as the logo
 DIGX, DIGY = BX + 3, BY + 1             # first digit (10 x 13 each, from bitmap 105)
-
-FONT = {  # 3 x 5 pixel caps
-    'P' : ['111', '101', '111', '100', '100'],
-    'R' : ['110', '101', '110', '101', '101'],
-    'E' : ['111', '100', '110', '100', '111'],
-    'S' : ['011', '100', '010', '001', '110'],
-    'T' : ['111', '010', '010', '010', '010'],
-}
 
 def button(im, x, y, left, pressed) :
     d = ImageDraw.Draw(im)
@@ -43,12 +35,6 @@ def panel(base) :
     button(im, BL, BY, True, False); button(im, BR, BY, False, False)
     d.rectangle((BX, BY, BX + 36, BY + 14), fill = (16, 14, 30), outline = (96, 98, 110))
     d.line((BX, BY + 14, BX + 36, BY + 14), fill = (250, 250, 252)); d.line((BX + 36, BY, BX + 36, BY + 14), fill = (250, 250, 252))
-    text = 'PRESET'; tw = len(text) * 4 - 1; tx = BX + (37 - tw) // 2; ty = BY + 16
-    for ch in text :
-        for r, row in enumerate(FONT[ch]) :
-            for c, bit in enumerate(row) :
-                if bit == '1' : im.putpixel((tx + c, ty + r), (44, 48, 104))
-        tx += 4
     return im
 
 if __name__ == '__main__' :
