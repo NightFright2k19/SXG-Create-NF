@@ -48,19 +48,23 @@ class Bank2006() :
         v = struct.unpack_from('<H', self.d, self.prgidx + (b * 128 + prg) * 2)[0]
         return None if v == 0xFFFF else v
 
-    # voice: 16-byte header, then 16-byte records. A zone is [key hi, key lo, vel hi, vel lo] at record +12..+15
-    # plus the NEXT record's +0..+11 (+1 pan, +8 element index); traced in SGP2.DLL. Key bytes 0/0 end the list.
+    # voice: 16-byte header (+2: layer count), then per layer a 12-byte layer record (+1: zone count) and per zone
+    # 16 bytes: [key hi, key lo, vel hi, vel lo] + 12-byte zone record (+1 pan, +8 element index); traced in SGP2.DLL.
+    # A layer is what S-YXG50 calls an element.
     def zones(self, v : int) -> list[dict] :
-        o = struct.unpack_from('<I', self.d, self.vptr + v * 4)[0] + 16
+        o = struct.unpack_from('<I', self.d, self.vptr + v * 4)[0]
+        n_layers = self.d[o + 2]
+        o += 16
         out = []
-        while True :
-            z = self.d[o : o + 16]
-            if z[12] == 0 and z[13] == 0 : break
-            nxt = self.d[o + 16 : o + 28]
-            el = struct.unpack_from('<I', nxt, 8)[0]
-            if el < self.n_el :
-                out.append(dict(el=el, khi=z[12], klo=z[13], vhi=z[14], vlo=z[15], pan=nxt[1]))
-            o += 16
+        for layer in range(n_layers) :
+            lr = self.d[o : o + 12]
+            o += 12
+            for _ in range(lr[1]) :
+                z = self.d[o : o + 16]
+                el = struct.unpack_from('<I', z, 12)[0]
+                if el < self.n_el :
+                    out.append(dict(el=el, khi=z[0], klo=z[1], vhi=z[2], vlo=z[3], pan=z[5], layer=layer, lr=bytes(lr)))
+                o += 16
         return out
 
     # element: 12-byte head (+6 sample index), then the four blocks, each inline (first byte < 0x80)
@@ -91,7 +95,7 @@ class Bank2006() :
         return dict(sample=struct.unpack_from('<H', self.d, a + 6)[0],
                     lfo_rate=b0[1], lfo_pitch=b0[4], lfo_on=b0[5] < 0x80, lfo_delay=b0[8],
                     coarse=s7(b1[0x1A]), fine=s7(b1[0x1B]),
-                    atk=b2[1], d1=b2[2], d2=b2[3], rel=b2[5], delay=b2[8], d1lvl=b2[9],
+                    atk=b2[1], d1=b2[2], d2=b2[3], rel=b2[5], delay=b2[8], d1lvl=b2[9], d2lvl=b2[0x0A],
                     cutoff=self.cutoff(b3))
 
     # filter cutoff in cents (SGP2.OLD 0x10011ae0 / 0x10011d50 / 0x10011e40), B3 = filter block:
@@ -125,6 +129,20 @@ DRUMVOICE_DEFAULT = bytes.fromhex('3c467f00407f7f7f0000017f025b4938ffff442e08000
 clamp = lambda v, lo=0, hi=127 : max(lo, min(hi, int(round(v))))
 
 # 2006LE element fields -> S-YXG50 element bytes
+# amp EG target levels (decay 1 / decay 2), measured on a sustained voice (organ, key 60) in both engines.
+# 2006LE B2+09 / B2+0A: drop in dB below the peak; from about 0x8C on the EG decays to silence.
+EG06_DROP = [(0, 0.0), (8, 0.5), (16, 1.6), (24, 2.6), (32, 5.7), (40, 8.5), (48, 11.6), (56, 14.5), (64, 17.7),
+             (72, 20.5), (80, 23.7), (88, 26.5), (96, 29.7), (104, 32.6), (112, 35.7), (120, 38.6), (128, 41.7), (136, 44.6)]
+# S-YXG50 +73 / +74: below 64 the EG decays to silence
+EG50_DROP = [(127, 0.0), (120, 0.6), (116, 2.8), (112, 6.3), (108, 8.9), (104, 12.4), (100, 14.9), (96, 18.4),
+             (92, 20.9), (88, 24.4), (84, 26.9), (80, 30.4), (76, 32.9), (72, 36.4), (68, 39.0), (64, 42.4)]
+
+def EG_Level(v : int) -> int :
+    if v >= 0x8C : return 0
+    drop = np.interp(v, *zip(*EG06_DROP))
+    levels, drops = zip(*EG50_DROP)
+    return clamp(np.interp(drop, drops, levels), 64, 127)
+
 def To_SYXG50_Element(f : dict, vlo : int = 1, vhi : int = 127) -> bytearray :
     e = bytearray(ELEMENT_DEFAULT)
     e[1], e[2], e[3], e[4] = 0, 127, vlo, vhi
@@ -136,9 +154,9 @@ def To_SYXG50_Element(f : dict, vlo : int = 1, vhi : int = 127) -> bytearray :
         e[10] = 0
     e[13] = clamp(64 + f['coarse'])                     # note shift, 1 semitone/step
     e[14] = clamp(64 + f['fine'] * 0.77)                 # detune: 0.77 vs ~1 cent/step
-    # cutoff: ~1 semitone/step, matched by spectral centroid; not below 24, where the static S-YXG50 filter
-    # would choke plucked voices whose 2006LE filter EG starts open
-    e[33] = clamp(20 + (f['cutoff'] - 14400) / 100, 24, 64)
+    # cutoff: fitted on 25 voices against the 2006LE render (level and spectral centroid at keys 36..96);
+    # the 2006LE filter tracks the key more gently than the static S-YXG50 one, hence the flat slope
+    e[33] = clamp(46 + 0.3 * (f['cutoff'] - 14400) / 100, 24, 64)
     e[55] = 78                                           # element level, ~0.17 dB/step
     e[68] = clamp(f['delay'] / 4, 0, 63)                 # key-on delay
     # amp EG rates: both exponential, S-YXG50 needs half the steps per octave
@@ -146,8 +164,19 @@ def To_SYXG50_Element(f : dict, vlo : int = 1, vhi : int = 127) -> bytearray :
     e[70] = clamp(f['d1'] / 2, 0, 63)
     e[71] = clamp(f['d2'] / 2, 0, 63)
     e[72] = clamp(f['rel'] / 2, 0, 63)
-    e[73] = clamp(127 - min(f['d1lvl'] * 1.5, 48) / 0.67)   # decay-1 level, ~0.67 dB/step below 127
+    e[73] = EG_Level(f['d1lvl'])                         # decay-1 / decay-2 target levels
+    e[74] = EG_Level(f.get('d2lvl', 0xFF))
     return e
+
+# 2006LE layer record (12 bytes, measured on SGP2.DLL): +2 coarse tune (7-bit signed semitones), +5 fine
+# tune (7-bit signed, 1/128 semitone), +6 attenuation (0.375 dB/step), +7 pan (0x40 = center)
+def Apply_Layer(e : bytearray, lr : bytes, zone_pan : int = 0x40) -> None :
+    s7 = lambda b : (b & 0x7F) - 128 if b & 0x40 else b & 0x7F
+    e[13] = clamp(e[13] + s7(lr[2]))
+    e[14] = clamp(e[14] + s7(lr[5]) * 100 / 128 * 0.77)
+    e[55] = clamp(e[55] * 10 ** (-0.375 * lr[6] / 40), 1)           # S-YXG50 level: amplitude ~ (level / 127)^2
+    pan = (lr[7] - 0x40) + (zone_pan - 0x40)
+    e[65] = clamp(7 + pan * 7 / 64, 0, 14)                           # S-YXG50 element pan 0..14, 7 = center
 
 # S-YXG50 wave entry: +1 tune note acts like a root key, +2 signed cents (raises the pitch)
 def Wave_Tune(s : dict) -> tuple[int, int] :
@@ -179,13 +208,22 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
     def make_voice(v : int) -> str | None :
         key = f'v{v}'
         if key in voices : return key
-        layers : dict[tuple[int, int], list[dict]] = {}
+        # a 2006LE layer is an S-YXG50 element; a layer with velocity splits needs one element per split
+        layers : dict[tuple[int, int, int], list[dict]] = {}
         for z in B.zones(v) :
-            layers.setdefault((z['vlo'], z['vhi']), []).append(z)
+            layers.setdefault((z['layer'], z['vlo'], z['vhi']), []).append(z)
         if not layers : return None
+        # S-YXG50: two elements at most. Prefer the ones that sound at velocity 100, one per layer
+        order = sorted(layers, key=lambda k : (not k[1] <= 100 <= k[2], k[0], k[1]))
+        picked = []
+        for k in order :
+            if len(picked) < 2 and k[0] not in {p[0] for p in picked} : picked.append(k)
+        for k in order :
+            if len(picked) < 2 and k not in picked : picked.append(k)
         elements = []
-        for (vlo, vhi), zs in sorted(layers.items())[:2] :    # S-YXG50: two elements at most
-            zs.sort(key=lambda z : z['klo'])
+        for k in sorted(picked) :
+            layer, vlo, vhi = k
+            zs = sorted(layers[k], key=lambda z : z['klo'])
             waves = []
             for z in zs :
                 s = get_sample(B.fields(z['el'])['sample'])
@@ -196,9 +234,12 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
             wbkey = 'wb_' + '_'.join(f'{w.loop_address_src}:{w.key_min}-{w.key_max}' for w in waves)
             for w in waves : w.address_src = f'{wbkey}#{w.key_min}'
             wavebanks.setdefault(wbkey, WaveBank(wbkey, waves))
-            # element parameters: the zones of one layer share them, except tuning (in the wave entries)
-            f = B.fields(zs[len(zs) // 2]['el'])
-            elements.append(Element(wbkey, To_SYXG50_Element(f, vlo, vhi), MU.SYXG50, waveID=len(wavebanks)))
+            # element parameters: the zones of one layer share them (mostly), except tuning (in the wave
+            # entries); take the zone around middle C
+            zc = min(zs, key=lambda z : 0 if z['klo'] <= 60 <= z['khi'] else min(abs(z['klo'] - 60), abs(z['khi'] - 60)))
+            e = To_SYXG50_Element(B.fields(zc['el']), vlo, vhi)
+            Apply_Layer(e, zs[0]['lr'], zc['pan'])
+            elements.append(Element(wbkey, e, MU.SYXG50, waveID=len(wavebanks)))
         voices[key] = Voice(key, 100, '', elements, MU.SYXG50)
         return key
 
@@ -261,6 +302,8 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
         data = To_SYXG50_Element(f)
         data[15], data[16] = 5, 60      # pitch scaling: fixed pitch (2006LE drums don't follow the key)
         data[55] = 127                  # level, measured against the 2006LE kits
+        Apply_Layer(data, z['lr'])      # per-key tuning and level (the pan goes to the drum voice)
+        data[65] = 7
         key = f'dz{wbkey}_{bytes(data).hex()}'
         if key not in voices :
             wavebanks.setdefault(wbkey, WaveBank(wbkey, [Wave(f'{wbkey}#0', max(0, s['pre'] - 1), s['loop'], s['loop_addr'] - 2,
@@ -276,10 +319,11 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
             for z in B.zones(v) :
                 if z['vhi'] != 127 : continue     # top velocity layer
                 vk = drum_voice(z)
-                dk = f'd{vk}_p{z["pan"]}'        # keymap offsets are 16 bit: share drum voices
+                pan = clamp(z['lr'][7] + z['pan'] - 0x40)
+                dk = f'd{vk}_p{pan}'             # keymap offsets are 16 bit: share drum voices
                 if dk not in drumvoices :
                     dv = bytearray(DRUMVOICE_DEFAULT)
-                    dv[1], dv[4] = 0x7F, z['pan'] & 0x7F
+                    dv[1], dv[4] = 0x7F, pan
                     drumvoices[dk] = DrumVoice(dv, 0, vk, 0, 0, format=MU.SYXG50, address_book=set())
                 for key in range(z['klo'], z['khi'] + 1) :
                     kit.drumvoices[key] = dk
