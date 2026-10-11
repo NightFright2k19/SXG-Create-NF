@@ -96,7 +96,14 @@ class Bank2006() :
                     lfo_rate=b0[1], lfo_pitch=b0[4], lfo_on=b0[5] < 0x80, lfo_delay=b0[8],
                     coarse=s7(b1[0x1A]), fine=s7(b1[0x1B]),
                     atk=b2[1], d1=b2[2], d2=b2[3], rel=b2[5], delay=b2[8], d1lvl=b2[9], d2lvl=b2[0x0A],
-                    cutoff=self.cutoff(b3), feg_rate=b3[4], feg_levels=struct.unpack_from('<4h', b3, 0x0A))
+                    cutoff=self.cutoff(b3), feg_rate=b3[4], feg_levels=struct.unpack_from('<4h', b3, 0x0A),
+                    level_keys=self.curve(struct.unpack_from('<H', b2, 0x0C)[0], LEVEL_KEYS))
+
+    # 128-byte signed curves, indexed by key (or velocity - 1); B2 +0x0C = level key curve (0.74 dB per unit,
+    # measured on SGP2.DLL), 0xFFFF = none
+    def curve(self, c : int, idx : tuple) -> list[int] | None :
+        if c == 0xFFFF : return None
+        return [v - 256 if v >= 0x80 else v for v in (self.d[self.curves + c * 128 + i] for i in idx)]
 
     # filter cutoff in cents (SGP2.OLD 0x10011ae0 / 0x10011d50 / 0x10011e40), B3 = filter block:
     # +0x2E word base cutoff, clamped 9600..19200; +0x36 / +0x38 word = key / velocity curve (128-byte curve,
@@ -119,6 +126,8 @@ class Bank2006() :
             if v : c += int(v * depth * 75 / 16)
         return c
 
+
+LEVEL_KEYS = (36, 60, 84, 108, 60)   # S-YXG50 level scaling breakpoints, then the reference key
 
 # * S-YXG50 element defaults (78 bytes), everything not mapped below stays at these values
 ELEMENT_DEFAULT = bytes.fromhex('2e007f017f81011f00000000004040003c014040403c3f3f3f3f40404040400600341830606c3e403f3f4540'
@@ -161,6 +170,11 @@ def To_SYXG50_Element(f : dict, vlo : int = 1, vhi : int = 127) -> bytearray :
     # e[33] above holds the 2006LE cutoff at 0.3 s, heard with the default levels (+51 = 0x6F), so the 2006LE
     # EG levels go in as offsets to that point: one level step is about one cutoff step (~333 cents); the
     # S-YXG50 rate needs ~8.6 steps per doubling (2006LE: 16), 0x20 = 0.5 s on both sides after the shift
+    # level key scaling: breakpoints +56..+59, offsets +60..+63 (~0.8 dB per step), relative to key 60
+    if f.get('level_keys') :
+        c = f['level_keys']
+        e[56:60] = bytes(LEVEL_KEYS[:4])
+        e[60:64] = bytes([clamp(64 + (v - c[4]) * 0.74 / 0.8) for v in c[:4]])
     lv = f.get('feg_levels', (0, 0, 0, 0))
     if any(lv) :
         r = f['feg_rate']
