@@ -169,10 +169,12 @@ def To_SYXG50_Element(f : dict, vlo : int = 1, vhi : int = 127) -> bytearray :
     return e
 
 # 2006LE layer record (12 bytes, measured on SGP2.DLL): +2 coarse tune (7-bit signed semitones), +5 fine
-# tune (7-bit signed, 1/128 semitone), +6 attenuation (0.375 dB/step), +7 pan (0x40 = center)
+# tune (7-bit signed, 1/128 semitone), +3/+4 pitch key scaling centre/amount, +6 attenuation (0.375 dB/step), +7 pan (0x40 = center)
 def Apply_Layer(e : bytearray, lr : bytes, zone_pan : int = 0x40) -> None :
     s7 = lambda b : (b & 0x7F) - 128 if b & 0x40 else b & 0x7F
     e[13] = clamp(e[13] + s7(lr[2]))
+    e[15] = min(lr[4] & 7, 5)                        # pitch key scaling, same codes: 0 = 100 %, 1 = 50 %, 2 = 20 %, 3 = 10 %, 4 = 5 %, 5 = fixed
+    e[16] = lr[3] & 0x7F                             # its centre key
     e[14] = clamp(e[14] + s7(lr[5]) * 100 / 128 * 0.77)
     e[55] = clamp(e[55] * 10 ** (-0.375 * lr[6] / 40), 1)           # S-YXG50 level: amplitude ~ (level / 127)^2
     pan = (lr[7] - 0x40) + (zone_pan - 0x40)
@@ -187,6 +189,12 @@ def Wave_Tune(s : dict) -> tuple[int, int] :
 # MSB 119 (2006LE only) has no bank row in S-YXG50: its LSBs go to free XG LSBs (MSB 0)
 MSB119_LSB = {0 : 48, 1 : 49, 2 : 50, 3 : 51, 4 : 52, 5 : 53, 6 : 54, 7 : 55, 8 : 56, 9 : 57, 16 : 58, 24 : 59, 32 : 60}
 
+
+# drum kits, measured against the 2006LE (every key 13..84 of every kit, velocity 100): the 2006LE plays
+# XG/SFX kits on keys 13..84 and GM2 kits on 27..87 only; levels ran about 2.8 dB hot at element level 127
+DRUM_KEYS = {127 : (13, 84), 126 : (13, 84), 120 : (27, 87)}
+DRUM_LEVEL = 108
+DRUM_KIT_TRIM = {(126, 0) : -8.4, (126, 1) : -3.4, (120, 56) : -5.1}    # dB, the SFX kits ran hotter still
 
 def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> Table :
     B = Bank2006(bank_data)
@@ -294,15 +302,15 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
     drumvoices : dict[str | int, DrumVoice] = {}
     drumkits : dict[int | str, DrumKit] = {}
 
-    def drum_voice(z : dict) -> str :
+    def drum_voice(z : dict, trim_db : float = 0.0) -> str :
         f = B.fields(z['el'])
         s = get_sample(f['sample'])
         tn, tc = Wave_Tune(s)
         wbkey = f'wb_d{s["loop_addr"]}_{tn}_{tc}'
         data = To_SYXG50_Element(f)
-        data[15], data[16] = 5, 60      # pitch scaling: fixed pitch (2006LE drums don't follow the key)
-        data[55] = 127                  # level, measured against the 2006LE kits
+        data[55] = clamp(DRUM_LEVEL * 10 ** (trim_db / 40))   # level, measured against the 2006LE kits
         Apply_Layer(data, z['lr'])      # per-key tuning and level (the pan goes to the drum voice)
+        data[15], data[16] = 5, 60      # pitch scaling: fixed pitch (2006LE drums don't follow the key)
         data[65] = 7
         key = f'dz{wbkey}_{bytes(data).hex()}'
         if key not in voices :
@@ -318,14 +326,16 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
             kit = DrumKit(f'kit{msb}_{prg}', bank, prg, {}, {}, aliases=[], seqID=len(drumkits))
             for z in B.zones(v) :
                 if z['vhi'] != 127 : continue     # top velocity layer
-                vk = drum_voice(z)
+                lo, hi = DRUM_KEYS[msb]
+                if z['khi'] < lo or z['klo'] > hi : continue
+                vk = drum_voice(z, DRUM_KIT_TRIM.get((msb, prg), 0.0))
                 pan = clamp(z['lr'][7] + z['pan'] - 0x40)
                 dk = f'd{vk}_p{pan}'             # keymap offsets are 16 bit: share drum voices
                 if dk not in drumvoices :
                     dv = bytearray(DRUMVOICE_DEFAULT)
                     dv[1], dv[4] = 0x7F, pan
                     drumvoices[dk] = DrumVoice(dv, 0, vk, 0, 0, format=MU.SYXG50, address_book=set())
-                for key in range(z['klo'], z['khi'] + 1) :
+                for key in range(max(lo, z['klo']), min(hi, z['khi']) + 1) :
                     kit.drumvoices[key] = dk
                 kit.voices[vk] = vk
             drumkits[kit.keymap_address] = kit
