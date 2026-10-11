@@ -96,7 +96,7 @@ class Bank2006() :
                     lfo_rate=b0[1], lfo_pitch=b0[4], lfo_on=b0[5] < 0x80, lfo_delay=b0[8],
                     coarse=s7(b1[0x1A]), fine=s7(b1[0x1B]),
                     atk=b2[1], d1=b2[2], d2=b2[3], rel=b2[5], delay=b2[8], d1lvl=b2[9], d2lvl=b2[0x0A],
-                    cutoff=self.cutoff(b3))
+                    cutoff=self.cutoff(b3), feg_rate=b3[4], feg_levels=struct.unpack_from('<4h', b3, 0x0A))
 
     # filter cutoff in cents (SGP2.OLD 0x10011ae0 / 0x10011d50 / 0x10011e40), B3 = filter block:
     # +0x2E word base cutoff, clamped 9600..19200; +0x36 / +0x38 word = key / velocity curve (128-byte curve,
@@ -157,6 +157,19 @@ def To_SYXG50_Element(f : dict, vlo : int = 1, vhi : int = 127) -> bytearray :
     # cutoff: fitted on 25 voices against the 2006LE render (level and spectral centroid at keys 36..96);
     # the 2006LE filter tracks the key more gently than the static S-YXG50 one, hence the flat slope
     e[33] = clamp(46 + 0.3 * (f['cutoff'] - 14400) / 100, 24, 64)
+    # filter EG: element +46..+48 rates to the levels +51..+53 (sustain), +50 start level, +49 / +54 release.
+    # e[33] above holds the 2006LE cutoff at 0.3 s, heard with the default levels (+51 = 0x6F), so the 2006LE
+    # EG levels go in as offsets to that point: one level step is about one cutoff step (~333 cents); the
+    # S-YXG50 rate needs ~8.6 steps per doubling (2006LE: 16), 0x20 = 0.5 s on both sides after the shift
+    lv = f.get('feg_levels', (0, 0, 0, 0))
+    if any(lv) :
+        r = f['feg_rate']
+        frac = 0.0 if r == 0 else min(1.0, 0.3 / (0.5 * 2 ** ((0x20 - r) / 16)))
+        at03 = lv[0] + (lv[1] - lv[0]) * frac
+        L = [clamp(0x6F + (l - at03) * 0.3 / 100) for l in lv]
+        e[50:54] = bytes(L)
+        e[54] = L[3]
+        e[46] = e[47] = e[48] = 0 if r == 0 else clamp(28.6 + (r - 0x20) * 8.6 / 16, 1, 63)
     e[55] = 78                                           # element level, ~0.17 dB/step
     e[68] = clamp(f['delay'] / 4, 0, 63)                 # key-on delay
     # amp EG rates: both exponential, S-YXG50 needs half the steps per octave
