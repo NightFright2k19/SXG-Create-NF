@@ -319,6 +319,10 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
         data[55] = clamp(DRUM_LEVEL * 10 ** (trim_db / 40))   # level, measured against the 2006LE kits
         Apply_Layer(data, z['lr'])      # per-key tuning and level (the pan goes to the drum voice)
         data[15], data[16] = 5, 60      # pitch scaling: fixed pitch (2006LE drums don't follow the key)
+        # the 2006LE ends a sustaining drum sound (crash cymbals) with its note-off and release, the S-YXG50 drum
+        # voice ignores note-offs: decay 2 takes the release rate down to silence instead
+        if data[74] or (f['d2'] == 0 and data[73]) :
+            data[71], data[74] = clamp(f['rel'] / 2, 0, 63), 0
         data[65] = 7
         key = f'dz{wbkey}_{bytes(data).hex()}'
         if key not in voices :
@@ -347,6 +351,9 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
                     kit.drumvoices[key] = dk
                 kit.voices[vk] = vk
             drumkits[kit.keymap_address] = kit
+            if msb == 127 :     # GS mode (after a GS reset) reads the GS kit row: same kits, as on the 2006LE
+                gk = DrumKit(f'kitGS_{prg}', Bank.GS_DRUMS, prg, dict(kit.drumvoices), dict(kit.voices), aliases=[], seqID=len(drumkits))
+                drumkits[gk.keymap_address] = gk
 
     return Table('SXG2006LE', MU.SYXG50, Sample_pool=samples, Wavebank_pool=wavebanks, Voice_pool=voices,
                  DrumVoice_pool=drumvoices, drumkits=drumkits, voice_banks=voice_banks,
