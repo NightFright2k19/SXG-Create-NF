@@ -192,6 +192,8 @@ MSB119_LSB = {0 : 48, 1 : 49, 2 : 50, 3 : 51, 4 : 52, 5 : 53, 6 : 54, 7 : 55, 8 
 
 # drum kits, measured against the 2006LE (every key 13..84 of every kit, velocity 100): the 2006LE plays
 # XG/SFX kits on keys 13..84 and GM2 kits on 27..87 only; levels ran about 2.8 dB hot at element level 127
+# SFX voices (MSB 64) ran 6.8 dB quiet (median over 39 voices x 3 keys)
+SFX_TRIM = 6.8
 DRUM_KEYS = {127 : (13, 84), 126 : (13, 84), 120 : (27, 87)}
 DRUM_LEVEL = 108
 DRUM_KIT_TRIM = {(126, 0) : -8.4, (126, 1) : -3.4, (120, 56) : -5.1}    # dB, the SFX kits ran hotter still
@@ -213,8 +215,8 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
         AddToSampleList(samples, sm)
         return s
 
-    def make_voice(v : int) -> str | None :
-        key = f'v{v}'
+    def make_voice(v : int, trim_db : float = 0.0) -> str | None :
+        key = f'v{v}' + (f'_t{trim_db}' if trim_db else '')
         if key in voices : return key
         # a 2006LE layer is an S-YXG50 element; a layer with velocity splits needs one element per split
         layers : dict[tuple[int, int, int], list[dict]] = {}
@@ -246,6 +248,7 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
             # entries); take the zone around middle C
             zc = min(zs, key=lambda z : 0 if z['klo'] <= 60 <= z['khi'] else min(abs(z['klo'] - 60), abs(z['khi'] - 60)))
             e = To_SYXG50_Element(B.fields(zc['el']), vlo, vhi)
+            e[55] = clamp(e[55] * 10 ** (trim_db / 40))
             Apply_Layer(e, zs[0]['lr'], zc['pan'])
             elements.append(Element(wbkey, e, MU.SYXG50, waveID=len(wavebanks)))
         voices[key] = Voice(key, 100, '', elements, MU.SYXG50)
@@ -267,7 +270,7 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
         vb = None
         for prg in range(128) :
             v = B.voice(msb, lsb, prg)
-            k = make_voice(v) if v is not None else None
+            k = make_voice(v, SFX_TRIM if bank == Bank.SFX else 0.0) if v is not None else None
             if k is None : continue
             if vb is None :
                 l, m = BankToLSBMSB(bank, idx)
