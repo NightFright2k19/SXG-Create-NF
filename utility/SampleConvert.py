@@ -391,6 +391,22 @@ def ConvertSample(sample : Sample, waverom : bytes, mu_src : MU, mu_dest : MU, e
             return out.tobytes()
         return bytes(min(255, max(0, round(v * scale / 256) + 128)) for v in y)
 
+    # * loop guard samples = loop start (for sources whose data after the loop end belongs to the next sample)
+    if getattr(sample, 'wrap_guard', False) and sample.offset_positive > 2 : 
+        import copy
+        plain = copy.copy(sample)
+        plain.wrap_guard = False
+        data = bytearray(ConvertSample(plain, waverom, mu_src, mu_dest, experimental, looptime))
+        sample.format = mu_dest
+        bps = 1 if sample.out_sample_type == SampleFormat.U8 else 2
+        loop_len = sample.offset_positive - 2
+        loop_start = (sample.offset_negative + getattr(sample, 'lead_in', 0) + 1) * bps
+        for j in range(2) : 
+            src = loop_start + (j % loop_len) * bps
+            dst = loop_start + (loop_len + j) * bps
+            if dst + bps <= len(data) : data[dst : dst + bps] = data[src : src + bps]
+        return bytes(data)
+
     # * drum HPF (see decMU90.Apply_Drum_HPF): filter the finished sample (after reversing)
     if getattr(sample, 'hpf_fc', 0) : 
         import copy

@@ -169,8 +169,11 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
     def get_sample(i : int) -> dict :
         s = B.sample(i)
         assert s['fmt'] == 3, f'S-YXG2006LE: sample {i} has unknown format {s["fmt"]}'
-        AddToSampleList(samples, Sample(s['loop_addr'], s['pre'], s['loop'], s['loop_addr'], SampleFormat.S16,
-                                        encoding_parameters=0, format=MU.SYXG50, address_book={i}))
+        # the S-YXG50 engine loops from the sample after the loop address: point it at the last body sample
+        sm = Sample(s['loop_addr'] - 2, max(0, s['pre'] - 1), s['loop'], s['loop_addr'] - 2, SampleFormat.S16,
+                    encoding_parameters=0, format=MU.SYXG50, address_book={i})
+        sm.wrap_guard = True     # the data after the loop end is the next sample
+        AddToSampleList(samples, sm)
         return s
 
     def make_voice(v : int) -> str | None :
@@ -187,7 +190,7 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
             for z in zs :
                 s = get_sample(B.fields(z['el'])['sample'])
                 tn, tc = Wave_Tune(s)
-                waves.append(Wave('', s['pre'], s['loop'], s['loop_addr'], attenuation=0,
+                waves.append(Wave('', max(0, s['pre'] - 1), s['loop'], s['loop_addr'] - 2, attenuation=0,
                                   tune_note=tn, tune_cent=tc, key_min=z['klo'], key_max=z['khi']))
             waves[0].key_min, waves[-1].key_max = 0, 0x7F
             wbkey = 'wb_' + '_'.join(f'{w.loop_address_src}:{w.key_min}-{w.key_max}' for w in waves)
@@ -260,7 +263,7 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
         data[55] = 127                  # level, measured against the 2006LE kits
         key = f'dz{wbkey}_{bytes(data).hex()}'
         if key not in voices :
-            wavebanks.setdefault(wbkey, WaveBank(wbkey, [Wave(f'{wbkey}#0', s['pre'], s['loop'], s['loop_addr'],
+            wavebanks.setdefault(wbkey, WaveBank(wbkey, [Wave(f'{wbkey}#0', max(0, s['pre'] - 1), s['loop'], s['loop_addr'] - 2,
                                  attenuation=0, tune_note=tn, tune_cent=tc, key_min=0, key_max=0x7F)]))
             voices[key] = Voice(key, 100, '', [Element(wbkey, data, MU.SYXG50, waveID=0)], MU.SYXG50)
         return key
