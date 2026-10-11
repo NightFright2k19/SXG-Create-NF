@@ -187,6 +187,8 @@ def Wave_Tune(s : dict) -> tuple[int, int] :
     return n & 0xFF, round((n - t) * 100) & 0xFF
 
 # MSB 119 (2006LE only) has no bank row in S-YXG50: its LSBs go to free XG LSBs (MSB 0)
+# MSB 118 (2006LE only, drum kits playable as voices, one zone per key): XG LSB 61
+MSB118_LSB = 61
 MSB119_LSB = {0 : 48, 1 : 49, 2 : 50, 3 : 51, 4 : 52, 5 : 53, 6 : 54, 7 : 55, 8 : 56, 9 : 57, 16 : 58, 24 : 59, 32 : 60}
 
 
@@ -220,8 +222,10 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
         if key in voices : return key
         # a 2006LE layer is an S-YXG50 element; a layer with velocity splits needs one element per split
         layers : dict[tuple[int, int, int], list[dict]] = {}
-        for z in B.zones(v) :
-            layers.setdefault((z['layer'], z['vlo'], z['vhi']), []).append(z)
+        zones = B.zones(v)
+        kitlike = len({z['layer'] for z in zones}) > 2     # MSB 118: a drum kit as a voice, one layer per key
+        for z in zones :
+            layers.setdefault((0 if kitlike else z['layer'], z['vlo'], z['vhi']), []).append(z)
         if not layers : return None
         # S-YXG50: two elements at most. Prefer the ones that sound at velocity 100, one per layer
         order = sorted(layers, key=lambda k : (not k[1] <= 100 <= k[2], k[0], k[1]))
@@ -265,7 +269,8 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
 
     # (S-YXG50 bank, bank row index, 2006LE MSB, 2006LE LSB)
     rows = [(Bank.XG, l, 0, l) for l in range(128)] + [(Bank.SFX, 64, 64, 0)] \
-         + [(Bank.XG, x, 119, l) for l, x in MSB119_LSB.items()] + [(Bank.GM2, l, 121, l) for l in range(128)]
+         + [(Bank.XG, x, 119, l) for l, x in MSB119_LSB.items()] + [(Bank.GM2, l, 121, l) for l in range(128)] \
+         + [(Bank.XG, MSB118_LSB, 118, 0)]
     for bank, idx, msb, lsb in rows :
         vb = None
         for prg in range(128) :
