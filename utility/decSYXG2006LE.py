@@ -196,6 +196,19 @@ MSB119_LSB = {0 : 48, 1 : 49, 2 : 50, 3 : 51, 4 : 52, 5 : 53, 6 : 54, 7 : 55, 8 
 # XG/SFX kits on keys 13..84 and GM2 kits on 27..87 only; levels ran about 2.8 dB hot at element level 127
 # SFX voices (MSB 64) ran 6.8 dB quiet (median over 39 voices x 3 keys)
 SFX_TRIM = 6.8
+# per-voice level trim in dB (2006LE voice index), measured: GM bank voices at keys 36/60/84, velocity 100, dry,
+# level over the first 1.5 s against the 2006LE render (emulator sweep); applied to every bank that uses the voice
+VOICE_TRIM = {31: 4.6, 34: -4.9, 35: 3.8, 36: 1.7, 37: -6.4, 38: -2.5, 39: 3.5, 40: 2.0, 41: -8.2, 42: -2.4, 44: 1.7, 45:
+              2.1, 46: 3.5, 48: 1.9, 49: -3.5, 50: 2.0, 51: -3.4, 52: -3.5, 53: -4.9, 54: -2.0, 56: 5.4, 60:
+              -3.4, 62: -4.8, 63: 2.4, 64: -4.2, 65: -7.2, 66: 2.7, 67: 3.4, 68: 3.1, 69: -8.7, 71: 5.3, 72:
+              5.3, 73: 2.9, 74: 3.0, 75: 4.2, 82: 6.8, 84: 3.5, 102: -5.8, 103: -1.7, 117: 4.0, 126: -5.2,
+              127: 3.5, 128: -2.8, 130: 2.6, 131: 4.1, 132: 3.8, 134: 6.4, 135: 7.4, 141: 4.9, 147: 6.1, 148:
+              6.1, 149: 2.3, 150: 2.1, 151: -3.7, 152: 1.5, 159: 1.6, 160: 7.6, 167: 1.4, 171: 4.0, 180: 1.9,
+              181: -4.6, 182: 5.3, 184: 6.6, 185: 5.8, 198: -1.5, 200: 1.1, 201: -1.9, 202: -1.2, 203: 2.0,
+              204: 3.3, 205: 5.8, 206: 3.3, 207: 3.9, 208: 5.3, 209: 2.1, 210: 4.8, 211: 4.8, 213: -2.1, 286:
+              -2.4, 296: 3.3, 317: 5.7, 321: -3.9, 326: 2.0, 327: -5.3, 332: 1.3, 333: 8.7, 335: -4.8, 336:
+              2.4, 338: -3.1, 339: 2.2, 354: -1.3, 359: 2.8, 361: 2.1, 363: -9.6, 368: 1.5, 374: -1.9, 376:
+              3.4, 379: 2.2, 387: 2.9, 389: 2.9, 392: 8.0, 402: -1.1, 403: -3.6, 444: -2.1}
 DRUM_KEYS = {127 : (13, 84), 126 : (13, 84), 120 : (27, 87)}
 DRUM_LEVEL = 108
 DRUM_KIT_TRIM = {(126, 0) : -8.4, (126, 1) : -3.4, (120, 56) : -5.1}    # dB, the SFX kits ran hotter still
@@ -218,6 +231,7 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
         return s
 
     def make_voice(v : int, trim_db : float = 0.0) -> str | None :
+        trim_db += VOICE_TRIM.get(v, 0.0)
         key = f'v{v}' + (f'_t{trim_db}' if trim_db else '')
         if key in voices : return key
         # a 2006LE layer is an S-YXG50 element; a layer with velocity splits needs one element per split
