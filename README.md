@@ -35,6 +35,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **MU90 / MU90B** completed (was work in progress): word-interleaved wave ROMs (two 16-bit halves of a 32-bit bus), all four sample formats (16 bit, 12 bit, 8 bit, ADPCM), 42-byte drum voices, the bank map order XG (LSB) / SFX (MSB) / GS, and the MU90B program ROM.
 - **MU100** (new): three 32-bit wave ROM pairs in one address space, three wavedata tables with their own offset tables, 32-bit voice program maps, MU100 Native and MU Basic voice maps.
 - **MU128 and MU1000** (new): program flash from high/low 16-bit halves, 84-byte elements (mapped almost 1:1, verified on 2,317 elements shared with the MU100), 42-byte drum voices with byte 0 moved to `+23`, voice maps MU Native / MU Basic, GS, MSB 48 and GM2.
+- **S-YXG2006LE** (new, XGLite soft synth): own table layout (`sxgbnw6l.tbl`) and encrypted wave data (`sxgdat6l.tbl`), decoded straight to S-YXG50 elements and drum voices, see [S-YXG2006LE](#s-yxg2006le).
 - **MU2000** detected, but not converted: it has the same sound data as the MU1000, so the MU1000 set is used instead (see [Supported models](#supported-models-and-rom-sets)).
 - **MU Basic voice map** for MU100 / MU128 / MU1000: the MU90-compatible map is built into the same table as the native one and can be switched in the Setup dialog (MU Native is the default). The earlier `--mu-basic` switch was removed.
 
@@ -188,11 +189,28 @@ The script waits for a key press at the end (so a drag & drop window stays open)
 | MU100 (xu50720 v1.11) | `xu50720.ic11` | `xs518b0.ic34`, `xs743b0.ic35`, `xt445a0-828.ic36`, `xt461a0-829.ic37`, `xt462a0.ic39`, `xt463a0.ic38` | big |
 | MU128 (v2.00) | `mu128-v2.00-h.bin`, `mu128-v2.00-l.bin` | `xv364a0.ic53`, `xv365a0.ic54`, `xv366a0.ic57`, `xv376a0.ic58` | big |
 | MU1000 (v2.01) | `mu1000-v2.01-h.bin`, `mu1000-v2.01-l.bin` | `xv364a0.ic49`, `xv365a0.ic50`, `xw848a0.ic53`, `xw849a0.ic54` | big |
+| S-YXG2006LE | `sxgbnw6l.tbl` | `sxgdat6l.tbl` (encrypted) | big |
 | MU2000 (v2.01) | detected, but not converted | | |
 
 File names are only examples; the files are recognised by their CRC32.
 
 > **MU2000:** it has the same voice data as the MU1000 (1,635 voices, 1,027 drum voices, 2,901 samples, the same wave ROMs). Only the element filter/level scaling is stored differently: instead of 4 break points, each element holds an index into 1,377 tables of 128 notes, which lie in the upper half of the 4 MB firmware image (at `0x23CED0`, location from TaleTN's MUTable). An earlier version of this README said this table was missing from the ROM dump; that was wrong. The tables are the MU1000's break points interpolated per note, so they convert back to break points (1,376 of 1,377 exactly, one within 1 step on one note). A test conversion of the MU2000 set rendered bit-identically to the MU1000 conversion (464 voices, 6,496 notes) with a byte-identical wave file. Since the result is the same, SXG-Create uses the MU1000 set (the MU2000 set is skipped when both are present, otherwise a message asks for the MU1000 set).
+
+### S-YXG2006LE
+
+Put the original `sxgbnw6l.tbl` and `sxgdat6l.tbl` (from the S-YXG2006LE installation, not decoded) into `source`, together with `syxg50.dll`. The result is used like any other conversion (external files or `--embed`); the DLL is written as `syxg2006le.dll`.
+
+- **Wave data:** decrypted on the fly (byte XOR with a running key, nibble swap, byte swap, as in `SGP2.OLD`); all samples are 16 bit.
+- **Voices:** every key/velocity zone keeps its own sample and tuning (S-YXG50 wave entries); the two velocity layers become the two elements. Element parameters (LFO, pitch, amp EG, decay level, cutoff, level) were calibrated by rendering both engines with single parameters changed. Measured over all 128 XG programs: zone pitch within ±5 cent, level median 0 dB (10/90 % ±4.5 dB).
+- **Drums:** each key is an ext voice with a fixed pitch and the key's pan; sample and playback rate are identical to the original.
+- **Banks:** XG (MSB 0), SFX (MSB 64), GM2 (MSB 121), drums MSB 127 / 126 / 120. The exclusive bank **MSB 119** has no S-YXG50 bank row; its voices go to free XG LSBs:
+
+  | MSB 119 LSB | 0-9 | 16 | 24 | 32 |
+  |---|---|---|---|---|
+  | XG (MSB 0) LSB | 48-57 | 58 | 59 | 60 |
+
+  These voices use the MSB 0 zones and elements with a different voice mode byte; single notes sound the same as their MSB 0 counterparts. The 9 kits of MSB 118 are the GM2 kits (MSB 120) with the same mode byte and are not converted.
+- **DLL:** the Reset drop-down on the Setup page reads GM / GS / XGLite / GM2 (GM2: `F0 7E 7F 09 03 F7`), and the panel shows `Bitmap101_XG2006LE.bmp`. As with every model, MIDI events after a reset are held back for 4800 samples (about 100 ms).
 
 The S-YXG50's own tables and `Vampire.dll` are recognised as well, but they are not a conversion source.
 
@@ -208,6 +226,7 @@ The S-YXG50's own tables and `Vampire.dll` are recognised as well, but they are 
 | MU100 | big | "Full" | `SXGMU100X.TBL` | `SXGMU100X.UPCM` | 51.8 MB |
 | MU128 | big | "Full" | `SXGMU128X.TBL` | `SXGMU128X.UPCM` | 70.8 MB |
 | MU1000 | big | "Full" | `SXGMU1KX.TBL` | `SXGMU1KX.UPCM` | 87.3 MB |
+| S-YXG2006LE | big | "Full" | `SXG2006LEX.TBL` | `SXG2006LEX.UPCM` | 10.8 MB |
 
 The MU100, MU128 and MU1000 tables contain both voice maps (native and MU Basic); the wave file is the same as for the native map alone. Earlier versions wrote a separate `...BX` set with the old `--mu-basic` switch; these files are no longer needed, and `--mu-basic` is ignored with a note.
 
