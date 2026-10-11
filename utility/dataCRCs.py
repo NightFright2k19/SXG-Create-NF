@@ -84,6 +84,7 @@ TableIn(dataenum.MU.MU128, 'MU128 v2.00', program_roms={'2891487B' : 'mu128-v2.0
 TableIn(dataenum.MU.MU1000, 'MU1000 v2.01', program_roms={'D0809297' : 'mu1000-v2.01-h.bin', '048A2750' : 'mu1000-v2.01-l.bin'}, 
                                                          waveroms={'CDA1AFD6' : 'xv364a0.ic49', '10985ED0' : 'xv365a0.ic50',
                                                                    '34913E42' : 'xw848a0.ic53', '3728F1F2' : 'xw849a0.ic54',}, support='decode'),
+TableIn(dataenum.MU.SYXG2006LE, 'S-YXG2006LE', program_roms={'692C7D6A' : 'sxgbnw6l.tbl'}, waveroms={'3CB08464' : 'sxgdat6l.tbl'}, support='decode'),
 TableIn(dataenum.MU.MU2000, 'MU2000 v2.01', program_roms={'BE3668F6' : 'mu2000-v2.01-h.bin', '55921A50' : 'mu2000-v2.01-l.bin'}, 
                                                          waveroms={'CDA1AFD6' : 'xv364a0.ic49', '10985ED0' : 'xv365a0.ic50',
                                                                    '34913E42' : 'xw848a0.ic53', '3728F1F2' : 'xw849a0.ic54',}, support='decode'),

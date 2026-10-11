@@ -11,6 +11,7 @@ import decSYXG50
 import decMU90 
 import decMU100
 import decMU1000
+import decSYXG2006LE
 from decBase import PrintTableInfo
 
 # makes S-YXG50 using table object
@@ -114,6 +115,18 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
                                                     (rd(wave_roms[4]), rd(wave_roms[5]))])
             mu_src = MU.MU90   # same data formats from here on
 
+        case MU.SYXG2006LE : 
+
+            # * own table layout, decoded straight to S-YXG50 elements / drum voices (decSYXG2006LE)
+            # big table layout: ~11 MB of samples and more than 256 multisamples
+            buildtarget.SYXG50_BIG = True
+            new_table_version='SXG 2006LE'
+            new_table_name='SXG2006LE.TBL'
+            new_waverom_name='SXG2006LE.UPCM'
+            in_wave_bytes = decSYXG2006LE.Decrypt_Waves(open(wave_roms[0], mode='rb').read())
+            table_decoder = None
+            table_converter = tableconvert.fromSYXG50(MU.SYXG50)
+
         case MU.MU1000 | MU.MU128 : 
 
             model = 'MU1000' if mu_src == MU.MU1000 else 'MU128'
@@ -154,8 +167,11 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
         new_table_name = f'{stem}X.TBL'
         new_waverom_name = f'{stem}X.UPCM'
 
-    table_decoder.waverom = in_wave_bytes     # source samples, for loudness estimates (elemreduce)
-    table = decBase.Create_Table(table_decoder, mu_src, table_decoder.data, wave_roms)
+    if mu_src == MU.SYXG2006LE : 
+        table = decSYXG2006LE.Create_Table(open(program_roms[0], mode='rb').read(), len(in_wave_bytes), wave_roms)
+    else : 
+        table_decoder.waverom = in_wave_bytes     # source samples, for loudness estimates (elemreduce)
+        table = decBase.Create_Table(table_decoder, mu_src, table_decoder.data, wave_roms)
     alt_table = None
     if alt_decoder is not None : 
         # second voice map (MU Basic): same ROM, its voices / banks / rows are merged in (makeSYXG50.Merge_Alt_Table)

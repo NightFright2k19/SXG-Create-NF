@@ -13,6 +13,7 @@ class MU(StrEnum) :
     MU1000 = auto()
     MU128 = auto()
     MU2000 = auto()
+    SYXG2006LE = auto()   # S-YXG2006LE (XGLite soft synth)
 
 class Bank(StrEnum) : 
     GS = auto()
