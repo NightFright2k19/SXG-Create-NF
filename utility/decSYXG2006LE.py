@@ -92,7 +92,28 @@ class Bank2006() :
                     lfo_rate=b0[1], lfo_pitch=b0[4], lfo_on=b0[5] < 0x80, lfo_delay=b0[8],
                     coarse=s7(b1[0x1A]), fine=s7(b1[0x1B]),
                     atk=b2[1], d1=b2[2], d2=b2[3], rel=b2[5], delay=b2[8], d1lvl=b2[9],
-                    cutoff=b3[0x2D])
+                    cutoff=self.cutoff(b3))
+
+    # filter cutoff in cents (SGP2.OLD 0x10011ae0 / 0x10011d50 / 0x10011e40), B3 = filter block:
+    # +0x2E word base cutoff, clamped 9600..19200; +0x36 / +0x38 word = key / velocity curve (128-byte curve,
+    # 0xFFFF = none), offset = signed table value * depth * 75 / 16 with depth +0x3E high / low nibble + 1.
+    # Filter EG (0x1000dcd0.., active when a level is set): levels +0x0A, +0x0C.. (signed words, cents) and
+    # rate +0x04 (0 = holds the start level, about 0.5 s to the next level at 0x20, twice as fast every 16
+    # steps). The S-YXG50 element has one static cutoff here, so the EG level reached after 0.3 s is used.
+    # Key 60 and velocity 100 stand for the element.
+    def cutoff(self, b3 : bytes, key : int = 60, vel : int = 100) -> int :
+        c = max(9600, min(19200, struct.unpack_from('<H', b3, 0x2E)[0]))
+        l0, l1, l2, l3 = struct.unpack_from('<4h', b3, 0x0A)
+        if l0 or l1 or l2 or l3 :
+            frac = 0.0 if b3[4] == 0 else min(1.0, 0.3 / (0.5 * 2 ** ((0x20 - b3[4]) / 16)))
+            c += int(l0 + (l1 - l0) * frac)
+        for off, depth, idx in ((0x36, (b3[0x3E] >> 4) + 1, key), (0x38, (b3[0x3E] & 15) + 1, vel - 1)) :
+            curve = struct.unpack_from('<H', b3, off)[0]
+            if curve == 0xFFFF : continue
+            v = self.d[self.curves + curve * 128 + idx]
+            v = v - 256 if v >= 0x80 else v
+            if v : c += int(v * depth * 75 / 16)
+        return c
 
 
 # * S-YXG50 element defaults (78 bytes), everything not mapped below stays at these values
@@ -115,7 +136,9 @@ def To_SYXG50_Element(f : dict, vlo : int = 1, vhi : int = 127) -> bytearray :
         e[10] = 0
     e[13] = clamp(64 + f['coarse'])                     # note shift, 1 semitone/step
     e[14] = clamp(64 + f['fine'] * 0.77)                 # detune: 0.77 vs ~1 cent/step
-    e[33] = clamp(52 + (max(f['cutoff'], 16) - 32) * 0.15, 0, 64)   # cutoff, matched by spectral centroid
+    # cutoff: ~1 semitone/step, matched by spectral centroid; not below 24, where the static S-YXG50 filter
+    # would choke plucked voices whose 2006LE filter EG starts open
+    e[33] = clamp(20 + (f['cutoff'] - 14400) / 100, 24, 64)
     e[55] = 78                                           # element level, ~0.17 dB/step
     e[68] = clamp(f['delay'] / 4, 0, 63)                 # key-on delay
     # amp EG rates: both exponential, S-YXG50 needs half the steps per octave
@@ -176,6 +199,15 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
         voices[key] = Voice(key, 100, '', elements, MU.SYXG50)
         return key
 
+    # silent voice: one element whose velocity range is empty (127..0), never sounds
+    def silent() -> str :
+        if 'silent' not in voices :
+            wb = next(iter(wavebanks))
+            e = To_SYXG50_Element(dict(lfo_on=False, coarse=0, fine=0, cutoff=19200, delay=0, atk=0x80, d1=0, d2=0,
+                                       rel=127, d1lvl=0), 127, 0)
+            voices['silent'] = Voice('silent', 100, '', [Element(wb, e, MU.SYXG50, waveID=0)], MU.SYXG50)
+        return 'silent'
+
     # (S-YXG50 bank, bank row index, 2006LE MSB, 2006LE LSB)
     rows = [(Bank.XG, l, 0, l) for l in range(128)] + [(Bank.SFX, 64, 64, 0)] \
          + [(Bank.XG, x, 119, l) for l, x in MSB119_LSB.items()] + [(Bank.GM2, l, 121, l) for l in range(128)]
@@ -190,12 +222,29 @@ def Create_Table(bank_data : bytes, wave_len : int, wave_roms : list[Path]) -> T
                 vb = VoiceBank(f'{bank}_{idx}', bank, l, m, voices={}, aliases=[], seqID=len(voice_banks))
             vb.voices[prg] = k
         if vb is None : continue
-        # unused programs: same program of the bank's base row, as on the XG banks of the MU models
+        # unused programs: same program of the bank's base row, as on the XG banks of the MU models;
+        # SFX (MSB 64) programs without a voice stay silent, as on the 2006LE
         base = voice_banks.get(f'{bank}_0')
         for prg in range(128) :
             if prg not in vb.voices :
-                vb.voices[prg] = (base.voices.get(prg) if base and base is not vb else None) or next(iter(vb.voices.values()))
+                vb.voices[prg] = silent() if bank == Bank.SFX else \
+                    (base.voices.get(prg) if base and base is not vb else None) or next(iter(vb.voices.values()))
+        if (bank, idx) == (Bank.XG, 0) : vb.aliases.append((Bank.SFX, 0))     # MSB row: MSB 0 -> XG bank by LSB
         voice_banks[vb.prg_address] = vb
+
+    # silent bank (SFX MSB 1, bank row 0 as on the MU models): the MSB row entry of every MSB without a bank
+    # stays 0 and points to it, so in XG mode such parts are mute as on the 2006LE (VoodooChild: MSB 42).
+    # [Config] BankFallback=1 in the ini gives the usual S-YXG50 behaviour, see dllpatch.SYXG50_BANKFALLBACK.
+    # XG LSBs without a bank: the MSB 0 voices (XG bank row 0 is the silent bank now)
+    xg0 = next(vb for vb in voice_banks.values() if vb.bank == Bank.XG and vb.lsb == 0)
+    used = {vb.lsb for vb in voice_banks.values() if vb.bank == Bank.XG}
+    xg0.aliases += [(Bank.XG, l) for l in range(128) if l not in used]
+    # GS mode (after a GS reset the S-YXG50 reads the GS bank row): every MSB plays the capital voices, as on the
+    # 2006LE. Without a GS row it would fall back to XG bank row 0, the silent bank.
+    voice_banks['GS_0'] = VoiceBank('GS_0', Bank.GS, 0, 0, voices=dict(xg0.voices),
+                                    aliases=[(Bank.GS, m) for m in range(1, 128)], seqID=len(voice_banks))
+    sb = VoiceBank('silent', Bank.SFX, 0, 1, voices={p : silent() for p in range(128)}, aliases=[], seqID=0)
+    voice_banks = {'silent' : sb, **voice_banks}
 
     # * drums: each key is an ext voice (one element, fixed pitch) behind an S-YXG50 drum voice
     drumvoices : dict[str | int, DrumVoice] = {}

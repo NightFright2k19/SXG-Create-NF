@@ -231,6 +231,24 @@ SYXG50_VMAPNOW = [
               '1b 04 10 43 83 fb 10 72 de 61 8a 44 24 08 3c 10 e9 eb 7a fc ff'),
 ]
 VMAPNOW_CAVE_END = 0x3FA7B
+# * S-YXG2006LE banks: the table maps every MSB without a bank to its silent bank (MSB row entry 0, see
+#   decSYXG2006LE), as the 2006LE mutes such parts in XG mode (VoodooChild: MSB 42).
+#   - GS mode: the table's GS bank row points every MSB to the capital voices, as on the 2006LE.
+#   - [Config] BankFallback=1 in the DLL's ini: the usual S-YXG50 behaviour in all modes. After the table
+#     setup (its call in the voice map cave, 0x1003F6B5 -> cave at 0x3FA80) every MSB row entry 0
+#     (0x100552D4 = MSB row pointer) becomes 1. Ini read through the DLL's GetPrivateProfileInt helper
+#     (0x100330FC).
+#   The cave is position independent (call/pop, relative calls). Generated with keystone (mkfallback.py).
+SYXG50_BANKFALLBACK = [
+    (0x3F6B5, 'e8 16 4d fc ff',
+              'e8 c6 03 00 00'),
+    (0x3FA80, ' '.join(['00'] * 96),
+              '8b 44 24 04 50 e8 46 49 fc ff 60 e8 00 00 00 00 5d 81 ed 90 fa 03 10 6a 00 8d 85 d3 fa 03 10 50 '
+              '8d 85 ec 19 05 10 50 e8 50 36 ff ff 83 f8 01 75 1e 8b bd d4 52 05 10 b9 01 00 00 00 80 3c 0f 00 '
+              '75 04 c6 04 0f 01 41 81 f9 80 00 00 00 72 ed 61 c2 04 00 42 61 6e 6b 46 61 6c 6c 62 61 63 6b 00'),
+]
+BANKFALLBACK_CAVE_END = 0x3FAE0
+BANKFALLBACK_MODELS = {'SYXG2006LE'}
 VMAP_DATA_END = 0x56E40
 VMAP_CONTROL_ID = 0x420
 VMAP_CONTROL_TEXT = 'MU Basic voice map'
@@ -1016,6 +1034,9 @@ def Patch(path : Path, full : bool, model : str | None = None, table_name : str 
         apply(data, SYXG50_BIG, 'table size limits (big layout)')
         text_virtual_size(data, BIG_CAVE_END)
         apply_voicemap(data)
+        if model in BANKFALLBACK_MODELS :
+            apply(data, SYXG50_BANKFALLBACK, 'bank fallback switch ([Config] BankFallback)')
+            text_virtual_size(data, BANKFALLBACK_CAVE_END)
     apply_bitmaps(data, model)
     apply_gui(data, full)
     apply_names(data, model, table_name)
@@ -1069,5 +1090,7 @@ def Write(dll_path : Path, out_dir : str, table_name : str, full : bool, model :
             print(f'dllpatch: removed {ini} (not needed with embedded tables)')
     else :
         state = 'replaced' if ini.exists() else 'wrote'
-        ini.write_bytes(INI_TEMPLATE.format(table=table_name).encode('ascii'))
+        text = INI_TEMPLATE.format(table=table_name)
+        if model in BANKFALLBACK_MODELS : text += 'BankFallback=0\r\n'
+        ini.write_bytes(text.encode('ascii'))
         print(f'dllpatch: {state} {ini}')
