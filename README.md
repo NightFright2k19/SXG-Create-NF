@@ -210,6 +210,7 @@ Put the original `sxgbnw6l.tbl` and `sxgdat6l.tbl` (from the S-YXG2006LE install
   | XG (MSB 0) LSB | 48-57 | 58 | 59 | 60 |
 
   These voices use the MSB 0 zones and elements with a different voice mode byte; single notes sound the same as their MSB 0 counterparts. The 9 kits of MSB 118 are the GM2 kits (MSB 120) with the same mode byte and are not converted.
+- **Keep `XGLite=0` in the ini.** The S-YXG2006LE itself only does XGLite, but the `XGLite` switch of `syxg50.dll` is not an XGLite mode: `XGLite=1` turns off the element filter (the DLL's own economy mode). The conversion maps the 2006LE's cutoff onto that filter, so with `XGLite=1` every voice gets brighter than the original (all 128 XG programs rendered against the 2006LE: spectral centroid median 0.96× of the original with `XGLite=0`, 1.29× with `XGLite=1`, no voice darker). Banks, drums and levels are the same with both settings. The XGLite voice set is already in the table itself.
 - **DLL:** the Reset drop-down on the Setup page reads GM / GS / XGLite / GM2 (GM2: `F0 7E 7F 09 03 F7`), and the panel shows `Bitmap101_XG2006LE.bmp`. As with every model, MIDI events after a reset are held back for 4800 samples (about 100 ms).
 
 The S-YXG50's own tables and `Vampire.dll` are recognised as well, but they are not a conversion source.
