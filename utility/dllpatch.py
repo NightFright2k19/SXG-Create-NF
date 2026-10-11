@@ -425,12 +425,13 @@ def apply(data : bytearray, patches, label : str) :
 
 # ----------------------------------------------------------------------------- bitmaps
 # Embedded bitmaps (RT_BITMAP) replaced from the bitmaps folder next to this script:
-#   101  Bitmap101_<model>.bmp  (the panel picture, one per converted model: MU80 ... MU1000;
+#   101  Bitmap101_<model>.bmp  (the panel picture, one per converted model: MU80 ... MU1000, XG2006LE for SYXG2006LE;
 #        models without a file keep the original)
 #   105  Bitmap105.bmp          (same for all models)
 # The new picture must have the size of the original; it is written in the original's format
 # (24-bit DIB), so the resource keeps its size and stays in place.
 BITMAP_DIR = Path(__file__).resolve().parent / 'bitmaps'
+BITMAP_MODEL = {'SYXG2006LE' : 'XG2006LE'}   # model -> file name part, if it differs
 RT_BITMAP = 2
 
 def find_resources(data : bytes | bytearray, rtype : int) -> dict[int, tuple[int, int]] :
@@ -486,7 +487,7 @@ def bmp_to_dib24(bmp : bytes) -> tuple[int, int, bytes] :
 
 def bitmap_files(model : str | None) -> dict[int, Path] :
     files = {105 : BITMAP_DIR / 'Bitmap105.bmp'}
-    if model : files[101] = BITMAP_DIR / f'Bitmap101_{model}.bmp'
+    if model : files[101] = BITMAP_DIR / f'Bitmap101_{BITMAP_MODEL.get(model, model)}.bmp'
     return {rid : f for rid, f in files.items() if f.exists()}
 
 def apply_bitmaps(data : bytearray, model : str | None) :
@@ -512,7 +513,7 @@ def apply_bitmaps(data : bytearray, model : str | None) :
 #   S-YXG50 -> S-YXG<n>, xg50 -> mu<n>, default table SXGBIN41.TBL -> the table just built,
 #   version info: Yamaha S-YXG<n> VSTi, S-YXG<n>, S-YXG<n>.DLL, Yamaha S-YXG<n> Portable VSTi.
 # MU50 keeps the original names except the default table name (an unknown model keeps everything).
-MODEL_NUMBER = {'MU80' : '80', 'MU90' : '90', 'MU100' : '100', 'MU128' : '128', 'MU1000' : '1000'}
+MODEL_NUMBER = {'MU80' : '80', 'MU90' : '90', 'MU100' : '100', 'MU128' : '128', 'MU1000' : '1000', 'SYXG2006LE' : '2006le'}
 
 def Model_Dll_Name(model : str) -> str : 
     # multi-model conversion: one DLL per model, named after it (MU50: syxgmu50.dll, syxg50.dll is the original)
