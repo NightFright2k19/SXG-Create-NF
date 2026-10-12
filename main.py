@@ -108,7 +108,7 @@ def main() :
     if not single_run :
         sgp2 = sgp2patch.Find({calccrc32(f) : f for f in files if f.stat().st_size <= ROM_MAX_SIZE})
         if sgp2 :
-            sgp2patch.Build(sgp2, OUTPUT_DIR)
+            sgp2patch.Build(sgp2, OUTPUT_DIR, buildtarget.EMBED)
             files = [f for f in files if f not in sgp2]
             if not files :
                 Friendly_error('End of Code', 0)

@@ -1,5 +1,6 @@
 ; S-YXG2006LE (SGP2.DLL): two VST parameters, Reset Mode and SysEx, in a new section .sxg
 ; main hook: eax = AEffect (plugin + 0x20); the AEffect callbacks are replaced, the originals kept
+sec:
 main_hook:
     lea eax, [esi + 0x20]
     mov ecx, [eax + 4]
@@ -20,7 +21,118 @@ main_hook:
     mov [eax + 0x10], ecx
     mov dword ptr [eax + 0x18], 2
     mov ecx, [esp + 4]
-    jmp 0x10002cfb
+    jmp IMG + 0x2cfb
+
+; --embed: the table loaders (file size 0x1004c780, read whole file 0x1004c7d0) take sxgbnw6l.tbl / sxgdat6l.tbl
+; from RT_RCDATA resources of the same name (upper case) when present, else from the file as before
+fs_hook:
+    mov eax, [esp + 4]
+    call find_res
+    test eax, eax
+    jz fs_file
+    mov ecx, [esp + 8]
+    mov [ecx], edx
+    mov al, 1
+    ret
+fs_file:
+    mov eax, [esp + 4]
+    push ebx
+    push esi
+    jmp IMG + 0x4c786
+fr_hook:
+    mov eax, [esp + 4]
+    call find_res
+    test eax, eax
+    jz fr_file
+    push esi
+    push edi
+    mov esi, eax
+    mov edi, [esp + 0x10]
+    mov ecx, [esp + 0x14]
+    cmp ecx, edx
+    jbe fr_n
+    mov ecx, edx
+fr_n:
+    rep movsb
+    pop edi
+    pop esi
+    mov al, 1
+    ret
+fr_file:
+    mov eax, [esp + 4]
+    push ebx
+    push esi
+    jmp IMG + 0x4c7d6
+
+; eax = file path -> eax = resource data (0 if none), edx = size
+find_res:
+    push ebx
+    push esi
+    mov esi, eax
+    mov ebx, eax
+fr_scan:
+    mov al, [esi]
+    inc esi
+    test al, al
+    jz fr_scanned
+    cmp al, 0x5C
+    je fr_sep
+    cmp al, 0x2F
+    jne fr_scan
+fr_sep:
+    mov ebx, esi
+    jmp fr_scan
+fr_scanned:
+    cmp dword ptr [k_find], 0
+    jne fr_have
+    lea eax, [s_kernel]
+    push eax
+    call dword ptr [IMG + 0x57040]          ; GetModuleHandleA
+    mov esi, eax
+    lea eax, [s_find]
+    push eax
+    push esi
+    call dword ptr [IMG + 0x5703c]          ; GetProcAddress
+    mov [k_find], eax
+    lea eax, [s_load]
+    push eax
+    push esi
+    call dword ptr [IMG + 0x5703c]
+    mov [k_load], eax
+    lea eax, [s_size]
+    push eax
+    push esi
+    call dword ptr [IMG + 0x5703c]
+    mov [k_size], eax
+fr_have:
+    cmp dword ptr [k_find], 0
+    je fr_none
+    push 10                                 ; RT_RCDATA
+    push ebx
+    lea eax, [IMG]
+    push eax
+    call dword ptr [k_find]
+    test eax, eax
+    jz fr_none
+    mov esi, eax
+    push eax
+    lea eax, [IMG]
+    push eax
+    call dword ptr [k_size]
+    mov ebx, eax
+    push esi
+    lea eax, [IMG]
+    push eax
+    call dword ptr [k_load]                 ; LoadResource: the data pointer on Win32 (LockResource is a no-op)
+    mov edx, ebx
+    pop esi
+    pop ebx
+    ret
+fr_none:
+    xor eax, eax
+    pop esi
+    pop ebx
+    ret
 
 ; float getParameter(AEffect*, int idx)
 getp:
@@ -258,6 +370,10 @@ names: .int s_reset, s_sysex
 modes: .int s_none, s_gm, s_gs, s_xgl, s_gm2
 resets: .int 0, ev_gm, ev_gs, ev_xg, ev_gm2
 s_reset: .asciz "Reset Mode"
+s_kernel: .asciz "KERNEL32.dll"
+s_find: .asciz "FindResourceA"
+s_load: .asciz "LoadResource"
+s_size: .asciz "SizeofResource"
 s_sysex: .asciz "SysEx"
 s_none: .asciz "None"
 s_gm: .asciz "GM"
@@ -284,6 +400,9 @@ got: .int 0
 ax_save: .int 0
 p_target: .int 0
 orig_disp: .int 0
+k_find: .int 0
+k_load: .int 0
+k_size: .int 0
 orig_repl: .int 0
 orig_proc: .int 0
 chunk: .int 0x53525853, 0, 0
