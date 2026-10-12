@@ -698,13 +698,15 @@ def utility_controls(full : bool, model : str | None = None) -> list[dict] :
              _ctl(0x80, 'Enable SysEx in files', 28, 146, 80, 10, 0x50030003, 0x426)]
     if model in RESET_XGLITE_MODELS :
         # S-YXG2006LE: "XGLite" and a 5th radio GM2 (0x42B, GM2 System On F0 7E 7F 09 03 F7), same group
-        # no MU Tone Map here: label, radios and checkbox centred in the frame (x 5-230)
-        items[5]['text'], items[5]['cx'] = 'XGLite', 36
-        items.insert(6, _ctl(0x80, 'GM2', 0, 133, 26, 10, radio, 0x42B))
-        items[1]['x'] = 63                                   # "Reset Mode" (108 wide, centred text)
+        # no MU Tone Map here: the frame itself is "Reset Mode" (no label inside, frame 10 units lower),
+        # radios and checkbox centred in it (x 5-230)
+        items[0]['text'], items[0]['cy'] = 'Reset Mode', 37
+        del items[1]
+        items[4]['text'], items[4]['cx'] = 'XGLite', 36
+        items.insert(5, _ctl(0x80, 'GM2', 0, 0, 26, 10, radio, 0x42B))
         x = 45
-        for it in items[2:7] : it['x'] = x; x += it['cx'] + 2   # None GM GS XGLite GM2: 45-193
-        items[7]['x'] = 78                                   # "Enable SysEx in files" (80 wide)
+        for it in items[1:6] : it['x'], it['y'] = x, 124; x += it['cx'] + 2   # None GM GS XGLite GM2: 45-193
+        items[6]['x'], items[6]['y'] = 78, 137                                # "Enable SysEx in files" (80 wide)
         return items
     if full :
         items += [_ctl(0x82, 'MU Tone Map', 140, 123, 82, 9, 0x50000001, 0x429),
@@ -729,7 +731,7 @@ def edit_settings_page(raw : bytes, full : bool, model : str | None = None) -> b
         elif cid == 0x3FE : it['y'], it['cy'], it['style'] = 87, 20, it['style'] & ~0x18   # ticks below: ends + centre (code)
         elif cid == 0x3FF or text == 'dB' : it['y'] = 89
         elif cid == VMAP_CONTROL_ID : it['style'] &= ~0x10000000  # hidden, driven by the MU Tone Map radios
-        elif cid == 4 : it['y'], it['style'] = 165, it['style'] | 0x300   # Set Defaults, BS_CENTER
+        elif cid == 4 : it['y'], it['style'] = 155 if model in RESET_XGLITE_MODELS else 165, it['style'] | 0x300   # Set Defaults, BS_CENTER
         if cid == 4 : out += utility_controls(full, model)
         out.append(it)
     return build_dialog(bytes(head), out)
