@@ -268,18 +268,29 @@ def apply_voicemap(data : bytearray) :
     old = resource_data(data, entry); new = add_voicemap_checkbox(old)
     if new != old : replace_resource_data(data, entry, new)
 
-# * Settings page (dialog 111, all models):
+# * Settings page (dialog 111, all models), rearranged (issue #26):
+#   - "Polyphony": the seven preset buttons (24 ... 128) are gone, slider and frame move up
 #   - the effect switches name their controller: "Reverb (CC 91)", "Chorus (CC 93)", "Variation (CC 94)"
 #     (wider, spread over the "Effects" frame)
-#   - "Reset" drop-down (combo box id 0x421, GM / GS / XG, default XG): picking an entry sends that reset,
-#     GM System On F0 7E 7F 09 01 F7, GS reset F0 41 10 42 12 40 00 7F 00 41 F7 or XG System On
-#     F0 43 10 4C 00 00 7E 00 F7. MU50 / MU80 / MU90: in the place of the voice map switch of the big models;
-#     MU100 / MU128 / MU1000: right of "MU Basic voice map".
-#     The page (0x10030AF0) fills the list on WM_INITDIALOG and on CBN_SELENDOK marks the reset as pending
-#     (.data 0x10056E40, selection kept in 0x10056E41). The process / processReplacing wrappers (0x100010A0 /
-#     0x100010C0, audio thread) send a pending reset through the SysEx entry of the engine (the same path as
-#     a SysEx event from the host) before the block is rendered. For 4800 samples after a reset (100 ms at
-#     48 kHz) host events and preset steps are held back; the held events follow in one block afterwards.
+#   - "Output Level": -12 ... +12 dB in 0.5 dB steps with 0 dB (the default) in the centre, tick mark there. The
+#     value byte keeps its meaning (101 = 0 dB, default unchanged), the trackbar runs 77-125 (TBM_SETRANGE at
+#     0x10030B4E), WM_HSCROLL keeps it there (0x10031142 -> lvl_clamp); the gain table (0x1004DF10, 128 floats)
+#     and the dB texts (0x1004E748, 6 bytes each) get the new steps, values outside 77-125 count as -12 / +12 dB.
+#   - "Utility" frame (the page is taller, "Set Defaults" below it):
+#     "Reset Mode" radio buttons None / GM / GS / XG (ids 0x422-0x425, default XG). Picking one sends it at once;
+#     while "Enable SysEx in files" (checkbox 0x426, default off) is off, the mode is also sent at every new song:
+#     when the host transport starts playing (getTimeInfo) and whenever a GM / GS / XG reset SysEx comes from
+#     the host (MIDI file or player), which is dropped. GM System On F0 7E 7F 09 01 F7, GS reset
+#     F0 41 10 42 12 40 00 7F 00 41 F7, XG System On F0 43 10 4C 00 00 7E 00 F7; None sends no SysEx, only
+#     All Sound Off / All Notes Off / Reset All Controllers (CC 120 / 123 / 121) on all 16 channels. With the
+#     checkbox on, resets in the files pass unchanged and the Reset Mode radios are greyed out.
+#     MU100 / MU128 / MU1000: "MU Tone Map" radio buttons Basic / Native (0x427 / 0x428, replace the
+#     "MU Basic voice map" checkbox, which stays hidden and is set by them).
+#     The page procedure (0x10030AF0 -> dlg_hook) handles the new controls; after WM_INITDIALOG / Set Defaults
+#     (XG, SysEx in files off) it sets them from the state. The process / processReplacing wrappers
+#     (0x100010A0 / 0x100010C0, audio thread) send a pending reset through the SysEx entry of the engine (the
+#     same path as a SysEx event from the host) before the block is rendered. For 4800 samples after a reset
+#     (100 ms at 48 kHz) host events and preset steps are held back; the held events follow in one block afterwards.
 # * Panel (all models): preset buttons in the title strip, program down / up on MIDI channel 1 (part 1), with a
 #   3-digit readout 001-128, on the centre line of the YAMAHA logo. The buttons (WM_LBUTTONDOWN / UP of the
 #   panel window 0x10032260) add a pending step (.data 0x10056E42); holding a button repeats the step (panel
@@ -289,23 +300,42 @@ def apply_voicemap(data : bytearray) :
 #   panel's idle redraw from the program of part 1 (byte +0x366 of the synth object, engine +8). Static parts
 #   (buttons, readout frame) are pasted into bitmap 101 from bitmaps/PresetPanel.bmp, the pressed buttons
 #   (bitmaps/PresetButtons.bmp) are appended to bitmap 106 (SETUP button) on its right. Both pictures come from dev/gui/mkpreset.py.
-# Generated from dev/gui/gui.asm with dev/gui/mkgui.py (keystone), position independent; the code lives in an
-# unused NOP block of .text (0x33141-0x338C0, no relocations).
+# Generated from dev/gui/gui.asm and settings.asm with dev/gui/mkgui.py (keystone), position independent; the code
+# lives in two unused NOP blocks of .text (0x33150-0x338C0 and 0x2F6D3-0x2FB60, no relocations).
 SYXG50_GUI = [
     (0x010C0, '8b 44 24 04 8b 48 40', 'e9 8b 20 03 00 90 90'),
     (0x010A0, '8b 44 24 04 8b 48 40', 'e9 bc 20 03 00 90 90'),
-    (0x30AF0, '8b 44 24 0c 83 c0 b2', 'e9 f1 2b 00 00 90 90'),
-    (0x3246B, '8b 74 24 54 8a 86 8c 00 00 00', 'e9 90 0e 00 00 90 90 90 90 90'),
-    (0x32427, '8b 74 24 54 8a 86 8c 00 00 00', 'e9 77 0f 00 00 90 90 90 90 90'),
-    (0x3233D, '8d 4c 24 10 51', 'e9 f4 11 00 00'),
-    (0x320EE, '5b 8b 8d 88 00 00 00', 'e9 56 14 00 00 90 90'),
-    (0x32407, '8b 4c 24 64 8b 54 24 60', 'e9 ee 0f 00 00 90 90 90'),
-    (0x33150, ' '.join(['90'] * 1787),
-              'e8 1d 00 00 00 8b 44 24 04 8b 48 40 e9 66 df fc ff e8 0c 00 00 00 8b 44 24 04 8b 48 40 e9 35 df fc ff 60 e8 00 00 00 00 5d 81 ed 78 31 03 10 8b 54 24 28 8b 72 40 8b 8e b0 00 00 00 89 8d 44 6e 05 10 85 c9 0f 84 f3 00 00 00 31 c0 86 85 40 6e 05 10 85 c0 74 34 83 f8 02 74 0c 77 14 8d bd 0a 38 03 10 6a 06 eb 12 8d bd 10 38 03 10 6a 0b eb 08 8d bd 1b 38 03 10 6a 09 57 51 8b 11 ff 52 0c c7 85 54 6e 05 10 c0 12 00 00 8b 85 54 6e 05 10 0b 85 5c 6e 05 10 74 72 8b bd 58 6e 05 10 85 ff 74 68 8b 9e e0 00 00 00 85 db 74 18 8b 0b 31 d2 39 ca 7d 10 51 52 8b 44 93 08 e8 80 00 00 00 5a 59 42 eb ec c7 86 e0 00 00 00 00 00 00 00 8b 44 24 34 29 85 54 6e 05 10 7f 63 c7 85 54 6e 05 10 00 00 00 00 8b 8d 5c 6e 05 10 85 c9 74 1c 89 0f c7 85 5c 6e 05 10 00 00 00 00 c7 85 60 6e 05 10 00 00 00 00 89 be e0 00 00 00 8b 8d 44 6e 05 10 31 c0 86 85 42 6e 05 10 84 c0 74 21 0f be c0 8b 51 08 0f b6 92 66 03 00 00 01 d0 83 e0 7f c1 e0 08 0d c0 00 00 00 50 51 8b 11 ff 52 08 61 c3 8b 95 5c 6e 05 10 81 fa 00 01 00 00 73 62 56 89 c6 6b ca 20 8d 8c 0f 08 04 00 00 89 4c 97 08 57 51 89 cf b9 20 00 00 00 f3 a4 59 5f c7 41 08 00 00 00 00 83 39 06 75 31 8b 41 10 8b 95 60 6e 05 10 8d 34 02 81 fe 00 80 00 00 77 23 89 b5 60 6e 05 10 8d 94 17 08 24 00 00 8b 71 18 89 51 18 57 51 89 d7 89 c1 f3 a4 59 5f ff 85 5c 6e 05 10 5e c3 8b 44 24 64 0f bf c8 c1 f8 10 83 f8 04 0f 8c 81 00 00 00 83 f8 13 7d 7c ba 01 00 00 00 81 f9 a4 00 00 00 7c 6f 81 f9 b3 00 00 00 7c 15 ba 02 00 00 00 81 f9 dd 00 00 00 7c 5a 81 f9 ec 00 00 00 7d 52 60 e8 00 00 00 00 5d 81 ed 48 33 03 10 88 95 43 6e 05 10 b0 01 80 fa 01 75 02 f6 d8 f0 00 85 42 6e 05 10 8b 5c 24 78 53 ff 95 a4 01 04 10 53 e8 e5 01 00 00 e8 75 01 00 00 85 c0 74 0f 6a 00 68 90 01 00 00 68 17 23 00 00 53 ff d0 61 e9 1f f1 ff ff 8b 74 24 54 8a 86 8c 00 00 00 e9 d2 f0 ff ff 60 e8 00 00 00 00 5d 81 ed a9 33 03 10 80 bd 43 6e 05 10 00 74 31 c6 85 43 6e 05 10 00 ff 95 a0 01 04 10 8b 85 4c 6e 05 10 85 c0 74 0b 68 17 23 00 00 ff 74 24 7c ff d0 ff 74 24 78 e8 77 01 00 00 61 e9 c9 f0 ff ff 61 8b 74 24 54 8a 86 8c 00 00 00 e9 37 f0 ff ff 3d 13 01 00 00 74 14 3d 0a 02 00 00 74 67 8b 4c 24 64 8b 54 24 60 e9 fa ef ff ff 81 7c 24 60 17 23 00 00 75 e9 60 e8 00 00 00 00 5d 81 ed 25 34 03 10 8b 5c 24 78 0f b6 95 43 6e 05 10 85 d2 74 22 b0 01 80 fa 01 75 02 f6 d8 f0 00 85 42 6e 05 10 6a 00 6a 4b 68 17 23 00 00 53 ff 95 48 6e 05 10 eb 0c 68 17 23 00 00 53 ff 95 4c 6e 05 10 61 e9 44 f0 ff ff 60 e8 00 00 00 00 5d 81 ed 75 34 03 10 83 ec 10 54 ff b4 24 8c 00 00 00 ff 95 bc 01 04 10 0f bf 8c 24 94 00 00 00 0f bf 94 24 96 00 00 00 2b 0c 24 2b 54 24 04 83 c4 10 81 f9 a4 00 00 00 7c 3b 81 f9 ec 00 00 00 7d 33 83 fa 04 7c 2e 83 fa 13 7d 29 0f bf 84 24 82 00 00 00 03 85 50 6e 05 10 99 b9 78 00 00 00 f7 f9 89 95 50 6e 05 10 f0 00 85 42 6e 05 10 61 e9 c9 ef ff ff 61 e9 18 ff ff ff 8b 85 48 6e 05 10 85 c0 75 3b 8d 85 2d 38 03 10 50 ff 95 04 01 04 10 85 c0 74 2a 89 c6 8d 8d 41 38 03 10 51 56 ff 95 30 00 04 10 89 85 4c 6e 05 10 8d 8d 38 38 03 10 51 56 ff 95 30 00 04 10 89 85 48 6e 05 10 c3 ff 74 24 10 e8 d1 00 00 00 8d 4c 24 10 51 e9 f9 ed ff ff 5b 57 e8 c0 00 00 00 8b 8d 88 00 00 00 e9 9a eb ff ff 60 e8 00 00 00 00 5d 81 ed 61 35 03 10 ff 74 24 24 ff 95 a8 01 04 10 85 c0 74 50 89 c6 56 ff 95 1c 00 04 10 85 c0 74 38 89 c7 0f b6 9d 43 6e 05 10 b8 01 00 00 00 b9 a4 00 00 00 ba a0 00 00 00 e8 2a 00 00 00 b8 02 00 00 00 b9 dd 00 00 00 ba af 00 00 00 e8 16 00 00 00 57 ff 95 24 00 04 10 56 ff 74 24 28 ff 95 ac 01 04 10 61 c2 04 00 51 52 39 d8 75 19 ff b5 38 53 05 10 57 ff 95 20 00 04 10 5a 59 68 20 00 cc 00 6a 00 52 eb 17 ff b5 20 53 05 10 57 ff 95 20 00 04 10 5a 59 68 20 00 cc 00 6a 04 51 57 6a 0f 6a 0f 6a 04 51 56 ff 95 18 00 04 10 c3 60 e8 00 00 00 00 5d 81 ed 16 36 03 10 8b 74 24 24 56 ff 95 1c 00 04 10 85 c0 0f 84 97 00 00 00 89 c7 ff b5 3c 53 05 10 57 ff 95 20 00 04 10 8b 8d 44 6e 05 10 85 c9 75 25 b8 0a 00 00 00 b9 b9 00 00 00 e8 73 00 00 00 b8 0a 00 00 00 b9 c3 00 00 00 e8 64 00 00 00 b8 0a 00 00 00 eb 48 8b 49 08 0f b6 99 66 03 00 00 43 89 d8 31 d2 b9 64 00 00 00 f7 f1 b9 b9 00 00 00 e8 3d 00 00 00 89 d8 31 d2 b9 0a 00 00 00 f7 f1 31 d2 f7 f1 89 d0 b9 c3 00 00 00 e8 22 00 00 00 89 d8 31 d2 b9 0a 00 00 00 f7 f1 89 d0 b9 cd 00 00 00 e8 0b 00 00 00 57 ff 95 24 00 04 10 61 c2 04 00 6b c0 0a 68 20 00 cc 00 6a 00 50 57 6a 0d 6a 0a 6a 05 51 56 ff 95 18 00 04 10 c3 8b 44 24 0c 3d 10 01 00 00 0f 84 92 00 00 00 3d 11 01 00 00 0f 85 02 01 00 00 66 81 7c 24 10 21 04 0f 85 f5 00 00 00 66 83 7c 24 12 09 75 6a 60 e8 00 00 00 00 5d 81 ed 1b 37 03 10 68 21 04 00 00 ff 74 24 2c ff 95 78 01 04 10 6a 00 6a 00 68 47 01 00 00 50 ff 95 74 01 04 10 83 f8 02 77 38 89 c3 83 bd 58 6e 05 10 00 75 1a 6a 04 68 00 30 00 00 68 00 00 01 00 6a 00 ff 95 3c 01 04 10 89 85 58 6e 05 10 89 d8 34 02 88 85 41 6e 05 10 8d 43 01 88 85 40 6e 05 10 61 b8 01 00 00 00 c2 14 00 60 e8 00 00 00 00 5d 81 ed 8d 37 03 10 68 21 04 00 00 ff 74 24 2c ff 95 78 01 04 10 89 c3 8d 85 24 38 03 10 50 6a 00 68 43 01 00 00 53 ff 95 74 01 04 10 8d 85 27 38 03 10 50 6a 00 68 43 01 00 00 53 ff 95 74 01 04 10 8d 85 2a 38 03 10 50 6a 00 68 43 01 00 00 53 ff 95 74 01 04 10 6a 00 0f b6 85 41 6e 05 10 83 f0 02 50 68 4e 01 00 00 53 ff 95 74 01 04 10 61 8b 44 24 0c 83 c0 b2 e9 ed d2 ff ff f0 7e 7f 09 01 f7 f0 41 10 42 12 40 00 7f 00 41 f7 f0 43 10 4c 00 00 7e 00 f7 47 4d 00 47 53 00 58 47 00 55 53 45 52 33 32 2e 64 6c 6c 00 53 65 74 54 69 6d 65 72 00 4b 69 6c 6c 54 69 6d 65 72 00'),
+    (0x30AF0, '8b 44 24 0c 83 c0 b2', 'e9 de eb ff ff 90 90'),
+    (0x3246B, '8b 74 24 54 8a 86 8c 00 00 00', 'e9 13 10 00 00 90 90 90 90 90'),
+    (0x32427, '8b 74 24 54 8a 86 8c 00 00 00', 'e9 fa 10 00 00 90 90 90 90 90'),
+    (0x3233D, '8d 4c 24 10 51', 'e9 77 13 00 00'),
+    (0x320EE, '5b 8b 8d 88 00 00 00', 'e9 d9 15 00 00 90 90'),
+    (0x32407, '8b 4c 24 64 8b 54 24 60', 'e9 71 11 00 00 90 90 90'),
+    (0x31142, '0f b6 08 51 53 e8 64 00 00 00', 'e9 2c e8 ff ff 90 90 90 90 90'),
+    (0x33150, ' '.join(['90'] * 1873),
+              'e8 1d 00 00 00 8b 44 24 04 8b 48 40 e9 66 df fc ff e8 0c 00 00 00 8b 44 24 04 8b 48 40 e9 35 df fc ff 60 e8 00 00 00 00 5d 81 ed 78 31 03 10 8b 54 24 28 8b 72 40 8b 8e b0 00 00 00 89 8d 44 6e 05 10 85 c9 0f 84 37 01 00 00 80 bd 64 6e 05 10 00 75 05 e8 39 01 00 00 8b 8d 44 6e 05 10 31 c0 86 85 40 6e 05 10 85 c0 74 64 83 f8 05 74 2c 83 f8 02 74 0c 77 14 8d bd 69 38 03 10 6a 06 eb 12 8d bd 6f 38 03 10 6a 0b eb 08 8d bd 7a 38 03 10 6a 09 57 51 8b 11 ff 52 0c eb 29 31 db 8d 83 b0 78 00 00 e8 db 00 00 00 8d 83 b0 7b 00 00 e8 d0 00 00 00 8d 83 b0 79 00 00 e8 c5 00 00 00 43 83 fb 10 72 d9 c7 85 54 6e 05 10 c0 12 00 00 8b 85 54 6e 05 10 0b 85 5c 6e 05 10 74 72 8b bd 58 6e 05 10 85 ff 74 68 8b 9e e0 00 00 00 85 db 74 18 8b 0b 31 d2 39 ca 7d 10 51 52 8b 44 93 08 e8 9c 01 00 00 5a 59 42 eb ec c7 86 e0 00 00 00 00 00 00 00 8b 44 24 34 29 85 54 6e 05 10 7f 63 c7 85 54 6e 05 10 00 00 00 00 8b 8d 5c 6e 05 10 85 c9 74 1c 89 0f c7 85 5c 6e 05 10 00 00 00 00 c7 85 60 6e 05 10 00 00 00 00 89 be e0 00 00 00 8b 8d 44 6e 05 10 31 c0 86 85 42 6e 05 10 84 c0 74 21 0f be c0 8b 51 08 0f b6 92 66 03 00 00 01 d0 83 e0 7f c1 e0 08 0d c0 00 00 00 50 51 8b 11 ff 52 08 61 c3 8b 8d 44 6e 05 10 50 51 8b 11 ff 52 08 c3 8b 46 0c 85 c0 74 3a 6a 00 6a 00 6a 00 6a 00 6a 07 ff 74 24 40 ff d0 83 c4 18 31 c9 85 c0 74 08 8b 48 54 d1 e9 83 e1 01 8a 85 65 6e 05 10 88 8d 65 6e 05 10 84 c9 74 09 84 c0 75 05 e8 33 00 00 00 8b 9e e0 00 00 00 85 db 74 28 31 d2 3b 13 7d 22 8b 7c 93 08 83 3f 06 75 16 52 8b 4f 10 8b 47 18 e8 45 00 00 00 85 c0 74 05 e8 05 00 00 00 5a 42 eb da c3 0f b6 85 41 6e 05 10 34 03 75 02 b0 05 88 85 40 6e 05 10 83 bd 58 6e 05 10 00 75 1a 6a 04 68 00 30 00 00 68 00 00 01 00 6a 00 ff 95 3c 01 04 10 89 85 58 6e 05 10 c3 52 89 c2 31 c0 83 f9 05 72 57 80 3a f0 75 52 80 7a 01 7e 75 08 80 7a 03 09 75 46 eb 3f 83 f9 08 72 3f 80 7a 01 41 75 11 81 7a 03 42 12 40 00 75 30 80 7a 07 7f 75 2a eb 23 80 7a 01 43 75 22 8a 4a 02 80 e1 f0 80 f9 10 75 17 81 7a 03 4c 00 00 7e 74 09 81 7a 03 4c 00 00 7f 75 05 b8 01 00 00 00 5a c3 83 38 06 75 1e 80 bd 64 6e 05 10 00 75 15 50 51 52 8b 48 10 8b 40 18 e8 81 ff ff ff 85 c0 5a 59 58 75 70 8b 95 5c 6e 05 10 81 fa 00 01 00 00 73 62 56 89 c6 6b ca 20 8d 8c 0f 08 04 00 00 89 4c 97 08 57 51 89 cf b9 20 00 00 00 f3 a4 59 5f c7 41 08 00 00 00 00 83 39 06 75 31 8b 41 10 8b 95 60 6e 05 10 8d 34 02 81 fe 00 80 00 00 77 23 89 b5 60 6e 05 10 8d 94 17 08 24 00 00 8b 71 18 89 51 18 57 51 89 d7 89 c1 f3 a4 59 5f ff 85 5c 6e 05 10 5e c3 8b 44 24 64 0f bf c8 c1 f8 10 83 f8 04 0f 8c 81 00 00 00 83 f8 13 7d 7c ba 01 00 00 00 81 f9 a4 00 00 00 7c 6f 81 f9 b3 00 00 00 7c 15 ba 02 00 00 00 81 f9 dd 00 00 00 7c 5a 81 f9 ec 00 00 00 7d 52 60 e8 00 00 00 00 5d 81 ed cb 34 03 10 88 95 43 6e 05 10 b0 01 80 fa 01 75 02 f6 d8 f0 00 85 42 6e 05 10 8b 5c 24 78 53 ff 95 a4 01 04 10 53 e8 e5 01 00 00 e8 75 01 00 00 85 c0 74 0f 6a 00 68 90 01 00 00 68 17 23 00 00 53 ff d0 61 e9 9c ef ff ff 8b 74 24 54 8a 86 8c 00 00 00 e9 4f ef ff ff 60 e8 00 00 00 00 5d 81 ed 2c 35 03 10 80 bd 43 6e 05 10 00 74 31 c6 85 43 6e 05 10 00 ff 95 a0 01 04 10 8b 85 4c 6e 05 10 85 c0 74 0b 68 17 23 00 00 ff 74 24 7c ff d0 ff 74 24 78 e8 77 01 00 00 61 e9 46 ef ff ff 61 8b 74 24 54 8a 86 8c 00 00 00 e9 b4 ee ff ff 3d 13 01 00 00 74 14 3d 0a 02 00 00 74 67 8b 4c 24 64 8b 54 24 60 e9 77 ee ff ff 81 7c 24 60 17 23 00 00 75 e9 60 e8 00 00 00 00 5d 81 ed a8 35 03 10 8b 5c 24 78 0f b6 95 43 6e 05 10 85 d2 74 22 b0 01 80 fa 01 75 02 f6 d8 f0 00 85 42 6e 05 10 6a 00 6a 4b 68 17 23 00 00 53 ff 95 48 6e 05 10 eb 0c 68 17 23 00 00 53 ff 95 4c 6e 05 10 61 e9 c1 ee ff ff 60 e8 00 00 00 00 5d 81 ed f8 35 03 10 83 ec 10 54 ff b4 24 8c 00 00 00 ff 95 bc 01 04 10 0f bf 8c 24 94 00 00 00 0f bf 94 24 96 00 00 00 2b 0c 24 2b 54 24 04 83 c4 10 81 f9 a4 00 00 00 7c 3b 81 f9 ec 00 00 00 7d 33 83 fa 04 7c 2e 83 fa 13 7d 29 0f bf 84 24 82 00 00 00 03 85 50 6e 05 10 99 b9 78 00 00 00 f7 f9 89 95 50 6e 05 10 f0 00 85 42 6e 05 10 61 e9 46 ee ff ff 61 e9 18 ff ff ff 8b 85 48 6e 05 10 85 c0 75 3b 8d 85 83 38 03 10 50 ff 95 04 01 04 10 85 c0 74 2a 89 c6 8d 8d 97 38 03 10 51 56 ff 95 30 00 04 10 89 85 4c 6e 05 10 8d 8d 8e 38 03 10 51 56 ff 95 30 00 04 10 89 85 48 6e 05 10 c3 ff 74 24 10 e8 d1 00 00 00 8d 4c 24 10 51 e9 76 ec ff ff 5b 57 e8 c0 00 00 00 8b 8d 88 00 00 00 e9 17 ea ff ff 60 e8 00 00 00 00 5d 81 ed e4 36 03 10 ff 74 24 24 ff 95 a8 01 04 10 85 c0 74 50 89 c6 56 ff 95 1c 00 04 10 85 c0 74 38 89 c7 0f b6 9d 43 6e 05 10 b8 01 00 00 00 b9 a4 00 00 00 ba a0 00 00 00 e8 2a 00 00 00 b8 02 00 00 00 b9 dd 00 00 00 ba af 00 00 00 e8 16 00 00 00 57 ff 95 24 00 04 10 56 ff 74 24 28 ff 95 ac 01 04 10 61 c2 04 00 51 52 39 d8 75 19 ff b5 38 53 05 10 57 ff 95 20 00 04 10 5a 59 68 20 00 cc 00 6a 00 52 eb 17 ff b5 20 53 05 10 57 ff 95 20 00 04 10 5a 59 68 20 00 cc 00 6a 04 51 57 6a 0f 6a 0f 6a 04 51 56 ff 95 18 00 04 10 c3 60 e8 00 00 00 00 5d 81 ed 99 37 03 10 8b 74 24 24 56 ff 95 1c 00 04 10 85 c0 0f 84 97 00 00 00 89 c7 ff b5 3c 53 05 10 57 ff 95 20 00 04 10 8b 8d 44 6e 05 10 85 c9 75 25 b8 0a 00 00 00 b9 b9 00 00 00 e8 73 00 00 00 b8 0a 00 00 00 b9 c3 00 00 00 e8 64 00 00 00 b8 0a 00 00 00 eb 48 8b 49 08 0f b6 99 66 03 00 00 43 89 d8 31 d2 b9 64 00 00 00 f7 f1 b9 b9 00 00 00 e8 3d 00 00 00 89 d8 31 d2 b9 0a 00 00 00 f7 f1 31 d2 f7 f1 89 d0 b9 c3 00 00 00 e8 22 00 00 00 89 d8 31 d2 b9 0a 00 00 00 f7 f1 89 d0 b9 cd 00 00 00 e8 0b 00 00 00 57 ff 95 24 00 04 10 61 c2 04 00 6b c0 0a 68 20 00 cc 00 6a 00 50 57 6a 0d 6a 0a 6a 05 51 56 ff 95 18 00 04 10 c3 f0 7e 7f 09 01 f7 f0 41 10 42 12 40 00 7f 00 41 f7 f0 43 10 4c 00 00 7e 00 f7 55 53 45 52 33 32 2e 64 6c 6c 00 53 65 74 54 69 6d 65 72 00 4b 69 6c 6c 54 69 6d 65 72 00'),
+    (0x2F6D3, ' '.join(['90'] * 729),
+              '8b 44 24 0c 3d 10 01 00 00 0f 84 f7 00 00 00 3d 11 01 00 00 0f 85 e4 00 00 00 0f b7 44 24 10 83 f8 04 0f 84 de 00 00 00 3d 22 04 00 00 0f 82 c7 00 00 00 3d 28 04 00 00 0f 87 bc 00 00 00 66 83 7c 24 12 00 0f 85 a8 00 00 00 60 e8 00 00 00 00 5d 81 ed 23 f7 02 10 8b 5c 24 28 0f b7 44 24 30 3d 26 04 00 00 74 45 77 5b 2d 22 04 00 00 89 c1 80 f1 03 88 8d 41 6e 05 10 85 c0 75 02 b0 05 50 83 bd 58 6e 05 10 00 75 1a 6a 04 68 00 30 00 00 68 00 00 01 00 6a 00 ff 95 3c 01 04 10 89 85 58 6e 05 10 58 88 85 40 6e 05 10 eb 45 68 26 04 00 00 53 e8 5c 01 00 00 88 85 64 6e 05 10 e8 75 01 00 00 eb 2d 31 c9 3d 27 04 00 00 0f 94 c1 51 68 20 04 00 00 53 ff 95 d0 01 04 10 6a 00 53 68 68 04 00 00 53 ff 95 70 01 04 10 50 ff 95 74 01 04 10 61 b8 01 00 00 00 c2 14 00 8b 44 24 0c 83 c0 b2 e9 1e 13 00 00 ff 74 24 14 ff 74 24 14 ff 74 24 14 ff 74 24 14 ff 74 24 14 e8 e8 00 00 00 50 60 e8 00 00 00 00 5d 81 ed f9 f7 02 10 8b 5c 24 2c 81 7c 24 30 10 01 00 00 75 1e 6a 65 6a 00 68 04 04 00 00 68 fe 03 00 00 53 ff 95 78 01 04 10 50 ff 95 74 01 04 10 eb 0e c6 85 41 6e 05 10 00 c6 85 64 6e 05 10 00 0f b6 b5 41 6e 05 10 83 f6 03 81 c6 22 04 00 00 bf 22 04 00 00 31 c0 39 f7 0f 94 c0 50 57 53 ff 95 d0 01 04 10 47 81 ff 26 04 00 00 72 e7 0f b6 85 64 6e 05 10 50 68 26 04 00 00 53 ff 95 d0 01 04 10 e8 89 00 00 00 80 bd c1 6d 05 10 01 75 2c 68 20 04 00 00 53 e8 51 00 00 00 89 c6 56 68 27 04 00 00 53 ff 95 d0 01 04 10 83 f6 01 56 68 28 04 00 00 53 ff 95 d0 01 04 10 eb 1f bf 27 04 00 00 57 53 ff 95 78 01 04 10 6a 00 50 ff 95 b0 01 04 10 47 81 ff 2a 04 00 00 72 e6 61 58 c2 14 00 8b 44 24 0c 83 c0 b2 e9 11 12 00 00 ff 74 24 08 ff 74 24 08 ff 95 78 01 04 10 6a 00 6a 00 68 f0 00 00 00 50 ff 95 74 01 04 10 83 e0 01 c2 08 00 8b 85 68 6e 05 10 85 c0 75 29 8d 85 94 f9 02 10 50 ff 95 04 01 04 10 85 c0 74 4d 8d 8d 9f f9 02 10 51 50 ff 95 30 00 04 10 89 85 68 6e 05 10 85 c0 74 35 56 57 89 c6 bf 22 04 00 00 57 53 ff 95 78 01 04 10 31 c9 80 bd 64 6e 05 10 00 0f 94 c1 51 50 ff d6 47 81 ff 26 04 00 00 72 df 75 07 bf 2a 04 00 00 eb d6 5f 5e c3 8a 08 80 f9 4d 73 02 b1 4d 80 f9 7d 76 02 b1 7d 88 08 0f b6 c9 51 53 e8 21 18 00 00 e9 b8 17 00 00 55 53 45 52 33 32 2e 64 6c 6c 00 45 6e 61 62 6c 65 57 69 6e 64 6f 77 00'),
 ]
-GUI_CAVE_END = 0x3384B
-GUI_DATA_END = 0x56E64
-RESET_CONTROL_ID = 0x421
+GUI_CAVE_END = 0x338A1
+GUI_DATA_END = 0x56E6C
+LEVEL_RANGE = (77, 125)               # Output Level trackbar values, 101 = 0 dB, 0.5 dB per step
+LEVEL_ZERO = 101
+LEVEL_GAIN_TABLE = 0x4DF10            # 128 floats
+LEVEL_TEXT_TABLE = 0x4E748            # 128 x 6 bytes
+LEVEL_RANGE_SITE = 0x30B4E            # push 0x007F0000 (TBM_SETRANGE lParam of the Output Level trackbar)
+
+def level_patches(data : bytes) -> list :
+    # gain and text tables for -12 ... +12 dB in 0.5 dB steps around value 101, trackbar range
+    lo, hi = LEVEL_RANGE
+    gains = b''; texts = b''
+    for v in range(128) :
+        db = (min(max(v, lo), hi) - LEVEL_ZERO) * 0.5
+        gains += struct.pack('<f', 10 ** (db / 20))
+        texts += (f'{db:+.1f}' if db else '0').encode('ascii').ljust(6, b'\0')
+    def entry(off, new) : return (off, data[off : off + len(new)].hex(' '), new.hex(' '))
+    return [entry(LEVEL_GAIN_TABLE, gains), entry(LEVEL_TEXT_TABLE, texts),
+            (LEVEL_RANGE_SITE, '68 00 00 7f 00', '68 ' + struct.pack('<HH', lo, hi).hex(' '))]
 EFFECT_SWITCHES = {      # id: (text, x, width); y = 80, height 10 as before
     0x3FB : ('Reverb (CC 91)', 12, 66),
     0x3FC : ('Chorus (CC 93)', 84, 66),
@@ -624,23 +654,46 @@ def build_dialog(head : bytes, items : list[dict]) -> bytes :
         out += sz_or_ord(it['cls']) + sz_or_ord(it['text']) + struct.pack('<H', len(it['extra'])) + it['extra']
     return bytes(out)
 
+SETTINGS_PAGE_HEIGHT = 183               # dialog units (was 160): room for the Utility frame
+def _ctl(cls, text, x, y, cx, cy, style, cid = 0xFFFFFFFF) :
+    return dict(help = 0, exstyle = 0, style = style, x = x, y = y, cx = cx, cy = cy, id = cid, cls = cls, text = text, extra = b'')
+def utility_controls(full : bool) -> list[dict] :
+    # "Utility" frame: Reset Mode (left), MU Tone Map (right, voice map models); see SYXG50_GUI / settings.asm
+    radio, first = 0x50010009, 0x50030009      # BS_AUTORADIOBUTTON | WS_TABSTOP, + WS_GROUP for the first of a group
+    items = [_ctl(0x80, 'Utility', 5, 113, 225, 47, 0x50000007),
+             _ctl(0x82, 'Reset Mode', 12, 123, 108, 9, 0x50000001, 0x42A),
+             _ctl(0x80, 'None', 12, 133, 30, 10, first, 0x422),
+             _ctl(0x80, 'GM', 44, 133, 24, 10, radio, 0x423),
+             _ctl(0x80, 'GS', 70, 133, 24, 10, radio, 0x424),
+             _ctl(0x80, 'XG', 96, 133, 24, 10, radio, 0x425),
+             _ctl(0x80, 'Enable SysEx in files', 28, 146, 80, 10, 0x50030003, 0x426)]
+    if full :
+        items += [_ctl(0x82, 'MU Tone Map', 140, 123, 82, 9, 0x50000001, 0x429),
+                  _ctl(0x80, 'Basic', 146, 133, 32, 10, first, 0x427),
+                  _ctl(0x80, 'Native', 182, 133, 36, 10, radio, 0x428)]
+    return items
+
 def edit_settings_page(raw : bytes, full : bool) -> bytes :
-    # dialog 111: effect switch names, "Reset" label + drop-down (see SYXG50_GUI)
+    # dialog 111: layout of issue #26 (see SYXG50_GUI); y positions in dialog units
     head, items = dialog_items(raw)
-    ids = [it['id'] for it in items]
+    if any(it['id'] == 0x422 for it in items) : return raw       # already done
+    head = bytearray(head); struct.pack_into('<h', head, 24, SETTINGS_PAGE_HEIGHT)
+    out = []
     for it in items :
-        if it['id'] in EFFECT_SWITCHES :
-            it['text'], it['x'], it['cx'] = EFFECT_SWITCHES[it['id']]
-        if it['id'] == VMAP_CONTROL_ID :
-            it['cx'] = 80                       # room for the Reset drop-down on its right
-    if RESET_CONTROL_ID not in ids :
-        x = 98 if full else 10
-        label = dict(help = 0, exstyle = 0, style = 0x50020000, x = x, y = 143, cx = 24, cy = 10, id = 0xFFFFFFFF,
-                     cls = 0x82, text = 'Reset', extra = b'')
-        combo = dict(help = 0, exstyle = 0, style = 0x50210003, x = x + 24, y = 141, cx = 36, cy = 40,
-                     id = RESET_CONTROL_ID, cls = 0x85, text = '', extra = b'')
-        items += [label, combo]
-    return build_dialog(head, items)
+        cid, text = it['id'], it['text']
+        if 0x3F2 <= cid <= 0x3F8 : continue                     # polyphony preset buttons
+        if text == 'Polyphony' : it['cy'] = 33
+        elif cid in (0x3F9, 0x3FA) : it['y'] = 17               # polyphony slider and value
+        elif text == 'Effects' : it['y'], it['cy'] = 42, 33
+        elif cid in EFFECT_SWITCHES : it['text'], it['x'], it['cx'] = EFFECT_SWITCHES[cid]; it['y'] = 57
+        elif text == 'Output Level' : it['y'] = 79
+        elif cid == 0x3FE : it['y'], it['cy'], it['style'] = 87, 20, it['style'] & ~0x18   # ticks below: ends + centre (code)
+        elif cid == 0x3FF or text == 'dB' : it['y'] = 89
+        elif cid == VMAP_CONTROL_ID : it['style'] &= ~0x10000000  # hidden, driven by the MU Tone Map radios
+        elif cid == 4 : it['y'], it['style'] = 165, it['style'] | 0x300   # Set Defaults, BS_CENTER
+        if cid == 4 : out += utility_controls(full)
+        out.append(it)
+    return build_dialog(bytes(head), out)
 
 PRESET_PANEL_POS = (160, 1)            # PresetPanel.bmp in bitmap 101
 PRESET_BUTTONS_X = 160                 # PresetButtons.bmp appended to bitmap 106 (160 x 16 -> 190 x 16)
@@ -681,7 +734,10 @@ def apply_preset_bitmaps(data : bytearray) :
         replace_resource_data(data, entry, rows_to_dib(w + bw, rows))
 
 def apply_gui(data : bytearray, full : bool) :
-    apply(data, SYXG50_GUI, 'Settings page reset drop-down, panel preset buttons')
+    apply(data, SYXG50_GUI, 'Settings page Utility frame / reset modes, panel preset buttons')
+    if data[LEVEL_TEXT_TABLE + 6 * LEVEL_ZERO : LEVEL_TEXT_TABLE + 6 * LEVEL_ZERO + 2] != b'0\0' :
+        raise DllPatchError('Output Level texts not found, is this the right DLL version?')
+    apply(data, level_patches(data), 'Output Level -12 ... +12 dB')
     apply_preset_bitmaps(data)
     text_virtual_size(data, GUI_CAVE_END)
     data_virtual_size(data, GUI_DATA_END)
@@ -689,7 +745,7 @@ def apply_gui(data : bytearray, full : bool) :
     if entry is None : raise DllPatchError('dialog 111 not found in the DLL')
     old = resource_data(data, entry); new = edit_settings_page(old, full)
     if new != old : replace_resource_data(data, entry, new)
-    print('  Settings page: effect switches named with their CC numbers')
+    print('  Settings page: new layout (Polyphony, Effects with CC numbers, Output Level, Utility)')
 
 # --- RT_VERSION: VS_VERSIONINFO tree
 def _vi_parse(raw, p) :
