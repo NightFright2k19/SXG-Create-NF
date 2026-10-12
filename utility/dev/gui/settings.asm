@@ -2,7 +2,8 @@
 ; Code cave at 0x1002F6D3 (unused NOP block inside .text, no relocations), position independent (call/pop,
 ; ebp = load delta). Shared state with gui.asm in .data (see there): 0x10056E40 pending reset,
 ; 0x10056E41 Reset Mode XOR 3, 0x10056E58 event queue, 0x10056E64 "Enable SysEx in files", 0x10056E68 EnableWindow.
-; Controls: radio buttons 0x422 None, 0x423 GM, 0x424 GS, 0x425 XG ("Reset Mode" label 0x42A), checkbox 0x426
+; Controls: radio buttons 0x422 None, 0x423 GM, 0x424 GS, 0x425 XG ("Reset Mode" label 0x42A), 0x42B GM2
+; (S-YXG2006LE only, Reset Mode 4, pending 4), checkbox 0x426
 ; "Enable SysEx in files" (greys the Reset Mode out while on), radio buttons 0x427 Basic, 0x428 Native
 ; ("MU Tone Map" label 0x429, MU100 / MU128 / MU1000 only). The tone map radios drive the hidden checkbox
 ; 0x420 of the voice map patch (checked = MU Basic), so its WM_INITDIALOG / Set Defaults / PSN_APPLY code
@@ -22,10 +23,13 @@ dlg_hook:
     movzx eax, word ptr [esp + 0x10]
     cmp eax, 4
     je dh_after
+    cmp eax, 0x42b
+    je dh_radio
     cmp eax, 0x422
     jb dlg_reload
     cmp eax, 0x428
     ja dlg_reload
+dh_radio:
     cmp word ptr [esp + 0x12], 0
     jne dh_ret1
     pushal
@@ -35,6 +39,8 @@ dc_base:
     sub ebp, dc_base
     mov ebx, dword ptr [esp + 0x28]
     movzx eax, word ptr [esp + 0x30]
+    cmp eax, 0x42b
+    je dc_gm2
     cmp eax, 0x426
     je dc_sysex
     ja dc_tone
@@ -45,6 +51,10 @@ dc_base:
     test eax, eax
     jne dc_pend
     mov al, 5
+    jmp dc_pend
+dc_gm2:
+    mov byte ptr [ebp + 0x10056e41], 7
+    mov eax, 4
 dc_pend:
     push eax
     cmp dword ptr [ebp + 0x10056e58], 0
@@ -137,6 +147,13 @@ ds_loop:
     inc edi
     cmp edi, 0x426
     jb ds_loop
+    xor eax, eax
+    cmp esi, 0x426
+    sete al
+    push eax
+    push 0x42b
+    push ebx
+    call dword ptr [ebp + 0x100401d0]
     movzx eax, byte ptr [ebp + 0x10056e64]
     push eax
     push 0x426
@@ -228,7 +245,11 @@ er_loop:
     inc edi
     cmp edi, 0x426
     jb er_loop
-    jne er_done
+    je er_label
+    cmp edi, 0x42c
+    jb er_loop
+    jmp er_done
+er_label:
     mov edi, 0x42a
     jmp er_loop
 er_done:
@@ -300,7 +321,7 @@ cs_base:
     jne cs_out
     sub dword ptr [esp + 0x28], 4
     mov cl, byte ptr [esi + eax - 2]
-    and cl, 3
+    and cl, 7                                   ; 0-3, 4 = GM2 (S-YXG2006LE)
     xor cl, 3
     mov byte ptr [ebp + 0x10056e41], cl
     mov cl, byte ptr [esi + eax - 1]

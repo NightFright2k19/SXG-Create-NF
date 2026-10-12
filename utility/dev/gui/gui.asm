@@ -65,7 +65,13 @@ sp_take:
     je sp_none
     cmp eax, 2
     je sp_gs
-    ja sp_xg
+    jb sp_gm
+    cmp eax, 4
+    jne sp_xg
+    lea edi, [ebp + gm2_reset]
+    push 6
+    jmp sp_send
+sp_gm:
     lea edi, [ebp + gm_reset]
     push 6
     jmp sp_send
@@ -679,6 +685,8 @@ gs_reset:
     .byte 0xf0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x7f, 0x00, 0x41, 0xf7
 xg_reset:
     .byte 0xf0, 0x43, 0x10, 0x4c, 0x00, 0x00, 0x7e, 0x00, 0xf7
+gm2_reset:
+    .byte 0xf0, 0x7e, 0x7f, 0x09, 0x03, 0xf7
 txt_user32:
     .ascii "USER32.dll"
     .byte 0
