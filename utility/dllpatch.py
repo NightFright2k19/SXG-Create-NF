@@ -698,8 +698,14 @@ def utility_controls(full : bool, model : str | None = None) -> list[dict] :
              _ctl(0x80, 'Enable SysEx in files', 28, 146, 80, 10, 0x50030003, 0x426)]
     if model in RESET_XGLITE_MODELS :
         # S-YXG2006LE: "XGLite" and a 5th radio GM2 (0x42B, GM2 System On F0 7E 7F 09 03 F7), same group
+        # no MU Tone Map here: label, radios and checkbox centred in the frame (x 5-230)
         items[5]['text'], items[5]['cx'] = 'XGLite', 36
-        items.insert(6, _ctl(0x80, 'GM2', 134, 133, 26, 10, radio, 0x42B))
+        items.insert(6, _ctl(0x80, 'GM2', 0, 133, 26, 10, radio, 0x42B))
+        items[1]['x'] = 63                                   # "Reset Mode" (108 wide, centred text)
+        x = 45
+        for it in items[2:7] : it['x'] = x; x += it['cx'] + 2   # None GM GS XGLite GM2: 45-193
+        items[7]['x'] = 78                                   # "Enable SysEx in files" (80 wide)
+        return items
     if full :
         items += [_ctl(0x82, 'MU Tone Map', 140, 123, 82, 9, 0x50000001, 0x429),
                   _ctl(0x80, 'Basic', 146, 133, 32, 10, first, 0x427),
