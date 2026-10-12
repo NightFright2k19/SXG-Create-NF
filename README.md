@@ -14,6 +14,7 @@ This document is the reference for the current state of SXG-Create: what changed
 - [Output files and table layouts](#output-files-and-table-layouts)
 - [Why the wave files got bigger](#why-the-wave-files-got-bigger)
 - [DLL patching](#dll-patching)
+- [S-YXG2006LE](#s-yxg2006le)
 - [Setup page](#setup-page)
 - [MU Basic voice maps](#mu-basic-voice-maps)
 - [What the conversion does, per model](#what-the-conversion-does-per-model)
@@ -36,6 +37,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **MU100** (new): three 32-bit wave ROM pairs in one address space, three wavedata tables with their own offset tables, 32-bit voice program maps, MU100 Native and MU Basic voice maps.
 - **MU128 and MU1000** (new): program flash from high/low 16-bit halves, 84-byte elements (mapped almost 1:1, verified on 2,317 elements shared with the MU100), 42-byte drum voices with byte 0 moved to `+23`, voice maps MU Native / MU Basic, GS, MSB 48 and GM2.
 - **MU2000** detected, but not converted: it has the same sound data as the MU1000, so the MU1000 set is used instead (see [Supported models](#supported-models-and-rom-sets)).
+- **S-YXG2006LE** (new): Yamaha's own engine (`SGP2.OLD` / `SGP2.DLL`) is patched and its tables are used unconverted, see [S-YXG2006LE](#s-yxg2006le).
 - **MU Basic voice map** for MU100 / MU128 / MU1000: the MU90-compatible map is built into the same table as the native one and can be switched in the Setup dialog (MU Native is the default). The earlier `--mu-basic` switch was removed.
 
 ### Table formats
@@ -193,6 +195,8 @@ The script waits for a key press at the end (so a drag & drop window stays open)
 File names are only examples; the files are recognised by their CRC32.
 
 > **MU2000:** it has the same voice data as the MU1000 (1,635 voices, 1,027 drum voices, 2,901 samples, the same wave ROMs). Only the element filter/level scaling is stored differently: instead of 4 break points, each element holds an index into 1,377 tables of 128 notes, which lie in the upper half of the 4 MB firmware image (at `0x23CED0`, location from TaleTN's MUTable). An earlier version of this README said this table was missing from the ROM dump; that was wrong. The tables are the MU1000's break points interpolated per note, so they convert back to break points (1,376 of 1,377 exactly, one within 1 step on one note). A test conversion of the MU2000 set rendered bit-identically to the MU1000 conversion (464 voices, 6,496 notes) with a byte-identical wave file. Since the result is the same, SXG-Create uses the MU1000 set (the MU2000 set is skipped when both are present, otherwise a message asks for the MU1000 set).
+
+| S-YXG2006LE | `SGP2.OLD` or `SGP2.DLL`, `sxgbnw6l.tbl` | `sxgdat6l.tbl` | original, not converted |
 
 The S-YXG50's own tables and `Vampire.dll` are recognised as well, but they are not a conversion source.
 
@@ -379,6 +383,22 @@ DisableGUI=0
 1. **Table:** it reads `SoftSynth` from `[Config]` in `<dll name>.ini` and loads that file from the DLL's folder.
 2. **Wave file:** the table header names the wave file, which is loaded from the same folder. Both files are read whole, so file size is not limited.
 3. **Embedded:** without the key, the DLL loads the table named in its string table from its own resources (5 MB version, or a DLL made with `--embed`).
+
+---
+
+## S-YXG2006LE
+
+The S-YXG2006LE engine differs from the S-YXG50 in ways a table conversion can't reproduce: its filter EG does not follow velocity, and its filter does not follow the key. SXG-Create therefore patches Yamaha's own DLL instead of converting the tables. With `SGP2.OLD` (or `SGP2.DLL`), `sxgbnw6l.tbl` and `sxgdat6l.tbl` in `source/` (recognised by CRC32), it writes `output/syxg2006le.dll` and copies the two tables unchanged (`--embed`: they go into the DLL).
+
+Patches (`utility/sgp2patch.py`, code in `utility/dev/sgp2/params.asm`):
+- **Host lock off:** the plugin only started in a host whose vendor string is `YAMAHA` (`0x2AAE` `je` → `jmp`).
+- **Parameters** in the host's generic plugin window, saved with the project (own chunk `SXRS`; the plugin saves nothing itself):
+  - **Reset Mode**: None / GM / GS / XGLite / GM2, default XGLite. It is sent at start and on every change. The engine handles GM, GM2, GS and XG resets itself, and events right after a reset are applied correctly, so no pause is needed.
+  - **SysEx**: On / Off. Off drops SysEx from the MIDI stream.
+- **Embedded tables:** the two table loaders (`0x4C780` file size, `0x4C7D0` read) take `SXGBNW6L.TBL` / `SXGDAT6L.TBL` from `RT_RCDATA` resources when present (new section `.rsrc2`). Otherwise they read the files from the DLL's folder.
+- The code lives in a new section `.sxg` (hook at `0x2CF4` in `main`). It wraps dispatcher / process / processReplacing and has base relocations, so the DLL can be loaded at any address.
+
+The DLL has no editor of its own (its dialog resources are unused), so there is no Setup page or panel.
 
 ---
 
