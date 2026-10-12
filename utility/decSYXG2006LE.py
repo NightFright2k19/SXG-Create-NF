@@ -97,7 +97,8 @@ class Bank2006() :
                     coarse=s7(b1[0x1A]), fine=s7(b1[0x1B]),
                     atk=b2[1], d1=b2[2], d2=b2[3], rel=b2[5], delay=b2[8], d1lvl=b2[9], d2lvl=b2[0x0A],
                     cutoff=self.cutoff(b3), feg_rate=b3[4], feg_levels=struct.unpack_from('<4h', b3, 0x0A),
-                    level_keys=self.curve(struct.unpack_from('<H', b2, 0x0C)[0], LEVEL_KEYS))
+                    level_keys=self.curve(struct.unpack_from('<H', b2, 0x0C)[0], LEVEL_KEYS),
+                    rate_keys=self.curve(struct.unpack_from('<H', b2, 0x0E)[0], RATE_KEYS), rate_depth=(b2[0x1E] & 15) + 1)
 
     # 128-byte signed curves, indexed by key (or velocity - 1); B2 +0x0C = level key curve (0.74 dB per unit,
     # measured on SGP2.DLL), 0xFFFF = none
@@ -128,6 +129,7 @@ class Bank2006() :
 
 
 LEVEL_KEYS = (36, 60, 84, 108, 60)   # S-YXG50 level scaling breakpoints, then the reference key
+RATE_KEYS = tuple(range(24, 97, 6))   # keys sampled from the 2006LE EG rate key curve
 
 # * S-YXG50 element defaults (78 bytes), everything not mapped below stays at these values
 ELEMENT_DEFAULT = bytes.fromhex('2e007f017f81011f00000000004040003c014040403c3f3f3f3f40404040400600341830606c3e403f3f4540'
@@ -175,6 +177,16 @@ def To_SYXG50_Element(f : dict, vlo : int = 1, vhi : int = 127) -> bytearray :
         c = f['level_keys']
         e[56:60] = bytes(LEVEL_KEYS[:4])
         e[60:64] = bytes([clamp(64 + (v - c[4]) * 0.74 / 0.8) for v in c[:4]])
+    # amp EG rate key scaling: B2 +0x0E = 2006LE rate key curve (0xFFFF = none), B2 +0x1E low nibble + 1 =
+    # its depth; S-YXG50 +66 = depth (0x40 = none), +67 = centre key at the curve's zero crossing. Fitted
+    # per voice (all curves ~0.88 units/key): +2 for Grand Piano (depth 6) and Steel Guitar (depth 3), +4 for
+    # Slap Bass 2 (depth 7)
+    if f.get('rate_keys') :
+        c = f['rate_keys']; n = len(c); mk = sum(RATE_KEYS) / n; mc = sum(c) / n
+        slope = sum((k - mk) * (v - mc) for k, v in zip(RATE_KEYS, c)) / sum((k - mk) ** 2 for k in RATE_KEYS)
+        if abs(slope) > 0.05 :
+            e[66] = clamp(64 + slope / 0.88 * (4 if f['rate_depth'] >= 7 else 2), 0, 127)
+            e[67] = clamp(mk - mc / slope, 0, 127)
     lv = f.get('feg_levels', (0, 0, 0, 0))
     if any(lv) :
         r = f['feg_rate']
