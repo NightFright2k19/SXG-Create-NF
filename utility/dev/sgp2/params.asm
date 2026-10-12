@@ -6,7 +6,7 @@ main_hook:
     lea eax, [esi + 0x20]
     cmp dword ptr [creating], 0
     jne mh_plain                     ; engine 2: left as it is
-    mov [a1], eax
+    mov [eng], eax
     mov ecx, [eax + 4]
     mov [orig_disp], ecx
     mov ecx, [eax + 0x50]
@@ -143,8 +143,8 @@ fr_none:
 ; parameters are kept as integers 0..pmax[i]; the host sees value / pmax[i]
 ; 0 Reset Mode (None/GM/GS/XGLite/GM2), 1 SysEx (Off/On), 2 Master Volume, 3 Master Tune (cent),
 ; 4 Transpose (semitones), 5 Reverb Return, 6 Chorus Return, 7 Panic (momentary: all sound/notes off),
-; 8 Polyphony (8..128 notes: beyond it the oldest note gets a note-off; the engine has 64 voices, above 64 a
-; second engine takes the overflow)
+; 8 Polyphony (8..128 notes: beyond it the oldest note gets a note-off; each engine has 32 voices, above 32 a
+; second..fourth engine take the overflow)
 ; Parameters 2..6 are sent as XG system/effect SysEx in front of the host events when changed and after each reset.
 
 ; eax = parameter index, at most NP - 1
@@ -257,7 +257,7 @@ d_n10:
     jmp d_fwd
 d_n11:
     cmp eax, 1
-    je d_close
+    je d_fwd
     cmp eax, 8
     je d_name
     cmp eax, 7
@@ -269,7 +269,7 @@ d_n11:
     cmp dword ptr [esp + 0x10], 0
     je d_fwd
     mov dword ptr [pending], 1
-    call mk2
+    call mkx
     jmp d_fwd
 d_not_mains:
     cmp eax, 25
@@ -286,29 +286,28 @@ d_pass:
     jmp dword ptr [orig_disp]
 ; open / close, sample rate, block size, mains: engine 2 gets them too
 d_fwd:
-    cmp dword ptr [a2], 0
-    je d_pass
-    push dword ptr [esp + 0x18]
-    push dword ptr [esp + 0x18]
-    push dword ptr [esp + 0x18]
-    push dword ptr [esp + 0x18]
-    push dword ptr [esp + 0x18]
-    push dword ptr [a2]
+    push esi
+    mov esi, 1
+df_loop:
+    cmp dword ptr [eng + esi * 4], 0
+    je df_next
+    push dword ptr [esp + 0x1C]
+    push dword ptr [esp + 0x1C]
+    push dword ptr [esp + 0x1C]
+    push dword ptr [esp + 0x1C]
+    push dword ptr [esp + 0x1C]
+    push dword ptr [eng + esi * 4]
     call dword ptr [orig_disp]
     add esp, 0x18
-    jmp d_pass
-d_close:
-    cmp dword ptr [a2], 0
-    je d_pass
-    push 0
-    push 0
-    push 0
-    push 0
-    push 1                           ; effClose: engine 2 deletes itself
-    push dword ptr [a2]
-    mov dword ptr [a2], 0
-    call dword ptr [orig_disp]
-    add esp, 0x18
+    cmp dword ptr [esp + 0xC], 1
+    jne df_next
+    mov dword ptr [eng + esi * 4], 0     ; effClose: the engine has deleted itself
+    mov dword ptr [awake + esi * 4], 0
+df_next:
+    inc esi
+    cmp esi, 4
+    jb df_loop
+    pop esi
     jmp d_pass
 d_one:
     mov eax, 1
@@ -618,7 +617,7 @@ d_events:
     push ebx
     lea edi, [evlist + 8]            ; event pointer array for engine 1 (count ebx)
     xor ebx, ebx
-    mov dword ptr [n2], 0            ; and for engine 2 (count n2)
+    call clr_n                       ; and for engines 2-4 (counts nx)
     call emit
     xor ecx, ecx
     call cp_new                      ; our events go to both engines
@@ -640,7 +639,7 @@ de_loop:
     mov [edi], eax
     add edi, 4
     inc ebx
-    call put2
+    call put_all
     call is_reset                    ; a reset in the song (GM / GS / XG): send our settings again right after it
     jnz de_loop
     or dword ptr [dirty], 0x7C
@@ -668,9 +667,10 @@ de_keep:
     add edi, 4
     inc ebx
 de_two:
-    test byte ptr [route], 2
-    jz de_loop
-    call put2
+    push ecx
+    mov ecx, [route]
+    call put_mask
+    pop ecx
     jmp de_loop
 de_one:
     mov [edi], eax
@@ -679,7 +679,7 @@ de_one:
     jmp de_loop
 de_done:
     mov [evlist], ebx
-    call send2
+    call send_x
     pop ebx
     pop edi
     pop esi
@@ -725,69 +725,101 @@ ir_ret:
     pop edx
     ret
 
-; copy engine 1 events from index ecx up to ebx to engine 2 as well
+; copy engine 1 events from index ecx up to ebx to the other engines as well
 cp_new:
     cmp ecx, ebx
     jae cn_ret
     mov eax, [evlist + 8 + ecx * 4]
-    call put2
+    call put_all
     inc ecx
     jmp cp_new
 cn_ret:
     ret
 
-; add event eax to engine 2's list (when engine 2 exists)
-put2:
-    cmp dword ptr [a2], 0
-    je p2_ret
-    push ecx
-    mov ecx, [n2]
-    cmp ecx, 1000
-    jae p2_full
-    mov [evlist2 + 8 + ecx * 4], eax
-    inc dword ptr [n2]
-p2_full:
-    pop ecx
-p2_ret:
+clr_n:
+    mov dword ptr [nx + 4], 0
+    mov dword ptr [nx + 8], 0
+    mov dword ptr [nx + 12], 0
     ret
 
-; pass engine 2's list to it (processEvents); its process call applies them
-send2:
-    cmp dword ptr [n2], 0
-    je s2_ret
-    cmp dword ptr [a2], 0
-    je s2_ret
+; add event eax to the lists of the other engines (bits 1-3 of ecx) that exist
+put_all:
+    push ecx
+    mov ecx, 0xE
+    call put_mask
+    pop ecx
+    ret
+put_mask:
+    push edx
+    push esi
+    mov edx, 1
+pm_loop:
+    bt ecx, edx
+    jnc pm_next
+    cmp dword ptr [eng + edx * 4], 0
+    je pm_next
+    mov esi, [nx + edx * 4]
+    cmp esi, 1000
+    jae pm_next
+    push edx
+    imul edx, edx, 4096
+    mov [evlx + edx + 8 + esi * 4], eax
+    pop edx
+    inc dword ptr [nx + edx * 4]
+pm_next:
+    inc edx
+    cmp edx, 4
+    jb pm_loop
+    pop esi
+    pop edx
+    ret
+
+; pass each other engine its list (processEvents); its process call applies them
+send_x:
     push eax
     push ecx
     push edx
-    mov eax, [n2]
-    mov [evlist2], eax
+    push esi
+    mov esi, 1
+sx_loop:
+    mov eax, [nx + esi * 4]
+    test eax, eax
+    jz sx_next
+    cmp dword ptr [eng + esi * 4], 0
+    je sx_next
+    mov edx, esi
+    imul edx, edx, 4096
+    lea edx, [evlx + edx]
+    mov [edx], eax
     push 0
-    lea eax, [evlist2]
-    push eax
+    push edx
     push 0
     push 0
     push 25
-    push dword ptr [a2]
+    push dword ptr [eng + esi * 4]
     call dword ptr [orig_disp]
     add esp, 0x18
-    mov dword ptr [ev2], 1
-    mov dword ptr [n2], 0
+    mov dword ptr [evx + esi * 4], 1
+    mov dword ptr [nx + esi * 4], 0
+sx_next:
+    inc esi
+    cmp esi, 4
+    jb sx_loop
+    pop esi
     pop edx
     pop ecx
     pop eax
-s2_ret:
     ret
 
 ; Polyphony: sounding notes as key << 8 | channel, oldest first, and the engine that plays each (own).
-; A note-on beyond the limit first gets a note-off for the oldest note. Above 64 notes a second engine
-; takes the notes engine 1 has no free voice for. Sets route: 1 engine 1, 2 engine 2, 3 both.
+; A note-on beyond the limit first gets a note-off for the oldest note. Each engine has 32 voices; above 32
+; further engines (up to 4) take the notes the earlier ones have no free voice for. route = engine bit mask.
 poly:
     push eax
     push ecx
     push edx
     push esi
-    mov dword ptr [route], 3
+    mov dword ptr [route], 0xF
     mov edx, [eax + 0x18]            ; midiData
     mov esi, edx
     shr esi, 16
@@ -820,26 +852,44 @@ po_lim:
     mov byte ptr [own + edx], 0
     test ecx, ecx
     jnz po_steal
-    mov ecx, 3
+    mov ecx, 0xF
 po_steal:
     call off_ev
     pop eax
     jmp po_lim
 po_pick:
-    mov ecx, 1
-    cmp dword ptr [a2], 0
-    je po_set
-    cmp dword ptr [ivals + 32], 56
-    jbe po_set
     push eax
-    mov eax, [a1]
+    push esi
+    push edi
+    xor esi, esi                     ; engine
+    xor ecx, ecx                     ; least busy so far
+    mov edi, 99
+pk_loop:
+    mov eax, [eng + esi * 4]
+    test eax, eax
+    jz pk_next
     call voices
-    cmp eax, 60
+    cmp eax, 30
+    jb pk_this
+    cmp eax, edi
+    jae pk_next
+    mov edi, eax
+    mov ecx, esi
+pk_next:
+    inc esi
+    cmp esi, 4
+    jb pk_loop
+    mov esi, ecx
+pk_this:
+    mov dword ptr [awake + esi * 4], 1
+    mov dword ptr [idle + esi * 4], 0
+    mov ecx, 1
+    xchg ecx, esi
+    shl esi, cl
+    mov ecx, esi
+    pop edi
+    pop esi
     pop eax
-    jb po_set
-    mov ecx, 2
-    mov dword ptr [awake], 1
-    mov dword ptr [idle], 0
 po_set:
     mov [route], ecx
     call own_idx
@@ -995,23 +1045,27 @@ off_ev:
     add edi, 4
     inc ebx
 oe_two:
-    test cl, 2
-    jz oe_ret
-    call put2
-oe_ret:
+    call put_mask
+
     pop edx
     pop eax
     ret
 
-; create engine 2 at mains on when Polyphony is above 64: the original main() once more (our hook stays
-; out of it), then open / sample rate / block size like the host did for engine 1
-mk2:
-    cmp dword ptr [a2], 0
-    jne mk_ret
-    cmp dword ptr [ivals + 32], 56
-    jbe mk_ret
+; at mains on create the engines Polyphony needs (32 voices each, up to 4): the original main() once more
+; (our hook stays out of it), then open / sample rate / block size like the host did for engine 1
+mkx:
     push esi
-    mov eax, [a1]
+    push edi
+    mov edi, [ivals + 32]
+    add edi, 8 + 31
+    shr edi, 5                       ; engines needed
+    mov esi, 1
+mk_loop:
+    cmp esi, edi
+    jae mk_ret
+    cmp dword ptr [eng + esi * 4], 0
+    jne mk_next
+    mov eax, [eng]
     push dword ptr [eax - 0x14]      ; audioMaster
     mov dword ptr [creating], 1
     lea eax, [IMG + 0x2c80]
@@ -1019,7 +1073,8 @@ mk2:
     add esp, 4
     mov dword ptr [creating], 0
     test eax, eax
-    jz mk_none
+    jz mk_ret
+    push esi
     mov esi, eax
     push 0
     push 0
@@ -1045,10 +1100,15 @@ mk2:
     push esi
     call dword ptr [orig_disp]
     add esp, 0x18
-    mov [a2], esi
-mk_none:
+    mov eax, esi
     pop esi
+    mov [eng + esi * 4], eax
+mk_next:
+    inc esi
+    jmp mk_loop
 mk_ret:
+    pop edi
+    pop esi
     ret
 
 ; process / processReplacing: send our pending events when the host sent none this block, render
@@ -1067,12 +1127,12 @@ p_common:
     push ebx
     lea edi, [evlist + 8]
     xor ebx, ebx
-    mov dword ptr [n2], 0
+    call clr_n
     call emit
     mov [evlist], ebx
     xor ecx, ecx
     call cp_new
-    call send2
+    call send_x
     mov eax, ebx
     pop ebx
     pop edi
@@ -1095,89 +1155,103 @@ p_go:
     push dword ptr [esp + 0x10]
     call dword ptr [p_target]
     add esp, 0x10
-    cmp dword ptr [a2], 0
-    je p_ret
-    cmp dword ptr [awake], 0
-    jne p_run
-    cmp dword ptr [ev2], 0
-    je p_ret
-    mov dword ptr [ev2], 0
-    push 0
+    push esi
+    mov esi, 1
+px_loop:
+    cmp dword ptr [eng + esi * 4], 0
+    je px_next
+    cmp dword ptr [awake + esi * 4], 0
+    jne px_run
+    cmp dword ptr [evx + esi * 4], 0
+    je px_next
+    mov dword ptr [evx + esi * 4], 0
+    push 0                           ; asleep: 0 samples, only its events
     lea eax, [tptrs]
     push eax
     push eax
-    push dword ptr [a2]
+    push dword ptr [eng + esi * 4]
     call dword ptr [orig_repl]
     add esp, 0x10
-p_ret:
+    jmp px_next
+px_run:
+    call run_eng
+px_next:
+    inc esi
+    cmp esi, 4
+    jb px_loop
+    pop esi
     ret
-p_run:
-    mov dword ptr [ev2], 0
-    push esi
+
+; render engine esi (awake) in pieces of 512 samples and add it to the outputs
+run_eng:
+    mov dword ptr [evx + esi * 4], 0
     push edi
     push ebx
     push ebp
-    mov ebp, [esp + 0x20]            ; frames left
+    mov ebp, [esp + 0x24]            ; frames left
     xor ebx, ebx                     ; frames done
 pr_loop:
     test ebp, ebp
     jle pr_done
-    mov esi, ebp
-    cmp esi, 512
+    mov ecx, ebp
+    cmp ecx, 512
     jbe pr_n
-    mov esi, 512
+    mov ecx, 512
 pr_n:
-    push esi
+    push ecx
+    push ecx
     lea eax, [tptrs]
     push eax
     push eax
-    push dword ptr [a2]
+    push dword ptr [eng + esi * 4]
     call dword ptr [orig_repl]
     add esp, 0x10
-    mov edx, [esp + 0x1C]            ; outputs
+    pop ecx
+    mov edx, [esp + 0x20]            ; outputs
     mov eax, [edx]
     lea eax, [eax + ebx * 4]
     mov edi, [edx + 4]
     lea edi, [edi + ebx * 4]
-    xor ecx, ecx
+    push ecx
+    xor edx, edx
 pr_add:
-    fld dword ptr [tbuf0 + ecx * 4]
-    fadd dword ptr [eax + ecx * 4]
-    fstp dword ptr [eax + ecx * 4]
-    fld dword ptr [tbuf1 + ecx * 4]
-    fadd dword ptr [edi + ecx * 4]
-    fstp dword ptr [edi + ecx * 4]
-    inc ecx
-    cmp ecx, esi
+    fld dword ptr [tbuf0 + edx * 4]
+    fadd dword ptr [eax + edx * 4]
+    fstp dword ptr [eax + edx * 4]
+    fld dword ptr [tbuf1 + edx * 4]
+    fadd dword ptr [edi + edx * 4]
+    fstp dword ptr [edi + edx * 4]
+    inc edx
+    cmp edx, ecx
     jb pr_add
-    add ebx, esi
-    sub ebp, esi
+    pop ecx
+    add ebx, ecx
+    sub ebp, ecx
     jmp pr_loop
 pr_done:
-    mov eax, [a2]
+    mov eax, [eng + esi * 4]
     call voices
     test eax, eax
     jnz pr_busy
-    mov eax, [esp + 0x20]
-    add [idle], eax
-    cmp dword ptr [idle], 192000
+    mov eax, [esp + 0x24]
+    add [idle + esi * 4], eax
+    cmp dword ptr [idle + esi * 4], 192000
     jb pr_out
-    mov dword ptr [awake], 0
+    mov dword ptr [awake + esi * 4], 0
     jmp pr_out
 pr_busy:
-    mov dword ptr [idle], 0
+    mov dword ptr [idle + esi * 4], 0
 pr_out:
     pop ebp
     pop ebx
     pop edi
-    pop esi
     ret
 
 .align 4
 names: .int s_reset, s_sysex, s_vol, s_tune, s_trn, s_rev, s_cho, s_panic, s_poly
 labels: .int s_empty, s_empty, s_empty, s_cent, s_semi, s_empty, s_empty, s_empty, s_empty
 pmax: .int 4, 1, 127, 200, 48, 127, 127, 1, 120
-pdef: .int 3, 1, 127, 100, 24, 64, 64, 0, 56
+pdef: .int 3, 1, 127, 100, 24, 64, 64, 0, 24
 poff: .int 0, 0, 0, 100, 24, 0, 0, 0, -8
 pflag: .int 0xE, 0xF, 0xE, 0xE, 0xE, 0xE, 0xE, 0xF, 0xE   ; IsSwitch 1, IntMinMax 2, FloatStep 4, IntStep 8
 etab: .int modes, offon, 0, 0, 0, 0, 0, panics, 0
@@ -1277,7 +1351,7 @@ gs_trn: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x05, 0x40, 0x00, 0xF7
 gs_rev: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x01, 0x33, 0x40, 0x00, 0xF7
 gs_cho: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x01, 0x3A, 0x40, 0x00, 0xF7
 .align 4
-ivals: .int 3, 1, 127, 100, 24, 64, 64, 0, 56     ; = pdef
+ivals: .int 3, 1, 127, 100, 24, 64, 64, 0, 24     ; = pdef
 pending: .int 1
 dirty: .int 0
 gsmode: .int 0
@@ -1296,20 +1370,18 @@ offi: .int 0
 notes: .space 4 * 128
 own: .space 16 * 128
 route: .int 0
-a1: .int 0
-a2: .int 0
+eng: .int 0, 0, 0, 0
 creating: .int 0
-awake: .int 0
-idle: .int 0
-ev2: .int 0
-n2: .int 0
+awake: .int 0, 0, 0, 0
+idle: .int 0, 0, 0, 0
+evx: .int 0, 0, 0, 0
+nx: .int 0, 0, 0, 0
 srv: .float 44100.0
 bsv: .int 1024
 tptrs: .int tbuf0, tbuf1
 tbuf0: .space 4 * 512
 tbuf1: .space 4 * 512
-evlist2: .int 0, 0
-.space 4096
+evlx: .space 4 * 4096
 ev_off: .space 32 * 64
 chunk: .int 0x33525853
 .space 4 * 9
