@@ -1,5 +1,6 @@
-; S-YXG2006LE (SGP2.DLL): two VST parameters, Reset Mode and SysEx, in a new section .sxg
+; S-YXG2006LE (SGP2.DLL): VST parameters (Reset Mode, SysEx, master settings, Panic) in a new section .sxg
 ; main hook: eax = AEffect (plugin + 0x20); the AEffect callbacks are replaced, the originals kept
+.set NP, 8
 sec:
 main_hook:
     lea eax, [esi + 0x20]
@@ -15,11 +16,11 @@ main_hook:
     mov [eax + 0x50], ecx
     lea ecx, [proc]
     mov [eax + 8], ecx
-    lea ecx, [setp]
+    lea ecx, [setp_h]
     mov [eax + 0xC], ecx
     lea ecx, [getp]
     mov [eax + 0x10], ecx
-    mov dword ptr [eax + 0x18], 2
+    mov dword ptr [eax + 0x18], NP
     mov ecx, [esp + 4]
     jmp IMG + 0x2cfb
 
@@ -134,53 +135,96 @@ fr_none:
     pop ebx
     ret
 
+
+; parameters are kept as integers 0..pmax[i]; the host sees value / pmax[i]
+; 0 Reset Mode (None/GM/GS/XGLite/GM2), 1 SysEx (Off/On), 2 Master Volume, 3 Master Tune (cent),
+; 4 Transpose (semitones), 5 Reverb Return, 6 Chorus Return, 7 Panic (momentary: all sound/notes off)
+; Parameters 2..6 are sent as XG system/effect SysEx in front of the host events when changed and after each reset.
+
 ; float getParameter(AEffect*, int idx)
 getp:
     mov eax, [esp + 8]
-    and eax, 1
-    fld dword ptr [vals + eax * 4]
+    and eax, 7
+    fild dword ptr [ivals + eax * 4]
+    fidiv dword ptr [pmax + eax * 4]
+    ret
+
+; host setParameter: snap, then tell the host the snapped value (audioMasterAutomate, audioMasterUpdateDisplay)
+; so that its slider jumps to the step even when it ignores effGetParameterProperties
+setp_h:
+    push dword ptr [esp + 0xC]
+    push dword ptr [esp + 0xC]
+    push dword ptr [esp + 0xC]
+    call setp
+    add esp, 0xC
+    mov eax, [esp + 8]
+    and eax, 7
+    fild dword ptr [ivals + eax * 4]
+    fidiv dword ptr [pmax + eax * 4]
+    sub esp, 4
+    fstp dword ptr [esp]
+    pop edx
+    cmp edx, [esp + 0xC]
+    je sh_ret
+    mov ecx, [esp + 4]
+    mov ecx, [ecx - 0x14]               ; audioMaster (plugin + 0xC; AEffect is at plugin + 0x20)
+    test ecx, ecx
+    jz sh_ret
+    push ecx
+    push edx
+    push 0
+    push 0
+    push eax
+    push 0                              ; audioMasterAutomate
+    push dword ptr [esp + 0x1C]
+    call ecx
+    add esp, 0x18
+    pop ecx
+    push 0
+    push 0
+    push 0
+    push 0
+    push 42                             ; audioMasterUpdateDisplay
+    push dword ptr [esp + 0x18]
+    call ecx
+    add esp, 0x18
+sh_ret:
     ret
 
 ; void setParameter(AEffect*, int idx, float v)
 setp:
     mov eax, [esp + 8]
-    and eax, 1
-    mov ecx, [esp + 0xC]
-    mov [vals + eax * 4], ecx
-    test eax, eax
-    jnz sp_sx
-    call mode_idx
-    push eax
-    fild dword ptr [esp]
-    fmul dword ptr [quarter]
-    fstp dword ptr [vals]               ; snap to 0/0.25/0.5/0.75/1
-    pop eax
-    cmp eax, [mode]
-    je sp_ret
-    mov [mode], eax
-    mov dword ptr [pending], 1
-sp_ret:
-    ret
-sp_sx:
-    xor eax, eax
-    cmp ecx, 0x3F000000                 ; float >= 0.5 (negatives are < as int)
-    jl sp_sx0
-    mov eax, 0x3F800000
-sp_sx0:
-    mov [vals + 4], eax
-    ret
-
-; eax = Reset Mode index 0..4 from vals[0]
-mode_idx:
-    fld dword ptr [vals]
-    fmul dword ptr [four]
+    and eax, 7
+    fld dword ptr [esp + 0xC]
+    fimul dword ptr [pmax + eax * 4]
     sub esp, 4
     fistp dword ptr [esp]
-    pop eax
-    cmp eax, 4
-    jbe mi_ok
-    mov eax, 4
-mi_ok:
+    pop ecx
+    test ecx, ecx
+    jns sp_pos
+    xor ecx, ecx
+sp_pos:
+    cmp ecx, [pmax + eax * 4]
+    jbe sp_in
+    mov ecx, [pmax + eax * 4]
+sp_in:
+    cmp eax, 7
+    je sp_panic
+    cmp ecx, [ivals + eax * 4]
+    je sp_ret
+    mov [ivals + eax * 4], ecx
+    test eax, eax
+    jnz sp_dirty
+    mov dword ptr [pending], 1
+    ret
+sp_dirty:
+    bts dword ptr [dirty], eax
+sp_ret:
+    ret
+sp_panic:
+    test ecx, ecx
+    jz sp_ret
+    mov dword ptr [panic], 1
     ret
 
 ; dispatcher(AEffect*, op, idx, val, ptr, opt)
@@ -214,75 +258,57 @@ d_pass:
 d_one:
     mov eax, 1
     ret
-; effGetParameterProperties: VstParameterProperties* in ptr
-d_props:
-    push edi
-    mov edi, [esp + 0x18]
-    push edi
-    mov ecx, 0x2A                       ; clear 168 bytes
-    xor eax, eax
-    rep stosd
-    pop edi
-    mov eax, [esp + 0x10]
-    and eax, 1
-    jnz dp_sx
-    mov dword ptr [edi], 0x3E800000     ; stepFloat 0.25
-    mov dword ptr [edi + 4], 0x3E800000
-    mov dword ptr [edi + 8], 0x3E800000
-    mov dword ptr [edi + 0x4C], 0xE     ; IntMinMax|FloatStep|IntStep
-    mov dword ptr [edi + 0x54], 4
-    jmp dp_common
-dp_sx:
-    mov dword ptr [edi], 0x3F800000
-    mov dword ptr [edi + 4], 0x3F800000
-    mov dword ptr [edi + 8], 0x3F800000
-    mov dword ptr [edi + 0x4C], 0xF     ; IsSwitch|IntMinMax|FloatStep|IntStep
-    mov dword ptr [edi + 0x54], 1
-dp_common:
-    mov dword ptr [edi + 0x58], 1
-    mov dword ptr [edi + 0x5C], 1
-    push esi
-    mov esi, [names + eax * 4]
-    lea edi, [edi + 0xC]
-dp_cp:
-    lodsb
-    stosb
-    test al, al
-    jnz dp_cp
-    pop esi
-    pop edi
-    mov eax, 1
-    ret
 d_label:
-    mov eax, [esp + 0x14]
-    mov byte ptr [eax], 0
-    xor eax, eax
-    ret
+    mov eax, [esp + 0xC]
+    and eax, 7
+    mov eax, [labels + eax * 4]
+    jmp d_copy
 d_name:
     mov eax, [esp + 0xC]
-    and eax, 1
+    and eax, 7
     mov eax, [names + eax * 4]
     jmp d_copy
 d_disp:
     mov eax, [esp + 0xC]
-    and eax, 1
-    jnz d_sx
-    call mode_idx
-    mov eax, [modes + eax * 4]
+    and eax, 7
+    mov ecx, [ivals + eax * 4]
+    mov edx, [etab + eax * 4]
+    test edx, edx
+    jz d_num
+    mov eax, [edx + ecx * 4]
     jmp d_copy
-d_sx:
-    lea eax, [s_off]
-    fld dword ptr [vals + 4]
-    fcomp dword ptr [half]
-    fnstsw word ptr [ax_save]
-    jmp d_copy_sx
-d_copy_sx:
-    push ecx
-    mov cx, [ax_save]
-    test ch, 1                       ; C0 set: value < 0.5
-    pop ecx
-    jnz d_copy
-    lea eax, [s_on]
+d_num:
+    sub ecx, [poff + eax * 4]
+    lea eax, [numbuf]
+    push edi
+    lea edi, [numbuf]
+    test ecx, ecx
+    jns dn_pos
+    mov byte ptr [edi], 0x2D
+    inc edi
+    neg ecx
+dn_pos:
+    push eax
+    mov eax, ecx
+    xor ecx, ecx
+dn_div:
+    xor edx, edx
+    push ebx
+    mov ebx, 10
+    div ebx
+    pop ebx
+    add dl, 0x30
+    push edx
+    inc ecx
+    test eax, eax
+    jnz dn_div
+dn_out:
+    pop eax
+    stosb
+    loop dn_out
+    mov byte ptr [edi], 0
+    pop eax
+    pop edi
 d_copy:
     push esi
     push edi
@@ -298,24 +324,71 @@ dc_loop:
     xor eax, eax
     ret
 
+; effGetParameterProperties: VstParameterProperties* in ptr
+d_props:
+    push edi
+    mov edi, [esp + 0x18]
+    mov ecx, 0x2A                       ; clear 168 bytes
+    xor eax, eax
+dp_clr:
+    mov [edi + ecx * 4 - 4], eax
+    loop dp_clr
+    mov eax, [esp + 0x10]
+    and eax, 7
+    fld1
+    fidiv dword ptr [pmax + eax * 4]
+    fst dword ptr [edi]                 ; stepFloat = smallStep = largeStep = 1 / pmax
+    fst dword ptr [edi + 4]
+    fstp dword ptr [edi + 8]
+    mov ecx, [pflag + eax * 4]
+    mov [edi + 0x4C], ecx
+    mov ecx, [poff + eax * 4]
+    neg ecx
+    mov [edi + 0x50], ecx               ; minInteger
+    add ecx, [pmax + eax * 4]
+    mov [edi + 0x54], ecx               ; maxInteger
+    mov dword ptr [edi + 0x58], 1
+    mov dword ptr [edi + 0x5C], 1
+    push esi
+    mov esi, [names + eax * 4]
+    lea edi, [edi + 0xC]
+dp_cp:
+    lodsb
+    stosb
+    test al, al
+    jnz dp_cp
+    pop esi
+    pop edi
+    mov eax, 1
+    ret
+
 ; the plugin itself saves no chunk (size 0) although it sets programsAreChunks: the chunk is ours,
-; 'SXRS', Reset Mode value, SysEx value (floats)
+; 'SXR2' + NP parameter integers (older 'SXRS' + Reset Mode and SysEx floats is still read)
 d_getchunk:
-    mov eax, [vals]
-    mov [chunk + 4], eax
-    mov eax, [vals + 4]
-    mov [chunk + 8], eax
+    push esi
+    push edi
+    xor ecx, ecx
+dgc_loop:
+    mov eax, [ivals + ecx * 4]
+    mov [chunk + 4 + ecx * 4], eax
+    inc ecx
+    cmp ecx, 8
+    jb dgc_loop
+    pop edi
+    pop esi
     mov eax, [esp + 0x14]
     lea ecx, [chunk]
     mov [eax], ecx
-    mov eax, 12
+    mov eax, 36
     ret
 d_setchunk:
-    cmp dword ptr [esp + 0x10], 12
-    jb dsc_no
     mov eax, [esp + 0x14]
+    cmp dword ptr [eax], 0x32525853
+    je dsc_new
     cmp dword ptr [eax], 0x53525853
     jne dsc_no
+    cmp dword ptr [esp + 0x10], 12
+    jb dsc_no
     push dword ptr [eax + 4]
     push 0
     push dword ptr [esp + 0xC]
@@ -327,51 +400,117 @@ d_setchunk:
     push dword ptr [esp + 0xC]
     call setp
     add esp, 0xC
+    jmp dsc_set
+dsc_new:
+    cmp dword ptr [esp + 0x10], 36
+    jb dsc_no
+    push esi
+    lea esi, [eax + 4]
+    xor ecx, ecx
+dsc_loop:
+    mov edx, [esi + ecx * 4]
+    cmp edx, [pmax + ecx * 4]
+    jbe dsc_ok
+    mov edx, [pdef + ecx * 4]
+dsc_ok:
+    mov [ivals + ecx * 4], edx
+    inc ecx
+    cmp ecx, 7
+    jb dsc_loop
+    pop esi
+dsc_set:
     mov dword ptr [pending], 1
+    or dword ptr [dirty], 0x7C
 dsc_no:
     mov eax, 1
     ret
 
-; processEvents: drop SysEx when disabled, put a pending reset in front
+; append our events at edi (count ebx): the pending reset, changed master settings, Panic
+emit:
+    cmp dword ptr [pending], 0
+    je em_par
+    mov dword ptr [pending], 0
+    mov eax, [ivals]
+    mov eax, [resets + eax * 4]
+    test eax, eax
+    jz em_par
+    mov [edi], eax
+    add edi, 4
+    inc ebx
+    or dword ptr [dirty], 0x7C             ; a reset restores the defaults: send ours again
+em_par:
+    mov eax, [ivals + 8]
+    mov [sx_vol + 7], al
+    mov eax, [ivals + 12]
+    imul eax, eax, 10
+    add eax, 0x400 - 1000
+    mov ecx, eax
+    and ecx, 0xF
+    mov [sx_tune + 10], cl
+    shr eax, 4
+    mov ecx, eax
+    and ecx, 0xF
+    mov [sx_tune + 9], cl
+    shr eax, 4
+    mov [sx_tune + 8], al
+    mov eax, [ivals + 16]
+    add eax, 0x28
+    mov [sx_trn + 7], al
+    mov eax, [ivals + 20]
+    mov [sx_rev + 7], al
+    mov eax, [ivals + 24]
+    mov [sx_cho + 7], al
+    mov ecx, 2
+em_loop:
+    bt dword ptr [dirty], ecx
+    jnc em_next
+    mov eax, [pev + ecx * 4]
+    mov [edi], eax
+    add edi, 4
+    inc ebx
+em_next:
+    inc ecx
+    cmp ecx, 7
+    jb em_loop
+    mov dword ptr [dirty], 0
+    cmp dword ptr [panic], 0
+    je em_ret
+    mov dword ptr [panic], 0
+    lea eax, [ev_panic]
+    mov ecx, 32
+em_pan:
+    mov [edi], eax
+    add edi, 4
+    inc ebx
+    add eax, 32
+    loop em_pan
+em_ret:
+    ret
+
+; processEvents: our events in front, host SysEx dropped when SysEx is Off
 d_events:
     mov dword ptr [got], 1
     push esi
     push edi
     push ebx
-    mov esi, [esp + 0x20]            ; host VstEvents*
     lea edi, [evlist + 8]            ; our event pointer array
     xor ebx, ebx                     ; count
-    cmp dword ptr [pending], 0
-    je de_copy
-    call reset_ev
-    test eax, eax
-    jz de_nores
-    mov [edi], eax
-    add edi, 4
-    inc ebx
-de_nores:
-    mov dword ptr [pending], 0
-de_copy:
+    call emit
+    mov esi, [esp + 0x20]            ; host VstEvents*
     mov ecx, [esi]                   ; numEvents
     lea esi, [esi + 8]
 de_loop:
     test ecx, ecx
     jz de_done
-    cmp ebx, 1020
+    cmp ebx, 1000
     jae de_done
     mov eax, [esi]
     add esi, 4
     dec ecx
     cmp dword ptr [eax], 6           ; kVstSysExType
     jne de_keep
-    fld dword ptr [vals + 4]
-    fcomp dword ptr [half]
-    fnstsw word ptr [ax_save]
-    push ecx
-    mov cx, [ax_save]
-    test ch, 1
-    pop ecx
-    jnz de_loop                      ; SysEx disabled
+    cmp dword ptr [ivals + 4], 0
+    je de_loop                       ; SysEx disabled
 de_keep:
     mov [edi], eax
     add edi, 4
@@ -386,13 +525,7 @@ de_done:
     mov [esp + 0x14], eax
     jmp dword ptr [orig_disp]
 
-; eax = VstSysExEvent* for the current Reset Mode, 0 for None
-reset_ev:
-    mov eax, [mode]
-    mov eax, [resets + eax * 4]
-    ret
-
-; process / processReplacing: inject a pending reset when the host sent no events this block
+; process / processReplacing: send our pending events when the host sent none this block
 repl:
     mov eax, [orig_repl]
     jmp p_common
@@ -402,14 +535,16 @@ p_common:
     mov [p_target], eax
     cmp dword ptr [got], 0
     jne p_go
-    cmp dword ptr [pending], 0
-    je p_go
-    call reset_ev
-    mov dword ptr [pending], 0
-    test eax, eax
+    push edi
+    push ebx
+    lea edi, [evlist + 8]
+    xor ebx, ebx
+    call emit
+    mov [evlist], ebx
+    test ebx, ebx
+    pop ebx
+    pop edi
     jz p_go
-    mov [evlist + 8], eax
-    mov dword ptr [evlist], 1
     push 0
     lea ecx, [evlist]
     push ecx
@@ -423,10 +558,18 @@ p_go:
     mov dword ptr [got], 0
     jmp dword ptr [p_target]
 
-four: .float 4.0
-half: .float 0.5
-names: .int s_reset, s_sysex
+.align 4
+names: .int s_reset, s_sysex, s_vol, s_tune, s_trn, s_rev, s_cho, s_panic
+labels: .int s_empty, s_empty, s_empty, s_cent, s_semi, s_empty, s_empty, s_empty
+pmax: .int 4, 1, 127, 200, 48, 127, 127, 1
+pdef: .int 3, 1, 127, 100, 24, 64, 64, 0
+poff: .int 0, 0, 0, 100, 24, 0, 0, 0
+pflag: .int 0xE, 0xF, 0xE, 0xE, 0xE, 0xE, 0xE, 0xF   ; IsSwitch 1, IntMinMax 2, FloatStep 4, IntStep 8
+etab: .int modes, offon, 0, 0, 0, 0, 0, panics
+pev: .int 0, 0, ev_vol, ev_tune, ev_trn, ev_rev, ev_cho, 0
 modes: .int s_none, s_gm, s_gs, s_xgl, s_gm2
+offon: .int s_off, s_on
+panics: .int s_dash, s_panic
 resets: .int 0, ev_gm, ev_gs, ev_xg, ev_gm2
 s_reset: .asciz "Reset Mode"
 s_kernel: .asciz "KERNEL32.dll"
@@ -434,6 +577,16 @@ s_find: .asciz "FindResourceA"
 s_load: .asciz "LoadResource"
 s_size: .asciz "SizeofResource"
 s_sysex: .asciz "SysEx"
+s_vol: .asciz "Master Volume"
+s_tune: .asciz "Master Tune"
+s_trn: .asciz "Transpose"
+s_rev: .asciz "Reverb Return"
+s_cho: .asciz "Chorus Return"
+s_panic: .asciz "Panic"
+s_cent: .asciz "cent"
+s_semi: .asciz "semi"
+s_dash: .asciz "-"
+s_empty: .byte 0
 s_none: .asciz "None"
 s_gm: .asciz "GM"
 s_gs: .asciz "GS"
@@ -447,17 +600,61 @@ ev_gm: .int 6, 32, 0, 0, 6, 0, sx_gm, 0
 ev_gs: .int 6, 32, 0, 0, 11, 0, sx_gs, 0
 ev_xg: .int 6, 32, 0, 0, 9, 0, sx_xg, 0
 ev_gm2: .int 6, 32, 0, 0, 6, 0, sx_gm2, 0
+ev_vol: .int 6, 32, 0, 0, 9, 0, sx_vol, 0
+ev_tune: .int 6, 32, 0, 0, 12, 0, sx_tune, 0
+ev_trn: .int 6, 32, 0, 0, 9, 0, sx_trn, 0
+ev_rev: .int 6, 32, 0, 0, 9, 0, sx_rev, 0
+ev_cho: .int 6, 32, 0, 0, 9, 0, sx_cho, 0
+; VstMidiEvent: type 1, byteSize 32, deltaFrames, flags, noteLength, noteOffset, midiData, detune...
+; All Sound Off (CC 120) and All Notes Off (CC 123) on all 16 channels
+ev_panic:
+    .int 1, 32, 0, 0, 0, 0, 0x78b0, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bb0, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78b1, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bb1, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78b2, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bb2, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78b3, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bb3, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78b4, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bb4, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78b5, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bb5, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78b6, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bb6, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78b7, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bb7, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78b8, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bb8, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78b9, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bb9, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78ba, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bba, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78bb, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bbb, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78bc, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bbc, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78bd, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bbd, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78be, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bbe, 0
+    .int 1, 32, 0, 0, 0, 0, 0x78bf, 0
+    .int 1, 32, 0, 0, 0, 0, 0x7bbf, 0
 sx_gm: .byte 0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7
 sx_gm2: .byte 0xF0, 0x7E, 0x7F, 0x09, 0x03, 0xF7
 sx_gs: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x7F, 0x00, 0x41, 0xF7
 sx_xg: .byte 0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x7E, 0x00, 0xF7
+sx_vol: .byte 0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x04, 0x7F, 0xF7
+sx_tune: .byte 0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0xF7
+sx_trn: .byte 0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x06, 0x40, 0xF7
+sx_rev: .byte 0xF0, 0x43, 0x10, 0x4C, 0x02, 0x01, 0x0C, 0x40, 0xF7
+sx_cho: .byte 0xF0, 0x43, 0x10, 0x4C, 0x02, 0x01, 0x2C, 0x40, 0xF7
 .align 4
-quarter: .float 0.25
-vals: .float 0.75, 1.0                ; defaults: XGLite, SysEx on
-mode: .int 3
+ivals: .int 3, 1, 127, 100, 24, 64, 64, 0     ; = pdef
 pending: .int 1
+dirty: .int 0
+panic: .int 0
 got: .int 0
-ax_save: .int 0
 p_target: .int 0
 orig_disp: .int 0
 k_find: .int 0
@@ -465,6 +662,8 @@ k_load: .int 0
 k_size: .int 0
 orig_repl: .int 0
 orig_proc: .int 0
-chunk: .int 0x53525853, 0, 0
+numbuf: .space 16
+chunk: .int 0x32525853
+.space 4 * 8
 evlist: .int 0, 0
 .space 4096
