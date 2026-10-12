@@ -24,4 +24,4 @@ print('SYXG50_GUI = [')
 for off, old, new in sites : print(f"    (0x{off:05X}, '{old.hex(' ')}', '{new.hex(' ')}'),")
 for code, (cave, _) in zip(codes, CAVES) :
     print(f"    (0x{cave:05X}, ' '.join(['90'] * {len(code)}),\n              '{code.hex(' ')}'),")
-print(']'); print(f'GUI_CAVE_END = 0x{CAVES[0][0] + len(codes[0]):05X}')
+print(']'); print(f'GUI_CHUNK_GET = 0x{label("chunk_get", 1):08X}'); print(f'GUI_CHUNK_SET = 0x{label("chunk_set", 1):08X}'); print(f'GUI_CAVE_END = 0x{CAVES[0][0] + len(codes[0]):05X}')
