@@ -437,8 +437,14 @@ emit:
     mov [edi], eax
     add edi, 4
     inc ebx
+    xor eax, eax
+    cmp dword ptr [ivals], 2
+    sete al
+    mov [gsmode], eax
     or dword ptr [dirty], 0x7C             ; a reset restores the defaults: send ours again
 em_par:
+    cmp dword ptr [gsmode], 0
+    jne em_gs
     mov eax, [ivals + 8]
     mov [sx_vol + 7], al
     mov eax, [ivals + 12]
@@ -460,11 +466,61 @@ em_par:
     mov [sx_rev + 7], al
     mov eax, [ivals + 24]
     mov [sx_cho + 7], al
+    lea edx, [pev]
+    jmp em_send
+; GS mode: the same settings as GS system parameters (Roland checksum)
+em_gs:
+    mov eax, [ivals + 8]
+    mov [gs_vol + 8], al
+    mov eax, [ivals + 12]
+    imul eax, eax, 10
+    add eax, 0x400 - 1000
+    mov ecx, eax
+    and ecx, 0xF
+    mov [gs_tune + 11], cl
+    shr eax, 4
+    mov ecx, eax
+    and ecx, 0xF
+    mov [gs_tune + 10], cl
+    shr eax, 4
+    mov [gs_tune + 9], al
+    mov eax, [ivals + 16]
+    add eax, 0x28
+    mov [gs_trn + 8], al
+    mov eax, [ivals + 20]
+    mov [gs_rev + 8], al
+    mov eax, [ivals + 24]
+    mov [gs_cho + 8], al
+    mov ecx, 2
+gs_ev:
+    mov eax, [pev_gs + ecx * 4]
+    push ecx
+    push esi
+    mov esi, [eax + 0x18]
+    mov ecx, [eax + 0x10]
+    sub ecx, 7                             ; address + data bytes
+    xor eax, eax
+gs_sum:
+    add al, [esi + ecx + 4]
+    loop gs_sum
+    neg al
+    and al, 0x7F
+    mov ecx, [esp + 4]
+    mov ecx, [pev_gs + ecx * 4]
+    mov ecx, [ecx + 0x10]
+    mov [esi + ecx - 2], al
+    pop esi
+    pop ecx
+    inc ecx
+    cmp ecx, 7
+    jb gs_ev
+    lea edx, [pev_gs]
+em_send:
     mov ecx, 2
 em_loop:
     bt dword ptr [dirty], ecx
     jnc em_next
-    mov eax, [pev + ecx * 4]
+    mov eax, [edx + ecx * 4]
     mov [edi], eax
     add edi, 4
     inc ebx
@@ -511,11 +567,66 @@ de_loop:
     jne de_keep
     cmp dword ptr [ivals + 4], 0
     je de_loop                       ; SysEx disabled
+    mov [edi], eax
+    add edi, 4
+    inc ebx
+    call is_reset                    ; a reset in the song (GM / GS / XG): send our settings again right after it
+    jnz de_loop
+    or dword ptr [dirty], 0x7C
+    push ecx
+    push esi
+    mov edx, [eax + 0x18]
+    xor ecx, ecx
+    cmp byte ptr [edx + 1], 0x41
+    sete cl
+    mov [gsmode], ecx                ; GS reset: the engine now takes GS parameter SysEx only
+    call em_par
+    pop esi
+    pop ecx
+    jmp de_loop
 de_keep:
     mov [edi], eax
     add edi, 4
     inc ebx
     jmp de_loop
+
+; ZF = 1 when the VstSysExEvent eax is a GM / GM2 / GS / XG reset
+is_reset:
+    push edx
+    mov edx, [eax + 0x18]            ; sysexDump
+    cmp dword ptr [eax + 0x10], 6
+    jb ir_no
+    cmp byte ptr [edx + 1], 0x7E     ; F0 7E xx 09: GM On / Off / GM2 On
+    jne ir_gs
+    cmp byte ptr [edx + 3], 0x09
+    jmp ir_ret
+ir_gs:
+    cmp byte ptr [edx + 1], 0x41     ; F0 41 xx 42 12 40 00 7F: GS reset
+    jne ir_xg
+    cmp dword ptr [eax + 0x10], 8
+    jb ir_no
+    cmp dword ptr [edx + 3], 0x00401242
+    jne ir_ret
+    cmp byte ptr [edx + 7], 0x7F
+    jmp ir_ret
+ir_xg:
+    cmp byte ptr [edx + 1], 0x43     ; F0 43 1x 4C 00 00 7E / 7F: XG System On / All Parameter Reset
+    jne ir_ret
+    cmp dword ptr [eax + 0x10], 7
+    jb ir_no
+    cmp word ptr [edx + 3], 0x004C
+    jne ir_ret
+    cmp byte ptr [edx + 5], 0
+    jne ir_ret
+    mov dl, [edx + 6]
+    or dl, 1
+    cmp dl, 0x7F
+    jmp ir_ret
+ir_no:
+    or edx, 1                        ; ZF = 0 (edx != 0)
+ir_ret:
+    pop edx
+    ret
 de_done:
     mov [evlist], ebx
     pop ebx
@@ -567,6 +678,7 @@ poff: .int 0, 0, 0, 100, 24, 0, 0, 0
 pflag: .int 0xE, 0xF, 0xE, 0xE, 0xE, 0xE, 0xE, 0xF   ; IsSwitch 1, IntMinMax 2, FloatStep 4, IntStep 8
 etab: .int modes, offon, 0, 0, 0, 0, 0, panics
 pev: .int 0, 0, ev_vol, ev_tune, ev_trn, ev_rev, ev_cho, 0
+pev_gs: .int 0, 0, eg_vol, eg_tune, eg_trn, eg_rev, eg_cho, 0
 modes: .int s_none, s_gm, s_gs, s_xgl, s_gm2
 offon: .int s_off, s_on
 panics: .int s_dash, s_panic
@@ -605,6 +717,11 @@ ev_tune: .int 6, 32, 0, 0, 12, 0, sx_tune, 0
 ev_trn: .int 6, 32, 0, 0, 9, 0, sx_trn, 0
 ev_rev: .int 6, 32, 0, 0, 9, 0, sx_rev, 0
 ev_cho: .int 6, 32, 0, 0, 9, 0, sx_cho, 0
+eg_vol: .int 6, 32, 0, 0, 11, 0, gs_vol, 0
+eg_tune: .int 6, 32, 0, 0, 14, 0, gs_tune, 0
+eg_trn: .int 6, 32, 0, 0, 11, 0, gs_trn, 0
+eg_rev: .int 6, 32, 0, 0, 11, 0, gs_rev, 0
+eg_cho: .int 6, 32, 0, 0, 11, 0, gs_cho, 0
 ; VstMidiEvent: type 1, byteSize 32, deltaFrames, flags, noteLength, noteOffset, midiData, detune...
 ; All Sound Off (CC 120) and All Notes Off (CC 123) on all 16 channels
 ev_panic:
@@ -649,10 +766,16 @@ sx_tune: .byte 0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00,
 sx_trn: .byte 0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x06, 0x40, 0xF7
 sx_rev: .byte 0xF0, 0x43, 0x10, 0x4C, 0x02, 0x01, 0x0C, 0x40, 0xF7
 sx_cho: .byte 0xF0, 0x43, 0x10, 0x4C, 0x02, 0x01, 0x2C, 0x40, 0xF7
+gs_vol: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x04, 0x7F, 0x00, 0xF7
+gs_tune: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xF7
+gs_trn: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x05, 0x40, 0x00, 0xF7
+gs_rev: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x01, 0x33, 0x40, 0x00, 0xF7
+gs_cho: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x01, 0x3A, 0x40, 0x00, 0xF7
 .align 4
 ivals: .int 3, 1, 127, 100, 24, 64, 64, 0     ; = pdef
 pending: .int 1
 dirty: .int 0
+gsmode: .int 0
 panic: .int 0
 got: .int 0
 p_target: .int 0
