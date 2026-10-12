@@ -1251,7 +1251,7 @@ pr_out:
 names: .int s_reset, s_sysex, s_vol, s_tune, s_trn, s_rev, s_cho, s_panic, s_poly
 labels: .int s_empty, s_empty, s_empty, s_cent, s_semi, s_empty, s_empty, s_empty, s_empty
 pmax: .int 4, 1, 127, 200, 48, 127, 127, 1, 120
-pdef: .int 3, 1, 127, 100, 24, 64, 64, 0, 24
+pdef: .int 3, 1, 127, 100, 24, 64, 64, 0, 120
 poff: .int 0, 0, 0, 100, 24, 0, 0, 0, -8
 pflag: .int 0xE, 0xF, 0xE, 0xE, 0xE, 0xE, 0xE, 0xF, 0xE   ; IsSwitch 1, IntMinMax 2, FloatStep 4, IntStep 8
 etab: .int modes, offon, 0, 0, 0, 0, 0, panics, 0
@@ -1351,7 +1351,7 @@ gs_trn: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x05, 0x40, 0x00, 0xF7
 gs_rev: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x01, 0x33, 0x40, 0x00, 0xF7
 gs_cho: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x01, 0x3A, 0x40, 0x00, 0xF7
 .align 4
-ivals: .int 3, 1, 127, 100, 24, 64, 64, 0, 24     ; = pdef
+ivals: .int 3, 1, 127, 100, 24, 64, 64, 0, 120     ; = pdef
 pending: .int 1
 dirty: .int 0
 gsmode: .int 0
