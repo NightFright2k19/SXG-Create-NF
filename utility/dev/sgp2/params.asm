@@ -143,7 +143,7 @@ fr_none:
 ; parameters are kept as integers 0..pmax[i]; the host sees value / pmax[i]
 ; 0 Reset Mode (None/GM/GS/XGLite/GM2), 1 SysEx (Off/On), 2 Master Volume, 3 Master Tune (cent),
 ; 4 Transpose (semitones), 5 Reverb Return, 6 Chorus Return, 7 Panic (momentary: all sound/notes off),
-; 8 Polyphony (8..128 notes: beyond it the oldest note gets a note-off; each engine has 32 voices, above 32 a
+; 8 Polyphony (8..128 notes: beyond it a new note is dropped; each engine has 32 voices, above 32 a
 ; second..fourth engine take the overflow)
 ; Parameters 2..6 are sent as XG system/effect SysEx in front of the host events when changed and after each reset.
 
@@ -812,7 +812,7 @@ sx_next:
     ret
 
 ; Polyphony: sounding notes as key << 8 | channel, oldest first, and the engine that plays each (own).
-; A note-on beyond the limit first gets a note-off for the oldest note. Each engine has 32 voices; above 32
+; A note-on beyond the limit is dropped. Each engine has 32 voices; above 32
 ; further engines (up to 4) take the notes the earlier ones have no free voice for. route = engine bit mask.
 poly:
     push eax
@@ -844,19 +844,8 @@ po_lim:
     add ecx, 8
     cmp [ncount], ecx
     jb po_pick
-    push eax
-    mov eax, [notes]
-    call rm_id
-    call own_idx
-    movzx ecx, byte ptr [own + edx]
-    mov byte ptr [own + edx], 0
-    test ecx, ecx
-    jnz po_steal
-    mov ecx, 0xF
-po_steal:
-    call off_ev
-    pop eax
-    jmp po_lim
+    mov dword ptr [route], 0         ; beyond the limit the new note is dropped (like the engine itself, which
+    jmp po_done                      ; keeps sounding notes and gives a new note no voice when all are busy)
 po_pick:
     push eax
     push esi
@@ -1022,33 +1011,6 @@ ri_shift:
 ri_ret:
     pop edx
     pop ecx
-    ret
-
-; append a note-off for note eax to the engine(s) in ecx (engine 1 list at edi, count ebx)
-off_ev:
-    push eax
-    push edx
-    mov edx, [offi]
-    inc dword ptr [offi]
-    and edx, 63
-    shl edx, 5
-    lea edx, [ev_off + edx]
-    mov dword ptr [edx], 1
-    mov dword ptr [edx + 4], 32
-    and eax, 0x7F0F
-    or eax, 0x80
-    mov [edx + 0x18], eax
-    mov eax, edx
-    test cl, 1
-    jz oe_two
-    mov [edi], eax
-    add edi, 4
-    inc ebx
-oe_two:
-    call put_mask
-
-    pop edx
-    pop eax
     ret
 
 ; at mains on create the engines Polyphony needs (32 voices each, up to 4): the original main() once more
@@ -1366,7 +1328,6 @@ orig_repl: .int 0
 orig_proc: .int 0
 numbuf: .space 16
 ncount: .int 0
-offi: .int 0
 notes: .space 4 * 128
 own: .space 16 * 128
 route: .int 0
@@ -1382,7 +1343,6 @@ tptrs: .int tbuf0, tbuf1
 tbuf0: .space 4 * 512
 tbuf1: .space 4 * 512
 evlx: .space 4 * 4096
-ev_off: .space 32 * 64
 chunk: .int 0x33525853
 .space 4 * 9
 evlist: .int 0, 0
