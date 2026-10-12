@@ -148,13 +148,26 @@ setp:
     mov ecx, [esp + 0xC]
     mov [vals + eax * 4], ecx
     test eax, eax
-    jnz sp_ret
+    jnz sp_sx
     call mode_idx
+    push eax
+    fild dword ptr [esp]
+    fmul dword ptr [quarter]
+    fstp dword ptr [vals]               ; snap to 0/0.25/0.5/0.75/1
+    pop eax
     cmp eax, [mode]
     je sp_ret
     mov [mode], eax
     mov dword ptr [pending], 1
 sp_ret:
+    ret
+sp_sx:
+    xor eax, eax
+    cmp ecx, 0x3F000000                 ; float >= 0.5 (negatives are < as int)
+    jl sp_sx0
+    mov eax, 0x3F800000
+sp_sx0:
+    mov [vals + 4], eax
     ret
 
 ; eax = Reset Mode index 0..4 from vals[0]
@@ -192,8 +205,54 @@ d_not_mains:
     je d_getchunk
     cmp eax, 24
     je d_setchunk
+    cmp eax, 26
+    je d_one
+    cmp eax, 56
+    je d_props
 d_pass:
     jmp dword ptr [orig_disp]
+d_one:
+    mov eax, 1
+    ret
+; effGetParameterProperties: VstParameterProperties* in ptr
+d_props:
+    push edi
+    mov edi, [esp + 0x18]
+    push edi
+    mov ecx, 0x2A                       ; clear 168 bytes
+    xor eax, eax
+    rep stosd
+    pop edi
+    mov eax, [esp + 0x10]
+    and eax, 1
+    jnz dp_sx
+    mov dword ptr [edi], 0x3E800000     ; stepFloat 0.25
+    mov dword ptr [edi + 4], 0x3E800000
+    mov dword ptr [edi + 8], 0x3E800000
+    mov dword ptr [edi + 0x4C], 0xE     ; IntMinMax|FloatStep|IntStep
+    mov dword ptr [edi + 0x54], 4
+    jmp dp_common
+dp_sx:
+    mov dword ptr [edi], 0x3F800000
+    mov dword ptr [edi + 4], 0x3F800000
+    mov dword ptr [edi + 8], 0x3F800000
+    mov dword ptr [edi + 0x4C], 0xF     ; IsSwitch|IntMinMax|FloatStep|IntStep
+    mov dword ptr [edi + 0x54], 1
+dp_common:
+    mov dword ptr [edi + 0x58], 1
+    mov dword ptr [edi + 0x5C], 1
+    push esi
+    mov esi, [names + eax * 4]
+    lea edi, [edi + 0xC]
+dp_cp:
+    lodsb
+    stosb
+    test al, al
+    jnz dp_cp
+    pop esi
+    pop edi
+    mov eax, 1
+    ret
 d_label:
     mov eax, [esp + 0x14]
     mov byte ptr [eax], 0
@@ -393,6 +452,7 @@ sx_gm2: .byte 0xF0, 0x7E, 0x7F, 0x09, 0x03, 0xF7
 sx_gs: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x7F, 0x00, 0x41, 0xF7
 sx_xg: .byte 0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x7E, 0x00, 0xF7
 .align 4
+quarter: .float 0.25
 vals: .float 0.75, 1.0                ; defaults: XGLite, SysEx on
 mode: .int 3
 pending: .int 1
