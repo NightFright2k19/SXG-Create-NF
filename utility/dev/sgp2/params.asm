@@ -1,6 +1,6 @@
 ; S-YXG2006LE (SGP2.DLL): VST parameters (Reset Mode, SysEx, master settings, Panic) in a new section .sxg
 ; main hook: eax = AEffect (plugin + 0x20); the AEffect callbacks are replaced, the originals kept
-.set NP, 8
+.set NP, 9
 sec:
 main_hook:
     lea eax, [esi + 0x20]
@@ -138,13 +138,22 @@ fr_none:
 
 ; parameters are kept as integers 0..pmax[i]; the host sees value / pmax[i]
 ; 0 Reset Mode (None/GM/GS/XGLite/GM2), 1 SysEx (Off/On), 2 Master Volume, 3 Master Tune (cent),
-; 4 Transpose (semitones), 5 Reverb Return, 6 Chorus Return, 7 Panic (momentary: all sound/notes off)
+; 4 Transpose (semitones), 5 Reverb Return, 6 Chorus Return, 7 Panic (momentary: all sound/notes off),
+; 8 Polyphony (8..64 notes: beyond it the oldest note gets a note-off; the engine itself has 64 voices)
 ; Parameters 2..6 are sent as XG system/effect SysEx in front of the host events when changed and after each reset.
+
+; eax = parameter index, at most NP - 1
+clampi:
+    cmp eax, 8
+    jbe ci_ok
+    mov eax, 8
+ci_ok:
+    ret
 
 ; float getParameter(AEffect*, int idx)
 getp:
     mov eax, [esp + 8]
-    and eax, 7
+    call clampi
     fild dword ptr [ivals + eax * 4]
     fidiv dword ptr [pmax + eax * 4]
     ret
@@ -158,7 +167,7 @@ setp_h:
     call setp
     add esp, 0xC
     mov eax, [esp + 8]
-    and eax, 7
+    call clampi
     fild dword ptr [ivals + eax * 4]
     fidiv dword ptr [pmax + eax * 4]
     sub esp, 4
@@ -194,7 +203,7 @@ sh_ret:
 ; void setParameter(AEffect*, int idx, float v)
 setp:
     mov eax, [esp + 8]
-    and eax, 7
+    call clampi
     fld dword ptr [esp + 0xC]
     fimul dword ptr [pmax + eax * 4]
     sub esp, 4
@@ -260,17 +269,17 @@ d_one:
     ret
 d_label:
     mov eax, [esp + 0xC]
-    and eax, 7
+    call clampi
     mov eax, [labels + eax * 4]
     jmp d_copy
 d_name:
     mov eax, [esp + 0xC]
-    and eax, 7
+    call clampi
     mov eax, [names + eax * 4]
     jmp d_copy
 d_disp:
     mov eax, [esp + 0xC]
-    and eax, 7
+    call clampi
     mov ecx, [ivals + eax * 4]
     mov edx, [etab + eax * 4]
     test edx, edx
@@ -334,7 +343,7 @@ dp_clr:
     mov [edi + ecx * 4 - 4], eax
     loop dp_clr
     mov eax, [esp + 0x10]
-    and eax, 7
+    call clampi
     fld1
     fidiv dword ptr [pmax + eax * 4]
     fst dword ptr [edi]                 ; stepFloat = smallStep = largeStep = 1 / pmax
@@ -372,18 +381,22 @@ dgc_loop:
     mov eax, [ivals + ecx * 4]
     mov [chunk + 4 + ecx * 4], eax
     inc ecx
-    cmp ecx, 8
+    cmp ecx, NP
     jb dgc_loop
     pop edi
     pop esi
     mov eax, [esp + 0x14]
     lea ecx, [chunk]
     mov [eax], ecx
-    mov eax, 36
+    mov eax, 4 + 4 * 9
     ret
 d_setchunk:
     mov eax, [esp + 0x14]
-    cmp dword ptr [eax], 0x32525853
+    mov edx, 9
+    cmp dword ptr [eax], 0x33525853      ; 'SXR3': 9 parameters
+    je dsc_new
+    mov edx, 7
+    cmp dword ptr [eax], 0x32525853      ; 'SXR2': 8 parameters (Panic is not restored)
     je dsc_new
     cmp dword ptr [eax], 0x53525853
     jne dsc_no
@@ -402,21 +415,27 @@ d_setchunk:
     add esp, 0xC
     jmp dsc_set
 dsc_new:
-    cmp dword ptr [esp + 0x10], 36
+    lea ecx, [edx * 4 + 4]
+    cmp dword ptr [esp + 0x10], ecx
     jb dsc_no
     push esi
+    push edx
     lea esi, [eax + 4]
     xor ecx, ecx
 dsc_loop:
+    cmp ecx, 7
+    je dsc_skip
     mov edx, [esi + ecx * 4]
     cmp edx, [pmax + ecx * 4]
     jbe dsc_ok
     mov edx, [pdef + ecx * 4]
 dsc_ok:
     mov [ivals + ecx * 4], edx
+dsc_skip:
     inc ecx
-    cmp ecx, 7
+    cmp ecx, [esp]
     jb dsc_loop
+    pop edx
     pop esi
 dsc_set:
     mov dword ptr [pending], 1
@@ -430,6 +449,7 @@ emit:
     cmp dword ptr [pending], 0
     je em_par
     mov dword ptr [pending], 0
+    mov dword ptr [ncount], 0
     mov eax, [ivals]
     mov eax, [resets + eax * 4]
     test eax, eax
@@ -532,6 +552,7 @@ em_next:
     cmp dword ptr [panic], 0
     je em_ret
     mov dword ptr [panic], 0
+    mov dword ptr [ncount], 0
     lea eax, [ev_panic]
     mov ecx, 32
 em_pan:
@@ -585,10 +606,139 @@ de_loop:
     pop ecx
     jmp de_loop
 de_keep:
+    cmp dword ptr [eax], 1           ; kVstMidiType
+    jne de_store
+    call poly
+de_store:
     mov [edi], eax
     add edi, 4
     inc ebx
     jmp de_loop
+
+; Polyphony: sounding notes as key << 8 | channel, oldest first; a note-on beyond the limit
+; first gets a note-off for the oldest note (put into the event list at edi, count ebx)
+poly:
+    push eax
+    push ecx
+    push edx
+    push esi
+    mov edx, [eax + 0x18]            ; midiData
+    mov esi, edx
+    shr esi, 16
+    and esi, 0x7F                    ; velocity / value
+    mov eax, edx
+    and eax, 0x7F0F                  ; key << 8 | channel
+    mov ecx, edx
+    and cl, 0xF0
+    cmp cl, 0x90
+    jne po_n9
+    test esi, esi
+    jz po_rm
+    call rm_id                       ; a retriggered note counts once
+po_lim:
+    mov ecx, [ivals + 32]
+    add ecx, 8
+    cmp [ncount], ecx
+    jb po_add
+    push eax
+    mov eax, [notes]
+    call rm_id
+    call off_ev
+    pop eax
+    jmp po_lim
+po_add:
+    mov ecx, [ncount]
+    cmp ecx, 64
+    jae po_done
+    mov [notes + ecx * 4], eax
+    inc dword ptr [ncount]
+    jmp po_done
+po_n9:
+    cmp cl, 0x80
+    je po_rm
+    cmp cl, 0xB0
+    jne po_done
+    mov ecx, edx
+    shr ecx, 8
+    and ecx, 0x7F
+    cmp ecx, 120                     ; All Sound Off / All Notes Off: the channel is silent
+    je po_ch
+    cmp ecx, 123
+    jne po_done
+po_ch:
+    and eax, 0xF
+    xor ecx, ecx
+pc_loop:
+    cmp ecx, [ncount]
+    jae po_done
+    mov edx, [notes + ecx * 4]
+    and edx, 0xF
+    cmp edx, eax
+    jne pc_next
+    push eax
+    mov eax, [notes + ecx * 4]
+    call rm_id
+    pop eax
+    jmp pc_loop
+pc_next:
+    inc ecx
+    jmp pc_loop
+po_rm:
+    call rm_id
+po_done:
+    pop esi
+    pop edx
+    pop ecx
+    pop eax
+    ret
+
+; remove note eax from the list
+rm_id:
+    push ecx
+    push edx
+    xor ecx, ecx
+ri_find:
+    cmp ecx, [ncount]
+    jae ri_ret
+    cmp [notes + ecx * 4], eax
+    je ri_del
+    inc ecx
+    jmp ri_find
+ri_del:
+    dec dword ptr [ncount]
+ri_shift:
+    cmp ecx, [ncount]
+    jae ri_ret
+    mov edx, [notes + ecx * 4 + 4]
+    mov [notes + ecx * 4], edx
+    inc ecx
+    jmp ri_shift
+ri_ret:
+    pop edx
+    pop ecx
+    ret
+
+; append a note-off for note eax at edi (count ebx)
+off_ev:
+    push ecx
+    push edx
+    mov ecx, [offi]
+    inc dword ptr [offi]
+    and ecx, 63
+    shl ecx, 5
+    lea edx, [ev_off + ecx]
+    mov dword ptr [edx], 1
+    mov dword ptr [edx + 4], 32
+    mov ecx, eax
+    and ecx, 0x7F0F
+    or ecx, 0x80
+    mov [edx + 0x18], ecx
+    mov [edi], edx
+    add edi, 4
+    inc ebx
+    pop edx
+    pop ecx
+    ret
 
 ; ZF = 1 when the VstSysExEvent eax is a GM / GM2 / GS / XG reset
 is_reset:
@@ -670,15 +820,15 @@ p_go:
     jmp dword ptr [p_target]
 
 .align 4
-names: .int s_reset, s_sysex, s_vol, s_tune, s_trn, s_rev, s_cho, s_panic
-labels: .int s_empty, s_empty, s_empty, s_cent, s_semi, s_empty, s_empty, s_empty
-pmax: .int 4, 1, 127, 200, 48, 127, 127, 1
-pdef: .int 3, 1, 127, 100, 24, 64, 64, 0
-poff: .int 0, 0, 0, 100, 24, 0, 0, 0
-pflag: .int 0xE, 0xF, 0xE, 0xE, 0xE, 0xE, 0xE, 0xF   ; IsSwitch 1, IntMinMax 2, FloatStep 4, IntStep 8
-etab: .int modes, offon, 0, 0, 0, 0, 0, panics
-pev: .int 0, 0, ev_vol, ev_tune, ev_trn, ev_rev, ev_cho, 0
-pev_gs: .int 0, 0, eg_vol, eg_tune, eg_trn, eg_rev, eg_cho, 0
+names: .int s_reset, s_sysex, s_vol, s_tune, s_trn, s_rev, s_cho, s_panic, s_poly
+labels: .int s_empty, s_empty, s_empty, s_cent, s_semi, s_empty, s_empty, s_empty, s_empty
+pmax: .int 4, 1, 127, 200, 48, 127, 127, 1, 56
+pdef: .int 3, 1, 127, 100, 24, 64, 64, 0, 56
+poff: .int 0, 0, 0, 100, 24, 0, 0, 0, -8
+pflag: .int 0xE, 0xF, 0xE, 0xE, 0xE, 0xE, 0xE, 0xF, 0xE   ; IsSwitch 1, IntMinMax 2, FloatStep 4, IntStep 8
+etab: .int modes, offon, 0, 0, 0, 0, 0, panics, 0
+pev: .int 0, 0, ev_vol, ev_tune, ev_trn, ev_rev, ev_cho, 0, 0
+pev_gs: .int 0, 0, eg_vol, eg_tune, eg_trn, eg_rev, eg_cho, 0, 0
 modes: .int s_none, s_gm, s_gs, s_xgl, s_gm2
 offon: .int s_off, s_on
 panics: .int s_dash, s_panic
@@ -695,6 +845,7 @@ s_trn: .asciz "Transpose"
 s_rev: .asciz "Reverb Return"
 s_cho: .asciz "Chorus Return"
 s_panic: .asciz "Panic"
+s_poly: .asciz "Polyphony"
 s_cent: .asciz "cent"
 s_semi: .asciz "semi"
 s_dash: .asciz "-"
@@ -772,7 +923,7 @@ gs_trn: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x05, 0x40, 0x00, 0xF7
 gs_rev: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x01, 0x33, 0x40, 0x00, 0xF7
 gs_cho: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x01, 0x3A, 0x40, 0x00, 0xF7
 .align 4
-ivals: .int 3, 1, 127, 100, 24, 64, 64, 0     ; = pdef
+ivals: .int 3, 1, 127, 100, 24, 64, 64, 0, 56     ; = pdef
 pending: .int 1
 dirty: .int 0
 gsmode: .int 0
@@ -786,7 +937,11 @@ k_size: .int 0
 orig_repl: .int 0
 orig_proc: .int 0
 numbuf: .space 16
-chunk: .int 0x32525853
-.space 4 * 8
+ncount: .int 0
+offi: .int 0
+notes: .space 4 * 64
+ev_off: .space 32 * 64
+chunk: .int 0x33525853
+.space 4 * 9
 evlist: .int 0, 0
 .space 4096

@@ -392,11 +392,12 @@ The S-YXG2006LE engine differs from the S-YXG50 in ways a table conversion can't
 
 Patches (`utility/sgp2patch.py`, code in `utility/dev/sgp2/params.asm`):
 - **Host lock off:** the plugin only started in a host whose vendor string is `YAMAHA` (`0x2AAE` `je` → `jmp`).
-- **Parameters** in the host's generic plugin window, saved with the project (own chunk `SXR2`, older `SXRS` chunks are still read; the plugin saves nothing itself). All parameters are stepped: values snap to the nearest step, the plugin reports the steps to the host (effGetParameterProperties) and sends the snapped value back (audioMasterAutomate / UpdateDisplay), so sliders jump to the step:
+- **Parameters** in the host's generic plugin window, saved with the project (own chunk `SXR3`, older `SXR2` / `SXRS` chunks are still read; the plugin saves nothing itself). All parameters are stepped: values snap to the nearest step, the plugin reports the steps to the host (effGetParameterProperties) and sends the snapped value back (audioMasterAutomate / UpdateDisplay), so sliders jump to the step:
   - **Reset Mode**: None / GM / GS / XGLite / GM2, default XGLite. It is sent at start and on every change. The engine handles GM, GM2, GS and XG resets itself, and events right after a reset are applied correctly, so no pause is needed.
   - **SysEx**: On / Off. Off drops SysEx from the MIDI stream.
   - **Master Volume** 0-127 (default 127), **Master Tune** -100 ... +100 cent, **Transpose** -24 ... +24 semitones, **Reverb Return** and **Chorus Return** 0-127 (default 64): sent as parameter SysEx on change and again right after every reset, ours or one in the song (a reset sets them back to the engine defaults). After a GS reset they go out as GS system parameters (the engine ignores XG parameter SysEx in GS mode), otherwise as XG System / Effect parameters.
   - **Panic**: a button; switching it on sends All Sound Off and All Notes Off (CC 120 / 123) on all 16 channels and falls back to off.
+  - **Polyphony** 8-64 notes (default 64). The engine has a fixed pool of 64 voices; below 64 the plugin counts the sounding notes and, when a new note would exceed the limit, sends a note-off for the oldest one first.
 - **Embedded tables:** the two table loaders (`0x4C780` file size, `0x4C7D0` read) take `SXGBNW6L.TBL` / `SXGDAT6L.TBL` from `RT_RCDATA` resources when present (new section `.rsrc2`). Otherwise they read the files from the DLL's folder.
 - The code lives in a new section `.sxg` (hook at `0x2CF4` in `main`). It wraps dispatcher / process / processReplacing and has base relocations, so the DLL can be loaded at any address.
 
