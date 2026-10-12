@@ -7,6 +7,9 @@
 ; ("MU Tone Map" label 0x429, MU100 / MU128 / MU1000 only). The tone map radios drive the hidden checkbox
 ; 0x420 of the voice map patch (checked = MU Basic), so its WM_INITDIALOG / Set Defaults / PSN_APPLY code
 ; stays as it is; without a voice map appendix (0x10056DC1 != 1) they are hidden.
+; Every click on these controls enables Apply (PSM_CHANGED). Reset Mode and "Enable SysEx in files" are kept in the
+; plugin state: getChunk / setChunk (vtable slots of both AudioEffect vtables, set in dllpatch.py) wrap the original
+; functions (and the voice map patch inside them) and append 'R','S',mode,sysex (4 bytes) to the chunk.
 ; Output Level (trackbar 0x3FE): value 77-125 (101 = 0 dB, 0.5 dB steps, range set in dllpatch.py), tick at 101.
 
 ; --- page procedure (0x10030AF0, (page, hwnd, msg, wparam, lparam), ret 0x14) jumps here
@@ -71,6 +74,7 @@ dc_tone:
     push 0x420
     push ebx
     call dword ptr [ebp + 0x100401d0]
+dc_end:
     push 0
     push ebx
     push 0x468
@@ -78,7 +82,6 @@ dc_tone:
     call dword ptr [ebp + 0x10040170]
     push eax
     call dword ptr [ebp + 0x10040174]
-dc_end:
     popal
 dh_ret1:
     mov eax, 1
@@ -251,6 +254,61 @@ lc_set:
     push ebx
     call 0x100311b0
     jmp 0x1003114c
+
+; --- getChunk (thiscall: void **data, bool isPreset; ret 8): original chunk + 'R','S',Reset Mode,SysEx in files
+chunk_get:
+    push dword ptr [esp + 8]
+    push dword ptr [esp + 8]
+    call 0x10002b50
+    pushal
+    call cg_base
+cg_base:
+    pop ebp
+    sub ebp, cg_base
+    mov ecx, eax
+    cmp ecx, 0x40
+    ja cg_out
+    mov edx, dword ptr [esp + 0x24]
+    mov esi, dword ptr [edx]
+    lea edi, [ebp + 0x10056e70]
+    mov dword ptr [edx], edi
+    rep movsb
+    mov word ptr [edi], 0x5352
+    movzx ecx, byte ptr [ebp + 0x10056e41]
+    xor cl, 3
+    mov byte ptr [edi + 2], cl
+    mov cl, byte ptr [ebp + 0x10056e64]
+    mov byte ptr [edi + 3], cl
+    add eax, 4
+    mov dword ptr [esp + 0x1c], eax
+cg_out:
+    popal
+    ret 8
+
+; --- setChunk (thiscall: void *data, int size, bool isPreset; ret 0xc): takes 'R','S',mode,sysex off the end
+chunk_set:
+    pushal
+    call cs_base
+cs_base:
+    pop ebp
+    sub ebp, cs_base
+    mov eax, dword ptr [esp + 0x28]
+    cmp eax, 9
+    jb cs_out
+    mov esi, dword ptr [esp + 0x24]
+    cmp word ptr [esi + eax - 4], 0x5352
+    jne cs_out
+    sub dword ptr [esp + 0x28], 4
+    mov cl, byte ptr [esi + eax - 2]
+    and cl, 3
+    xor cl, 3
+    mov byte ptr [ebp + 0x10056e41], cl
+    mov cl, byte ptr [esi + eax - 1]
+    and cl, 1
+    mov byte ptr [ebp + 0x10056e64], cl
+cs_out:
+    popal
+    jmp 0x10002bb0
 
 txt_user32:
     .ascii "USER32.dll"
