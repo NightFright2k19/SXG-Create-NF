@@ -2,7 +2,7 @@
 
 Converts the ROM sets of Yamaha MU-series tone generators (MU50 to MU1000) into tables and wave data for the **S-YXG50** soft synthesizer (`syxg50.dll`), and patches the DLL so that it can play them as close to the original module as the S-YXG50 engine allows.
 
-This document is the reference for the current state of SXG-Create: what changed in this version, supported models, command line, output files, the DLL patches, what the conversion does for each model, how the results were checked against the S-MU2000, and what is still unsolved.
+<img width="510" height="429" alt="mu_patcher" src="https://github.com/user-attachments/assets/cd0fe8e7-2acb-454c-bde7-97e996df72eb" />
 
 ## Table of contents
 
