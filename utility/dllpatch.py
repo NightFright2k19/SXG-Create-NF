@@ -302,26 +302,25 @@ def apply_voicemap(data : bytearray) :
 # Generated from dev/gui/gui.asm and settings.asm with dev/gui/mkgui.py (keystone), position independent; the code
 # lives in two unused NOP blocks of .text (0x33150-0x338C0 and 0x2F6D3-0x2FB60, no relocations).
 SYXG50_GUI = [
-    (0x010C0, '8b 44 24 04 8b 48 40', 'e9 8b 20 03 00 90 90'),
-    (0x010A0, '8b 44 24 04 8b 48 40', 'e9 bc 20 03 00 90 90'),
     (0x30AF0, '8b 44 24 0c 83 c0 b2', 'e9 de eb ff ff 90 90'),
-    (0x3246B, '8b 74 24 54 8a 86 8c 00 00 00', 'e9 05 10 00 00 90 90 90 90 90'),
-    (0x32427, '8b 74 24 54 8a 86 8c 00 00 00', 'e9 ec 10 00 00 90 90 90 90 90'),
-    (0x3233D, '8d 4c 24 10 51', 'e9 69 13 00 00'),
-    (0x320EE, '5b 8b 8d 88 00 00 00', 'e9 cb 15 00 00 90 90'),
-    (0x32407, '8b 4c 24 64 8b 54 24 60', 'e9 63 11 00 00 90 90 90'),
-    (0x31142, '0f b6 08 51 53 e8 64 00 00 00', 'e9 86 e7 ff ff 90 90 90 90 90'),
-    (0x33150, ' '.join(['90'] * 1859),
-              'e8 1d 00 00 00 8b 44 24 04 8b 48 40 e9 66 df fc ff e8 0c 00 00 00 8b 44 24 04 8b 48 40 e9 35 df fc ff 60 e8 00 00 00 00 5d 81 ed 78 31 03 10 8b 54 24 28 8b 72 40 8b 8e b0 00 00 00 89 8d 44 6e 05 10 85 c9 0f 84 2d 01 00 00 80 bd 64 6e 05 10 00 75 0c c6 85 64 6e 05 10 01 e8 5d 01 00 00 e8 15 01 00 00 8b 8d 44 6e 05 10 31 c0 86 85 40 6e 05 10 85 c0 74 4e 83 f8 06 74 36 83 f8 02 74 0c 77 14 8d bd 5b 38 03 10 6a 06 eb 12 8d bd 61 38 03 10 6a 0b eb 08 8d bd 6c 38 03 10 6a 09 57 51 8b 11 ff 52 0c c7 85 54 6e 05 10 c0 12 00 00 eb 13 83 bd 54 6e 05 10 00 75 0a c7 85 54 6e 05 10 01 00 00 00 8b 85 54 6e 05 10 0b 85 5c 6e 05 10 74 72 8b bd 58 6e 05 10 85 ff 74 68 8b 9e e0 00 00 00 85 db 74 18 8b 0b 31 d2 39 ca 7d 10 51 52 8b 44 93 08 e8 a1 01 00 00 5a 59 42 eb ec c7 86 e0 00 00 00 00 00 00 00 8b 44 24 34 29 85 54 6e 05 10 7f 63 c7 85 54 6e 05 10 00 00 00 00 8b 8d 5c 6e 05 10 85 c9 74 1c 89 0f c7 85 5c 6e 05 10 00 00 00 00 c7 85 60 6e 05 10 00 00 00 00 89 be e0 00 00 00 8b 8d 44 6e 05 10 31 c0 86 85 42 6e 05 10 84 c0 74 21 0f be c0 8b 51 08 0f b6 92 66 03 00 00 01 d0 83 e0 7f c1 e0 08 0d c0 00 00 00 50 51 8b 11 ff 52 08 61 c3 8b 9e e0 00 00 00 85 db 74 38 31 d2 3b 13 7d 32 8b 7c 93 08 83 3f 06 75 26 52 8b 4f 10 8b 47 18 e8 55 00 00 00 85 c0 74 15 83 f8 02 74 0b 80 bd 40 6e 05 10 00 75 07 b0 06 e8 12 00 00 00 5a 42 eb ca c3 0f b6 85 41 6e 05 10 34 03 75 02 b0 03 88 85 40 6e 05 10 83 bd 58 6e 05 10 00 75 1a 6a 04 68 00 30 00 00 68 00 00 01 00 6a 00 ff 95 3c 01 04 10 89 85 58 6e 05 10 c3 e8 2a 00 00 00 0f b6 8d 41 6e 05 10 80 f1 03 80 f9 02 77 18 74 0b 83 f8 02 72 11 b8 01 00 00 00 c3 83 f8 01 75 06 b8 02 00 00 00 c3 31 c0 c3 52 89 c2 31 c0 83 f9 05 72 6c 80 3a f0 75 67 80 7a 01 7e 75 18 80 7a 03 09 75 5b 8a 4a 04 80 c9 02 80 f9 03 75 50 b8 01 00 00 00 eb 49 83 f9 08 72 44 80 7a 01 41 75 16 81 7a 03 42 12 40 00 75 35 80 7a 07 7f 75 2f b8 02 00 00 00 eb 28 80 7a 01 43 75 22 8a 4a 02 80 e1 f0 80 f9 10 75 17 81 7a 03 4c 00 00 7e 74 09 81 7a 03 4c 00 00 7f 75 05 b8 03 00 00 00 5a c3 83 38 06 75 15 50 51 52 8b 48 10 8b 40 18 e8 46 ff ff ff 85 c0 5a 59 58 75 70 8b 95 5c 6e 05 10 81 fa 00 01 00 00 73 62 56 89 c6 6b ca 20 8d 8c 0f 08 04 00 00 89 4c 97 08 57 51 89 cf b9 20 00 00 00 f3 a4 59 5f c7 41 08 00 00 00 00 83 39 06 75 31 8b 41 10 8b 95 60 6e 05 10 8d 34 02 81 fe 00 80 00 00 77 23 89 b5 60 6e 05 10 8d 94 17 08 24 00 00 8b 71 18 89 51 18 57 51 89 d7 89 c1 f3 a4 59 5f ff 85 5c 6e 05 10 5e c3 8b 44 24 64 0f bf c8 c1 f8 10 83 f8 04 0f 8c 81 00 00 00 83 f8 13 7d 7c ba 01 00 00 00 81 f9 a4 00 00 00 7c 6f 81 f9 b3 00 00 00 7c 15 ba 02 00 00 00 81 f9 dd 00 00 00 7c 5a 81 f9 ec 00 00 00 7d 52 60 e8 00 00 00 00 5d 81 ed bd 34 03 10 88 95 43 6e 05 10 b0 01 80 fa 01 75 02 f6 d8 f0 00 85 42 6e 05 10 8b 5c 24 78 53 ff 95 a4 01 04 10 53 e8 e5 01 00 00 e8 75 01 00 00 85 c0 74 0f 6a 00 68 90 01 00 00 68 17 23 00 00 53 ff d0 61 e9 aa ef ff ff 8b 74 24 54 8a 86 8c 00 00 00 e9 5d ef ff ff 60 e8 00 00 00 00 5d 81 ed 1e 35 03 10 80 bd 43 6e 05 10 00 74 31 c6 85 43 6e 05 10 00 ff 95 a0 01 04 10 8b 85 4c 6e 05 10 85 c0 74 0b 68 17 23 00 00 ff 74 24 7c ff d0 ff 74 24 78 e8 77 01 00 00 61 e9 54 ef ff ff 61 8b 74 24 54 8a 86 8c 00 00 00 e9 c2 ee ff ff 3d 13 01 00 00 74 14 3d 0a 02 00 00 74 67 8b 4c 24 64 8b 54 24 60 e9 85 ee ff ff 81 7c 24 60 17 23 00 00 75 e9 60 e8 00 00 00 00 5d 81 ed 9a 35 03 10 8b 5c 24 78 0f b6 95 43 6e 05 10 85 d2 74 22 b0 01 80 fa 01 75 02 f6 d8 f0 00 85 42 6e 05 10 6a 00 6a 4b 68 17 23 00 00 53 ff 95 48 6e 05 10 eb 0c 68 17 23 00 00 53 ff 95 4c 6e 05 10 61 e9 cf ee ff ff 60 e8 00 00 00 00 5d 81 ed ea 35 03 10 83 ec 10 54 ff b4 24 8c 00 00 00 ff 95 bc 01 04 10 0f bf 8c 24 94 00 00 00 0f bf 94 24 96 00 00 00 2b 0c 24 2b 54 24 04 83 c4 10 81 f9 a4 00 00 00 7c 3b 81 f9 ec 00 00 00 7d 33 83 fa 04 7c 2e 83 fa 13 7d 29 0f bf 84 24 82 00 00 00 03 85 50 6e 05 10 99 b9 78 00 00 00 f7 f9 89 95 50 6e 05 10 f0 00 85 42 6e 05 10 61 e9 54 ee ff ff 61 e9 18 ff ff ff 8b 85 48 6e 05 10 85 c0 75 3b 8d 85 75 38 03 10 50 ff 95 04 01 04 10 85 c0 74 2a 89 c6 8d 8d 89 38 03 10 51 56 ff 95 30 00 04 10 89 85 4c 6e 05 10 8d 8d 80 38 03 10 51 56 ff 95 30 00 04 10 89 85 48 6e 05 10 c3 ff 74 24 10 e8 d1 00 00 00 8d 4c 24 10 51 e9 84 ec ff ff 5b 57 e8 c0 00 00 00 8b 8d 88 00 00 00 e9 25 ea ff ff 60 e8 00 00 00 00 5d 81 ed d6 36 03 10 ff 74 24 24 ff 95 a8 01 04 10 85 c0 74 50 89 c6 56 ff 95 1c 00 04 10 85 c0 74 38 89 c7 0f b6 9d 43 6e 05 10 b8 01 00 00 00 b9 a4 00 00 00 ba a0 00 00 00 e8 2a 00 00 00 b8 02 00 00 00 b9 dd 00 00 00 ba af 00 00 00 e8 16 00 00 00 57 ff 95 24 00 04 10 56 ff 74 24 28 ff 95 ac 01 04 10 61 c2 04 00 51 52 39 d8 75 19 ff b5 38 53 05 10 57 ff 95 20 00 04 10 5a 59 68 20 00 cc 00 6a 00 52 eb 17 ff b5 20 53 05 10 57 ff 95 20 00 04 10 5a 59 68 20 00 cc 00 6a 04 51 57 6a 0f 6a 0f 6a 04 51 56 ff 95 18 00 04 10 c3 60 e8 00 00 00 00 5d 81 ed 8b 37 03 10 8b 74 24 24 56 ff 95 1c 00 04 10 85 c0 0f 84 97 00 00 00 89 c7 ff b5 3c 53 05 10 57 ff 95 20 00 04 10 8b 8d 44 6e 05 10 85 c9 75 25 b8 0a 00 00 00 b9 b9 00 00 00 e8 73 00 00 00 b8 0a 00 00 00 b9 c3 00 00 00 e8 64 00 00 00 b8 0a 00 00 00 eb 48 8b 49 08 0f b6 99 66 03 00 00 43 89 d8 31 d2 b9 64 00 00 00 f7 f1 b9 b9 00 00 00 e8 3d 00 00 00 89 d8 31 d2 b9 0a 00 00 00 f7 f1 31 d2 f7 f1 89 d0 b9 c3 00 00 00 e8 22 00 00 00 89 d8 31 d2 b9 0a 00 00 00 f7 f1 89 d0 b9 cd 00 00 00 e8 0b 00 00 00 57 ff 95 24 00 04 10 61 c2 04 00 6b c0 0a 68 20 00 cc 00 6a 00 50 57 6a 0d 6a 0a 6a 05 51 56 ff 95 18 00 04 10 c3 f0 7e 7f 09 01 f7 f0 41 10 42 12 40 00 7f 00 41 f7 f0 43 10 4c 00 00 7e 00 f7 55 53 45 52 33 32 2e 64 6c 6c 00 53 65 74 54 69 6d 65 72 00 4b 69 6c 6c 54 69 6d 65 72 00'),
-    (0x2F6D3, ' '.join(['90'] * 684),
-              '8b 44 24 0c 3d 10 01 00 00 0f 84 9a 00 00 00 3d 11 01 00 00 0f 85 87 00 00 00 0f b7 44 24 10 83 f8 04 0f 84 81 00 00 00 3d 23 04 00 00 72 6e 3d 28 04 00 00 77 67 66 83 7c 24 12 00 75 57 60 e8 00 00 00 00 5d 81 ed 17 f7 02 10 8b 5c 24 28 0f b7 44 24 30 3d 26 04 00 00 73 0c 2d 22 04 00 00 e8 61 01 00 00 eb 17 31 c9 3d 27 04 00 00 0f 94 c1 51 68 20 04 00 00 53 ff 95 d0 01 04 10 6a 00 53 68 68 04 00 00 53 ff 95 70 01 04 10 50 ff 95 74 01 04 10 61 b8 01 00 00 00 c2 14 00 8b 44 24 0c 83 c0 b2 e9 7b 13 00 00 ff 74 24 14 ff 74 24 14 ff 74 24 14 ff 74 24 14 ff 74 24 14 e8 d4 00 00 00 50 60 e8 00 00 00 00 5d 81 ed 9c f7 02 10 8b 5c 24 2c 81 7c 24 30 10 01 00 00 75 1e 6a 65 6a 00 68 04 04 00 00 68 fe 03 00 00 53 ff 95 78 01 04 10 50 ff 95 74 01 04 10 eb 13 80 bd 41 6e 05 10 00 74 0a b8 03 00 00 00 e8 b7 00 00 00 0f b6 b5 41 6e 05 10 83 f6 03 81 c6 22 04 00 00 bf 23 04 00 00 31 c0 39 f7 0f 94 c0 50 57 53 ff 95 d0 01 04 10 47 81 ff 26 04 00 00 72 e7 80 bd c1 6d 05 10 01 75 2c 68 20 04 00 00 53 e8 51 00 00 00 89 c6 56 68 27 04 00 00 53 ff 95 d0 01 04 10 83 f6 01 56 68 28 04 00 00 53 ff 95 d0 01 04 10 eb 1f bf 27 04 00 00 57 53 ff 95 78 01 04 10 6a 00 50 ff 95 b0 01 04 10 47 81 ff 2a 04 00 00 72 e6 61 58 c2 14 00 8b 44 24 0c 83 c0 b2 e9 82 12 00 00 ff 74 24 08 ff 74 24 08 ff 95 78 01 04 10 6a 00 6a 00 68 f0 00 00 00 50 ff 95 74 01 04 10 83 e0 01 c2 08 00 50 34 03 88 85 41 6e 05 10 83 bd 58 6e 05 10 00 75 1a 6a 04 68 00 30 00 00 68 00 00 01 00 6a 00 ff 95 3c 01 04 10 89 85 58 6e 05 10 58 88 85 40 6e 05 10 c3 8a 08 80 f9 4d 73 02 b1 4d 80 f9 7d 76 02 b1 7d 88 08 0f b6 c9 51 53 e8 c7 18 00 00 e9 5e 18 00 00 ff 74 24 08 ff 74 24 08 e8 55 32 fd ff 60 e8 00 00 00 00 5d 81 ed 01 f9 02 10 89 c1 83 f9 40 77 2d 8b 54 24 24 8b 32 8d bd 70 6e 05 10 89 3a f3 a4 66 c7 07 52 53 0f b6 8d 41 6e 05 10 80 f1 03 88 4f 02 c6 47 03 00 83 c0 04 89 44 24 1c 61 c2 08 00 60 e8 00 00 00 00 5d 81 ed 46 f9 02 10 8b 44 24 28 83 f8 09 72 23 8b 74 24 24 66 81 7c 06 fc 52 53 75 16 83 6c 24 28 04 0f b6 44 06 fe 83 e0 03 75 02 b0 03 e8 20 ff ff ff 61 e9 31 32 fd ff'),
+    (0x3246B, '8b 74 24 54 8a 86 8c 00 00 00', 'e9 e1 0f 00 00 90 90 90 90 90'),
+    (0x32427, '8b 74 24 54 8a 86 8c 00 00 00', 'e9 c8 10 00 00 90 90 90 90 90'),
+    (0x3233D, '8d 4c 24 10 51', 'e9 45 13 00 00'),
+    (0x320EE, '5b 8b 8d 88 00 00 00', 'e9 a7 15 00 00 90 90'),
+    (0x32407, '8b 4c 24 64 8b 54 24 60', 'e9 3f 11 00 00 90 90 90'),
+    (0x31142, '0f b6 08 51 53 e8 64 00 00 00', 'e9 ef e7 ff ff 90 90 90 90 90'),
+    (0x30F31, '0f b7 44 24 14 83 f8 07 0f 87 23 02 00 00 ff 24 85 70 11 03 10', 'e9 21 ea ff ff 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90'),
+    (0x33150, ' '.join(['90'] * 1823),
+              '60 e8 00 00 00 00 5d 81 ed 56 31 03 10 8b 54 24 28 8b 72 40 8b 8e b0 00 00 00 89 8d 44 6e 05 10 85 c9 0f 84 2b 01 00 00 80 bd 64 6e 05 10 00 75 0c c6 85 64 6e 05 10 01 e8 5b 01 00 00 e8 13 01 00 00 8b 8d 44 6e 05 10 31 c0 86 85 40 6e 05 10 85 c0 74 4d 83 f8 06 74 35 83 f8 02 74 0c 77 14 8d bd 37 38 03 10 6a 06 eb 12 8d bd 3d 38 03 10 6a 0b eb 08 8d bd 48 38 03 10 6a 09 57 e8 69 82 02 00 c7 85 54 6e 05 10 c0 12 00 00 eb 13 83 bd 54 6e 05 10 00 75 0a c7 85 54 6e 05 10 01 00 00 00 8b 85 54 6e 05 10 0b 85 5c 6e 05 10 74 72 8b bd 58 6e 05 10 85 ff 74 68 8b 9e e0 00 00 00 85 db 74 18 8b 0b 31 d2 39 ca 7d 10 51 52 8b 44 93 08 e8 a0 01 00 00 5a 59 42 eb ec c7 86 e0 00 00 00 00 00 00 00 8b 44 24 34 29 85 54 6e 05 10 7f 62 c7 85 54 6e 05 10 00 00 00 00 8b 8d 5c 6e 05 10 85 c9 74 1c 89 0f c7 85 5c 6e 05 10 00 00 00 00 c7 85 60 6e 05 10 00 00 00 00 89 be e0 00 00 00 8b 8d 44 6e 05 10 31 c0 86 85 42 6e 05 10 84 c0 74 20 0f be c0 8b 51 08 0f b6 92 66 03 00 00 01 d0 83 e0 7f c1 e0 08 0d c0 00 00 00 50 e8 e3 81 02 00 61 c3 8b 9e e0 00 00 00 85 db 74 38 31 d2 3b 13 7d 32 8b 7c 93 08 83 3f 06 75 26 52 8b 4f 10 8b 47 18 e8 55 00 00 00 85 c0 74 15 83 f8 02 74 0b 80 bd 40 6e 05 10 00 75 07 b0 06 e8 12 00 00 00 5a 42 eb ca c3 0f b6 85 41 6e 05 10 34 03 75 02 b0 03 88 85 40 6e 05 10 83 bd 58 6e 05 10 00 75 1a 6a 04 68 00 30 00 00 68 00 00 01 00 6a 00 ff 95 3c 01 04 10 89 85 58 6e 05 10 c3 e8 2a 00 00 00 0f b6 8d 41 6e 05 10 80 f1 03 80 f9 02 77 18 74 0b 83 f8 02 72 11 b8 01 00 00 00 c3 83 f8 01 75 06 b8 02 00 00 00 c3 31 c0 c3 52 89 c2 31 c0 83 f9 05 72 6c 80 3a f0 75 67 80 7a 01 7e 75 18 80 7a 03 09 75 5b 8a 4a 04 80 c9 02 80 f9 03 75 50 b8 01 00 00 00 eb 49 83 f9 08 72 44 80 7a 01 41 75 16 81 7a 03 42 12 40 00 75 35 80 7a 07 7f 75 2f b8 02 00 00 00 eb 28 80 7a 01 43 75 22 8a 4a 02 80 e1 f0 80 f9 10 75 17 81 7a 03 4c 00 00 7e 74 09 81 7a 03 4c 00 00 7f 75 05 b8 03 00 00 00 5a c3 83 38 06 75 15 50 51 52 8b 48 10 8b 40 18 e8 46 ff ff ff 85 c0 5a 59 58 75 70 8b 95 5c 6e 05 10 81 fa 00 01 00 00 73 62 56 89 c6 6b ca 20 8d 8c 0f 08 04 00 00 89 4c 97 08 57 51 89 cf b9 20 00 00 00 f3 a4 59 5f c7 41 08 00 00 00 00 83 39 06 75 31 8b 41 10 8b 95 60 6e 05 10 8d 34 02 81 fe 00 80 00 00 77 23 89 b5 60 6e 05 10 8d 94 17 08 24 00 00 8b 71 18 89 51 18 57 51 89 d7 89 c1 f3 a4 59 5f ff 85 5c 6e 05 10 5e c3 8b 44 24 64 0f bf c8 c1 f8 10 83 f8 04 0f 8c 81 00 00 00 83 f8 13 7d 7c ba 01 00 00 00 81 f9 a4 00 00 00 7c 6f 81 f9 b3 00 00 00 7c 15 ba 02 00 00 00 81 f9 dd 00 00 00 7c 5a 81 f9 ec 00 00 00 7d 52 60 e8 00 00 00 00 5d 81 ed 99 34 03 10 88 95 43 6e 05 10 b0 01 80 fa 01 75 02 f6 d8 f0 00 85 42 6e 05 10 8b 5c 24 78 53 ff 95 a4 01 04 10 53 e8 e5 01 00 00 e8 75 01 00 00 85 c0 74 0f 6a 00 68 90 01 00 00 68 17 23 00 00 53 ff d0 61 e9 ce ef ff ff 8b 74 24 54 8a 86 8c 00 00 00 e9 81 ef ff ff 60 e8 00 00 00 00 5d 81 ed fa 34 03 10 80 bd 43 6e 05 10 00 74 31 c6 85 43 6e 05 10 00 ff 95 a0 01 04 10 8b 85 4c 6e 05 10 85 c0 74 0b 68 17 23 00 00 ff 74 24 7c ff d0 ff 74 24 78 e8 77 01 00 00 61 e9 78 ef ff ff 61 8b 74 24 54 8a 86 8c 00 00 00 e9 e6 ee ff ff 3d 13 01 00 00 74 14 3d 0a 02 00 00 74 67 8b 4c 24 64 8b 54 24 60 e9 a9 ee ff ff 81 7c 24 60 17 23 00 00 75 e9 60 e8 00 00 00 00 5d 81 ed 76 35 03 10 8b 5c 24 78 0f b6 95 43 6e 05 10 85 d2 74 22 b0 01 80 fa 01 75 02 f6 d8 f0 00 85 42 6e 05 10 6a 00 6a 4b 68 17 23 00 00 53 ff 95 48 6e 05 10 eb 0c 68 17 23 00 00 53 ff 95 4c 6e 05 10 61 e9 f3 ee ff ff 60 e8 00 00 00 00 5d 81 ed c6 35 03 10 83 ec 10 54 ff b4 24 8c 00 00 00 ff 95 bc 01 04 10 0f bf 8c 24 94 00 00 00 0f bf 94 24 96 00 00 00 2b 0c 24 2b 54 24 04 83 c4 10 81 f9 a4 00 00 00 7c 3b 81 f9 ec 00 00 00 7d 33 83 fa 04 7c 2e 83 fa 13 7d 29 0f bf 84 24 82 00 00 00 03 85 50 6e 05 10 99 b9 78 00 00 00 f7 f9 89 95 50 6e 05 10 f0 00 85 42 6e 05 10 61 e9 78 ee ff ff 61 e9 18 ff ff ff 8b 85 48 6e 05 10 85 c0 75 3b 8d 85 51 38 03 10 50 ff 95 04 01 04 10 85 c0 74 2a 89 c6 8d 8d 65 38 03 10 51 56 ff 95 30 00 04 10 89 85 4c 6e 05 10 8d 8d 5c 38 03 10 51 56 ff 95 30 00 04 10 89 85 48 6e 05 10 c3 ff 74 24 10 e8 d1 00 00 00 8d 4c 24 10 51 e9 a8 ec ff ff 5b 57 e8 c0 00 00 00 8b 8d 88 00 00 00 e9 49 ea ff ff 60 e8 00 00 00 00 5d 81 ed b2 36 03 10 ff 74 24 24 ff 95 a8 01 04 10 85 c0 74 50 89 c6 56 ff 95 1c 00 04 10 85 c0 74 38 89 c7 0f b6 9d 43 6e 05 10 b8 01 00 00 00 b9 a4 00 00 00 ba a0 00 00 00 e8 2a 00 00 00 b8 02 00 00 00 b9 dd 00 00 00 ba af 00 00 00 e8 16 00 00 00 57 ff 95 24 00 04 10 56 ff 74 24 28 ff 95 ac 01 04 10 61 c2 04 00 51 52 39 d8 75 19 ff b5 38 53 05 10 57 ff 95 20 00 04 10 5a 59 68 20 00 cc 00 6a 00 52 eb 17 ff b5 20 53 05 10 57 ff 95 20 00 04 10 5a 59 68 20 00 cc 00 6a 04 51 57 6a 0f 6a 0f 6a 04 51 56 ff 95 18 00 04 10 c3 60 e8 00 00 00 00 5d 81 ed 67 37 03 10 8b 74 24 24 56 ff 95 1c 00 04 10 85 c0 0f 84 97 00 00 00 89 c7 ff b5 3c 53 05 10 57 ff 95 20 00 04 10 8b 8d 44 6e 05 10 85 c9 75 25 b8 0a 00 00 00 b9 b9 00 00 00 e8 73 00 00 00 b8 0a 00 00 00 b9 c3 00 00 00 e8 64 00 00 00 b8 0a 00 00 00 eb 48 8b 49 08 0f b6 99 66 03 00 00 43 89 d8 31 d2 b9 64 00 00 00 f7 f1 b9 b9 00 00 00 e8 3d 00 00 00 89 d8 31 d2 b9 0a 00 00 00 f7 f1 31 d2 f7 f1 89 d0 b9 c3 00 00 00 e8 22 00 00 00 89 d8 31 d2 b9 0a 00 00 00 f7 f1 89 d0 b9 cd 00 00 00 e8 0b 00 00 00 57 ff 95 24 00 04 10 61 c2 04 00 6b c0 0a 68 20 00 cc 00 6a 00 50 57 6a 0d 6a 0a 6a 05 51 56 ff 95 18 00 04 10 c3 f0 7e 7f 09 01 f7 f0 41 10 42 12 40 00 7f 00 41 f7 f0 43 10 4c 00 00 7e 00 f7 55 53 45 52 33 32 2e 64 6c 6c 00 53 65 74 54 69 6d 65 72 00 4b 69 6c 6c 54 69 6d 65 72 00'),
+    (0x2F6D3, ' '.join(['90'] * 961),
+              '8b 44 24 0c 83 f8 4e 75 31 8b 4c 24 14 81 79 08 36 ff ff ff 0f 85 bd 00 00 00 e8 00 00 00 00 59 81 e9 f2 f6 02 10 8a 91 b9 6e 05 10 80 f2 80 88 91 b8 6e 05 10 e9 99 00 00 00 3d 10 01 00 00 0f 84 9a 00 00 00 3d 11 01 00 00 0f 85 87 00 00 00 0f b7 44 24 10 83 f8 04 0f 84 81 00 00 00 3d 23 04 00 00 72 6e 3d 28 04 00 00 77 67 66 83 7c 24 12 00 75 57 60 e8 00 00 00 00 5d 81 ed 4d f7 02 10 8b 5c 24 28 0f b7 44 24 30 3d 26 04 00 00 73 0c 2d 22 04 00 00 e8 94 01 00 00 eb 17 31 c9 3d 27 04 00 00 0f 94 c1 51 68 20 04 00 00 53 ff 95 d0 01 04 10 6a 00 53 68 68 04 00 00 53 ff 95 70 01 04 10 50 ff 95 74 01 04 10 61 b8 01 00 00 00 c2 14 00 8b 44 24 0c 83 c0 b2 e9 45 13 00 00 ff 74 24 14 ff 74 24 14 ff 74 24 14 ff 74 24 14 ff 74 24 14 e8 07 01 00 00 50 60 e8 00 00 00 00 5d 81 ed d2 f7 02 10 8b 5c 24 2c 81 7c 24 30 10 01 00 00 75 3f 6a 65 6a 00 68 04 04 00 00 68 fe 03 00 00 53 ff 95 78 01 04 10 50 ff 95 74 01 04 10 8a 85 b8 6e 05 10 34 80 88 85 b9 6e 05 10 84 c0 74 36 0f b6 c0 05 80 00 00 00 50 53 e8 7c 16 00 00 eb 25 c6 85 b9 6e 05 10 80 68 00 01 00 00 53 e8 68 16 00 00 80 bd 41 6e 05 10 00 74 0a b8 03 00 00 00 e8 b7 00 00 00 0f b6 b5 41 6e 05 10 83 f6 03 81 c6 22 04 00 00 bf 23 04 00 00 31 c0 39 f7 0f 94 c0 50 57 53 ff 95 d0 01 04 10 47 81 ff 26 04 00 00 72 e7 80 bd c1 6d 05 10 01 75 2c 68 20 04 00 00 53 e8 51 00 00 00 89 c6 56 68 27 04 00 00 53 ff 95 d0 01 04 10 83 f6 01 56 68 28 04 00 00 53 ff 95 d0 01 04 10 eb 1f bf 27 04 00 00 57 53 ff 95 78 01 04 10 6a 00 50 ff 95 b0 01 04 10 47 81 ff 2a 04 00 00 72 e6 61 58 c2 14 00 8b 44 24 0c 83 c0 b2 e9 19 12 00 00 ff 74 24 08 ff 74 24 08 ff 95 78 01 04 10 6a 00 6a 00 68 f0 00 00 00 50 ff 95 74 01 04 10 83 e0 01 c2 08 00 50 34 03 88 85 41 6e 05 10 83 bd 58 6e 05 10 00 75 1a 6a 04 68 00 30 00 00 68 00 00 01 00 6a 00 ff 95 3c 01 04 10 89 85 58 6e 05 10 58 88 85 40 6e 05 10 c3 8a 08 80 f9 4d 73 02 b1 4d 80 f9 7d 76 02 b1 7d 88 08 0f b6 c9 51 53 e8 5e 18 00 00 e9 f5 17 00 00 0f b7 44 24 14 83 f8 07 0f 87 fd 17 00 00 e8 00 00 00 00 59 81 e9 6a f9 02 10 6a 00 6a 00 68 00 04 00 00 ff 74 24 28 ff 91 74 01 04 10 83 f8 08 7d 05 b8 08 00 00 00 3d 00 01 00 00 7e 05 b8 00 01 00 00 e8 00 00 00 00 59 81 e9 9f f9 02 10 89 c2 81 ea 80 00 00 00 7f 02 31 d2 88 91 b9 6e 05 10 89 c2 81 fa 80 00 00 00 7e 05 ba 80 00 00 00 8b 4c 24 20 88 11 50 53 e8 cc 14 00 00 e9 73 17 00 00 ff 74 24 08 ff 74 24 08 e8 6a 31 fd ff 60 e8 00 00 00 00 5d 81 ed ec f9 02 10 89 c1 83 f9 40 77 35 8b 54 24 24 8b 32 8d bd 70 6e 05 10 89 3a f3 a4 66 c7 07 52 50 0f b6 8d 41 6e 05 10 80 f1 03 88 4f 02 8a 8d b8 6e 05 10 80 f1 80 88 4f 03 83 c0 04 89 44 24 1c 61 c2 08 00 60 e8 00 00 00 00 5d 81 ed 39 fa 02 10 8b 44 24 28 83 f8 09 72 45 8b 74 24 24 b9 80 00 00 00 66 81 7c 06 fc 52 53 74 14 66 81 7c 06 fc 52 50 75 2a 8a 4c 06 ff 80 f9 80 76 02 b1 80 80 f1 80 88 8d b8 6e 05 10 83 6c 24 28 04 0f b6 44 06 fe 83 e0 03 75 02 b0 03 e8 74 fe ff ff 61 e9 1c 31 fd ff'),
 ]
-GUI_CAVE_END = 0x33893
+GUI_CAVE_END = 0x3386F
 # getChunk / setChunk slots of both AudioEffect vtables (0x10040550, 0x10040768) -> chunk_get / chunk_set
 # (settings.asm), which call the original functions: Reset Mode in the plugin state.
 SYXG50_GUI_CHUNK = [
-    (0x40594, '50 2b 00 10', 'ee f8 02 10'), (0x407AC, '50 2b 00 10', 'ee f8 02 10'),
-    (0x40598, 'b0 2b 00 10', '40 f9 02 10'), (0x407B0, 'b0 2b 00 10', '40 f9 02 10'),
+    (0x40594, '50 2b 00 10', 'd9 f9 02 10'), (0x407AC, '50 2b 00 10', 'd9 f9 02 10'),
+    (0x40598, 'b0 2b 00 10', '33 fa 02 10'), (0x407B0, 'b0 2b 00 10', '33 fa 02 10'),
 ]
 GUI_DATA_END = 0x56EB8
 LEVEL_RANGE = (77, 125)               # Output Level trackbar values, 101 = 0 dB, 0.5 dB per step
@@ -659,28 +658,32 @@ def build_dialog(head : bytes, items : list[dict]) -> bytes :
         out += sz_or_ord(it['cls']) + sz_or_ord(it['text']) + struct.pack('<H', len(it['extra'])) + it['extra']
     return bytes(out)
 
-SETTINGS_PAGE_HEIGHT = 170               # dialog units (was 160): room for the Utility frame
+SETTINGS_PAGE_HEIGHT = 170               # dialog units (was 160): room for the Utility frame (MU50/80/90: 160)
 def _ctl(cls, text, x, y, cx, cy, style, cid = 0xFFFFFFFF) :
     return dict(help = 0, exstyle = 0, style = style, x = x, y = y, cx = cx, cy = cy, id = cid, cls = cls, text = text, extra = b'')
 def utility_controls(full : bool) -> list[dict] :
-    # "Utility" frame: Reset Mode (left), MU Tone Map (right, voice map models); see SYXG50_GUI / settings.asm
+    # MU100 / MU128 / MU1000: "Utility" frame, Reset Mode (left, with its label) and MU Tone Map (right);
+    # MU50 / MU80 / MU90: the frame itself is "Reset Mode", radio buttons flush with its "R"; see SYXG50_GUI / settings.asm
     radio, first = 0x50010009, 0x50030009      # BS_AUTORADIOBUTTON | WS_TABSTOP, + WS_GROUP for the first of a group
-    items = [_ctl(0x80, 'Utility', 5, 113, 225, 34, 0x50000007),
-             _ctl(0x82, 'Reset Mode', 12, 123, 108, 9, 0x50000001, 0x42A),
-             _ctl(0x80, 'GM', 29, 133, 24, 10, first, 0x423),
-             _ctl(0x80, 'GS', 55, 133, 24, 10, radio, 0x424),
-             _ctl(0x80, 'XG', 81, 133, 24, 10, radio, 0x425)]
-    if full :
-        items += [_ctl(0x82, 'MU Tone Map', 140, 123, 82, 9, 0x50000001, 0x429),
-                  _ctl(0x80, 'Basic', 146, 133, 32, 10, first, 0x427),
-                  _ctl(0x80, 'Native', 182, 133, 36, 10, radio, 0x428)]
-    return items
+    if not full :
+        return [_ctl(0x80, 'Reset Mode', 5, 113, 225, 24, 0x50000007),
+                _ctl(0x80, 'GM', 11, 123, 24, 10, first, 0x423),
+                _ctl(0x80, 'GS', 37, 123, 24, 10, radio, 0x424),
+                _ctl(0x80, 'XG', 63, 123, 24, 10, radio, 0x425)]
+    return [_ctl(0x80, 'Utility', 5, 113, 225, 34, 0x50000007),
+            _ctl(0x82, 'Reset Mode', 12, 123, 108, 9, 0x50000001, 0x42A),
+            _ctl(0x80, 'GM', 29, 133, 24, 10, first, 0x423),
+            _ctl(0x80, 'GS', 55, 133, 24, 10, radio, 0x424),
+            _ctl(0x80, 'XG', 81, 133, 24, 10, radio, 0x425),
+            _ctl(0x82, 'MU Tone Map', 140, 123, 82, 9, 0x50000001, 0x429),
+            _ctl(0x80, 'Basic', 146, 133, 32, 10, first, 0x427),
+            _ctl(0x80, 'Native', 182, 133, 36, 10, radio, 0x428)]
 
 def edit_settings_page(raw : bytes, full : bool) -> bytes :
     # dialog 111: layout of issue #26 (see SYXG50_GUI); y positions in dialog units
     head, items = dialog_items(raw)
     if any(it['id'] == 0x423 for it in items) : return raw       # already done
-    head = bytearray(head); struct.pack_into('<h', head, 24, SETTINGS_PAGE_HEIGHT)
+    head = bytearray(head); struct.pack_into('<h', head, 24, SETTINGS_PAGE_HEIGHT if full else SETTINGS_PAGE_HEIGHT - 10)
     out = []
     for it in items :
         cid, text = it['id'], it['text']
@@ -693,7 +696,7 @@ def edit_settings_page(raw : bytes, full : bool) -> bytes :
         elif cid == 0x3FE : it['y'], it['cy'], it['style'] = 87, 20, it['style'] & ~0x18   # ticks below: ends + centre (code)
         elif cid == 0x3FF or text == 'dB' : it['y'] = 89
         elif cid == VMAP_CONTROL_ID : it['style'] &= ~0x10000000  # hidden, driven by the MU Tone Map radios
-        elif cid == 4 : it['y'], it['style'] = 152, it['style'] | 0x300   # Set Defaults, BS_CENTER
+        elif cid == 4 : it['y'], it['style'] = 152 if full else 142, it['style'] | 0x300   # Set Defaults, BS_CENTER
         if cid == 4 : out += utility_controls(full)
         out.append(it)
     return build_dialog(bytes(head), out)
@@ -750,6 +753,66 @@ def apply_gui(data : bytearray, full : bool) :
     old = resource_data(data, entry); new = edit_settings_page(old, full)
     if new != old : replace_resource_data(data, entry, new)
     print('  Settings page: new layout (Polyphony, Effects with CC numbers, Output Level, Utility)')
+
+# * Polyphony up to 256 (all models, issue #14): a second synth engine (instance B) inside the DLL. The
+#   process / processReplacing wrappers (0x100010C0 / 0x100010A0) and the dispatcher (0x10001000) jump to code in
+#   a new section .sxp at 0x1005B000, inserted in front of .rsrc (which moves up one page). Instance B is made by
+#   VSTPluginMain in the plugin's first block (own audioMaster stub, sample rate and block size of A) and gets
+#   every event, so it always has the song's state. Every block: B takes A's settings (effect switches, Output
+#   Level; its polyphony = the voices above 128), a Note On goes to A while A has two voices free (synth
+#   +0x64BE), else to B while B has two free, else to A; everything else goes to both. Resets and preset steps of
+#   the GUI code go to both engines (both_sysex / both_short). B renders after A (process, accumulating) while it
+#   has voices and 4 s longer, asleep it only takes its events through the engine entries. effClose closes B.
+#   Wave data and tables are shared, B costs only its engine memory. Source dev/poly/poly.asm, generated with
+#   dev/gui/mkgui.py together with the GUI code (.data 0x56EB8-0x56F00, see poly.asm).
+SYXG50_POLY = [
+    (0x010C0, '8b 44 24 04 8b 48 40', 'e9 3b 9f 05 00 90 90'),
+    (0x010A0, '8b 44 24 04 8b 48 40', 'e9 6f 9f 05 00 90 90'),
+    (0x01000, '8b 44 24 04 56 8b 70 40', 'e9 c3 a4 05 00 90 90 90'),
+    (0x320A0, '8b 45 08 8b 08 8d 54 24 3c 52 6a 04 50 ff 51 20', '8d 54 24 3c 52 6a 04 ff 75 08 e8 89 94 02 00 90'),
+]
+POLY_VA = 0x5B000
+POLY_CODE = bytes.fromhex('60e8e100000061e84481fdff60bf14000000eb1260e8cd00000061e83081fdff60bf10000000e8000000005d81ed2bb005108b4424248b70408b9dbc6e051085db740c57e8b4010000e83e0200005f89f18b11ff742430ff742430ff742430ff143a85db7475837b08007e6f8b43048b48408b430c0508200000833800750231c08981e0000000518b11ff742434ff742434ff742434ff521059c781e0000000000000008b81b00000008b40080fb790be640000663b90c0640000730e8b86d8000000c1e002894308eb108b4424302943087f07c7430800000000c785bc6e05100000000061c3e8000000005d81edecb00510c785bc6e0510000000008b4424288b70408d9dc06e051031ffb90400000039337421833b00750685ff750289df83c310e2ec85ff741389fbe80d000000837b04007406899dbc6e0510c3837b0c00751b6a04680030000068004000006a00ff953c01041085c0743089430c8d85eeb1051050e8a684faff83c40485c0741a894304c7430800000000893331c931d2e854000000e801000000c3b90c00000031d2e842000000ffb6d8000000db0424d91c2458b90a00000031d2e82b000000b90b0000008b561ce81c000000b90c000000ba01000000e80d000000b94700000031d2e801000000c331c0506a00526a00518b430450ff500483c418c331c0837c2408017505b860090000c38b43048b78408b86d80000003b87d8000000740757e875ffffff5f89f0e85400000085c0744f89c189f8e84700000085c0744289c783ec088b410d8904248a4111884424048a85b86e051034803c087302b0088804248b04243b470d75098a4424043a4711740b89e0506a0057e80155fdff83c408c3528b80b000000085c0740a8d9510e104103910740231c05ac38b530cc70200000000c7420400000000c7820820000000000000c7820c200000000000008b8ee000000085c90f84fc0000008b86b00000008b40080fb780be6400006a005080bdb86e051080741a8b43048b40408b80b00000008b40080fb780be640000894424045331db3b197d7081fb000400007d688b44990883380175438b781881e7f000000081ff90000000753280781a00742c837c2404027c07836c240402eb32837c2408027c2b836c2408028b3c24837f08007f0ec74708ffffffffeb05e89e0000005281c208200000e8920000005aeb05e88a00000043eb8c5b83c40889d0833800750231c08986e0000000837b08ff75368b86d8000000c1e0028943088b43048b40408b8ee40000008988e40000008b8ee80000008988e80000008b8eec0000008988ec000000837b08007f318b530c81c2082000008b43048b40408bb8b000000031c93b0a7d108b448a085152e8170000005a5941ebecc70200000000c3518b0a89448a08ff0259c3833801750aff7018578b17ff5208c38338067511ff7010ff7018578b17ff520ce801000000c38b43048b40408b88d8000000c1e902394b087d03894b08c360e8000000005d81ed41b405108bbd446e0510e8240000008b9dbc6e051085db74168b43048b40408bb8b0000000e809000000e8b0ffffff61c20800ff74242cff74242c578b17ff520cc360e8000000005d81ed8cb405108bbd446e0510e81f0000008b9dbc6e051085db74118b43048b40408bb8b0000000e80400000061c20400ff742428578b17ff5208c3837c240801755c60e8000000005d81edd5b405108b4424248b70408d9dc06e0510bf0400000039337532837b04007418b90c00000031d2e8d6fcffffb90100000031d2e8cafcffffc70300000000c7430400000000c743080000000083c3104f75c4618b442404568b7040e9d05afaff8b4424048b08ff74240cff74240c50ff5120837c240804755e60e8000000005d81ed57b505108b5424248d9dc06e0510bf040000008b0385c074353b90b0000000752d8b430485c0742c8b40408b80b00000008b40080fb788c06400000fb780be64000029c1760e8b44242c0108eb0683c3104f75bf61c20c00')
+POLY_DATA_END = 0x56F00
+# Settings page: Polyphony trackbar range 8-128 -> 8-256 (TBM_SETRANGE lParam at 0x10030B1D); the scroll handler
+# (0x10030F31 -> poly_scroll, settings.asm) splits the total into the settings byte (up to 128) and the extra voices
+SYXG50_POLY_RANGE = [(0x30B1D, '68 08 00 80 00', '68 08 00 00 01')]
+
+def insert_section_before_rsrc(data : bytearray, name : bytes, va : int, body : bytes, flags : int) :
+    # new section at the virtual address of .rsrc (the last section), .rsrc moves behind it: its header,
+    # raw data, data directory entry and every resource data entry (RVAs) follow
+    secs = sections(data)
+    h, vs, rva, rs, rp = secs[-1]
+    if data[h : h + 5] != b'.rsrc' or rva != va : raise DllPatchError(f'.rsrc not at 0x{va:X}, cannot add section {name}')
+    pe = struct.unpack_from('<I', data, 0x3C)[0]; opt = pe + 24
+    salign, falign = struct.unpack_from('<II', data, opt + 32)
+    vsize = (len(body) + salign - 1) // salign * salign
+    rsize = (len(body) + falign - 1) // falign * falign
+    if h + 80 > struct.unpack_from('<I', data, opt + 60)[0] : raise DllPatchError('no room for a section header')
+    old = bytes(data[h : h + 40])
+    data[h : h + 40] = struct.pack('<8sIIIIIIHHI', name, len(body), va, rsize, rp, 0, 0, 0, 0, flags)
+    data[h + 40 : h + 80] = old
+    struct.pack_into('<I', data, h + 40 + 12, va + vsize); struct.pack_into('<I', data, h + 40 + 20, rp + rsize)
+    struct.pack_into('<H', data, pe + 6, struct.unpack_from('<H', data, pe + 6)[0] + 1)
+    data[rp : rp] = body + bytes(rsize - len(body))
+    struct.pack_into('<I', data, opt + 56, struct.unpack_from('<I', data, opt + 56)[0] + vsize)   # SizeOfImage
+    ddir = opt + 96
+    struct.pack_into('<I', data, ddir + 16, struct.unpack_from('<I', data, ddir + 16)[0] + vsize)
+    base = rp + rsize
+    def walk(off) :
+        n = sum(struct.unpack_from('<HH', data, base + off + 12))
+        for i in range(n) :
+            _, ptr = struct.unpack_from('<II', data, base + off + 16 + 8 * i)
+            if ptr & 0x80000000 : walk(ptr & 0x7FFFFFFF)
+            else : struct.pack_into('<I', data, base + ptr, struct.unpack_from('<I', data, base + ptr)[0] + vsize)
+    walk(0)
+
+def apply_poly(data : bytearray) :
+    apply(data, SYXG50_POLY, 'polyphony 256: second engine (process wrappers, dispatcher)')
+    apply(data, SYXG50_POLY_RANGE, 'polyphony 256: Settings page range 8-256')
+    data_virtual_size(data, POLY_DATA_END)
+    insert_section_before_rsrc(data, b'.sxp', POLY_VA, POLY_CODE, 0x60000020)
+    print(f'  polyphony up to 256: section .sxp at 0x{POLY_VA:X} ({len(POLY_CODE)} bytes)')
 
 # --- RT_VERSION: VS_VERSIONINFO tree
 def _vi_parse(raw, p) :
@@ -1016,6 +1079,7 @@ def Patch(path : Path, full : bool, model : str | None = None, table_name : str 
     apply_gui(data, full)
     apply_names(data, model, table_name)
     apply_version_date(data)
+    apply_poly(data)
     if embed :
         data = embed_files(data, embed)
     struct.pack_into('<I', data, pe_checksum_offset(data), pe_checksum(data))

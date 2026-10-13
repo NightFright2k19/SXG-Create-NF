@@ -27,17 +27,7 @@
 ; step (first after 400 ms, then every 75 ms, panel timer 0x2317); the wheel over the control steps up / down.
 ; The program of part 1 is byte +0x366 of the synth object [engine +8] (0-127, shown as 001-128).
 
-; --- process / processReplacing wrappers (0x100010A0 / 0x100010C0) jump here
-proc_hook:
-    call send_pending
-    mov eax, dword ptr [esp + 4]
-    mov ecx, dword ptr [eax + 0x40]
-    jmp 0x100010c7
-procacc_hook:
-    call send_pending
-    mov eax, dword ptr [esp + 4]
-    mov ecx, dword ptr [eax + 0x40]
-    jmp 0x100010a7
+; --- send_pending: called by the process / processReplacing wrappers (poly.asm) before the block is rendered
 ; after pushal: effect [esp+0x28], sampleFrames [esp+0x34]
 send_pending:
     pushal
@@ -79,9 +69,7 @@ sp_xg:
     push 9
 sp_send:
     push edi
-    push ecx
-    mov edx, dword ptr [ecx]
-    call dword ptr [edx + 0xc]
+    call BOTH_SYSEX
 sp_hold:
     mov dword ptr [ebp + 0x10056e54], 4800
     jmp sp_queue
@@ -140,9 +128,7 @@ sp_prog:
     shl eax, 8
     or eax, 0xc0
     push eax
-    push ecx
-    mov edx, dword ptr [ecx]
-    call dword ptr [edx + 8]
+    call BOTH_SHORT
 sp_done:
     popal
     ret

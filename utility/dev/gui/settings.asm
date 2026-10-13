@@ -15,6 +15,20 @@
 ; --- page procedure (0x10030AF0, (page, hwnd, msg, wparam, lparam), ret 0x14) jumps here
 dlg_hook:
     mov eax, dword ptr [esp + 0xc]
+    cmp eax, 0x4e
+    jne dh_cmd
+    mov ecx, dword ptr [esp + 0x14]
+    cmp dword ptr [ecx + 8], 0xffffff36
+    jne dlg_orig
+    call dh_base0
+dh_base0:
+    pop ecx
+    sub ecx, dh_base0
+    mov dl, byte ptr [ecx + 0x10056eb9]
+    xor dl, 0x80
+    mov byte ptr [ecx + 0x10056eb8], dl
+    jmp dlg_reload
+dh_cmd:
     cmp eax, 0x110
     je dh_after
     cmp eax, 0x111
@@ -91,8 +105,22 @@ da_base:
     call dword ptr [ebp + 0x10040178]
     push eax
     call dword ptr [ebp + 0x10040174]
+    mov al, byte ptr [ebp + 0x10056eb8]
+    xor al, 0x80
+    mov byte ptr [ebp + 0x10056eb9], al
+    test al, al
+    je da_sync
+    movzx eax, al
+    add eax, 128
+    push eax
+    push ebx
+    call 0x10030ea0
     jmp da_sync
 da_defaults:
+    mov byte ptr [ebp + 0x10056eb9], 128
+    push 256
+    push ebx
+    call 0x10030ea0
     cmp byte ptr [ebp + 0x10056e41], 0
     je da_sync
     mov eax, 3
@@ -199,6 +227,52 @@ lc_set:
     call 0x100311b0
     jmp 0x1003114c
 
+; --- Polyphony trackbar (0x3F9), WM_HSCROLL (0x10030F31; page hwnd ebx, wParam [esp+0x14], trackbar [esp+0x1c],
+;     settings byte pointer [esp+0x20]): range 8-256 (TBM_SETRANGE in dllpatch.py); the trackbar position is the
+;     total, the settings byte keeps up to 128, the rest goes to the extra voices on the page (0x10056EB9)
+poly_scroll:
+    movzx eax, word ptr [esp + 0x14]
+    cmp eax, 7
+    ja 0x10031162
+    call ps_base0
+ps_base0:
+    pop ecx
+    sub ecx, ps_base0
+    push 0
+    push 0
+    push 0x400
+    push dword ptr [esp + 0x28]
+    call dword ptr [ecx + 0x10040174]
+    cmp eax, 8
+    jge ps_lo
+    mov eax, 8
+ps_lo:
+    cmp eax, 256
+    jle ps_hi
+    mov eax, 256
+ps_hi:
+    call ps_base
+ps_base:
+    pop ecx
+    sub ecx, ps_base
+    mov edx, eax
+    sub edx, 128
+    jg ps_extra
+    xor edx, edx
+ps_extra:
+    mov byte ptr [ecx + 0x10056eb9], dl
+    mov edx, eax
+    cmp edx, 128
+    jle ps_byte
+    mov edx, 128
+ps_byte:
+    mov ecx, dword ptr [esp + 0x20]
+    mov byte ptr [ecx], dl
+    push eax
+    push ebx
+    call 0x10030ea0
+    jmp 0x1003114c
+
 ; --- getChunk (thiscall: void **data, bool isPreset; ret 8): original chunk + 'R','S',Reset Mode,0
 chunk_get:
     push dword ptr [esp + 8]
@@ -217,11 +291,13 @@ cg_base:
     lea edi, [ebp + 0x10056e70]
     mov dword ptr [edx], edi
     rep movsb
-    mov word ptr [edi], 0x5352
+    mov word ptr [edi], 0x5052
     movzx ecx, byte ptr [ebp + 0x10056e41]
     xor cl, 3
     mov byte ptr [edi + 2], cl
-    mov byte ptr [edi + 3], 0
+    mov cl, byte ptr [ebp + 0x10056eb8]
+    xor cl, 0x80
+    mov byte ptr [edi + 3], cl
     add eax, 4
     mov dword ptr [esp + 0x1c], eax
 cg_out:
@@ -240,8 +316,18 @@ cs_base:
     cmp eax, 9
     jb cs_out
     mov esi, dword ptr [esp + 0x24]
+    mov ecx, 128
     cmp word ptr [esi + eax - 4], 0x5352
+    je cs_tag
+    cmp word ptr [esi + eax - 4], 0x5052
     jne cs_out
+    mov cl, byte ptr [esi + eax - 1]
+    cmp cl, 128
+    jbe cs_tag
+    mov cl, 128
+cs_tag:
+    xor cl, 0x80
+    mov byte ptr [ebp + 0x10056eb8], cl
     sub dword ptr [esp + 0x28], 4
     movzx eax, byte ptr [esi + eax - 2]
     and eax, 3
