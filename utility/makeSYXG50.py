@@ -796,6 +796,38 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
 
 
 
+    # * GM2 voice banks (issue #34): models without GM2 voices of their own get the ten GM2 banks of Yamaha's
+    # S-YXG50 table (bank select MSB 121 + LSB 0-9), built from this model's XG / GS banks (dataGM2.py), so
+    # MSB 121 plays after a GM2 or an XG reset like in the original S-YXG50; GM2 drum programs (MSB 120) get
+    # the GS kit assignment
+    gm2_banks = not GM2_present
+    if gm2_banks : 
+        import dataGM2
+        row_gs, row_xg, row_gm2 = (128 * bank_map_order.index(b) for b in (Bank.GS, Bank.XG, Bank.GM2))
+        gm2_base = highest_bankID_XG + 1
+        assert gm2_base + len(dataGM2.GM2_ROWS) <= 0xFF
+        voice_prgmap_XG += bytearray(len(dataGM2.GM2_ROWS) * 128 * ptr_size)
+        def xg_entry(lsb : int, prg : int) -> bytes :
+            b = voice_bankmaps[row_xg + lsb] or voice_bankmaps[row_xg]      # unset LSB: capital tone (LSB 0)
+            return bytes(voice_prgmap_XG[(b * 128 + prg) * ptr_size : (b * 128 + prg + 1) * ptr_size])
+        for (lsb, prg), (kind, byte, p) in dataGM2.GM2_Map().items() : 
+            if kind == 'G' and voice_bankmaps[row_gs + byte] != 0xFF : 
+                b = voice_bankmaps[row_gs + byte]
+                src = bytes(voice_prgmap_GS[(b * 128 + p) * ptr_size : (b * 128 + p + 1) * ptr_size])
+            elif kind == 'G' : 
+                src = xg_entry(0, p)
+            else : 
+                src = xg_entry(byte, p)
+            dst = ((gm2_base + lsb) * 128 + prg) * ptr_size
+            voice_prgmap_XG[dst : dst + ptr_size] = src
+        for lsb in range(len(dataGM2.GM2_ROWS)) : 
+            voice_bankmaps[row_gm2 + lsb] = gm2_base + lsb
+        gm2_drums = 128 * drum_bank_locations[Bank.GM2_DRUMS]
+        drumbank_prgmaps[gm2_drums : gm2_drums + 128] = drumbank_prgmaps[0 : 128]
+        print(f'GM2: {len(dataGM2.GM2_ROWS)} voice banks (MSB 121, LSB 0-{len(dataGM2.GM2_ROWS) - 1}) from the XG / GS banks,'
+              f' drum programs (MSB 120) like GS')
+
+
     # * wavedata offset table
     # these are accessed via Voices and should already have unique identifiers in wavebank.index
 
@@ -880,8 +912,13 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     + wavedata_offsets + wavedata
 
     if alt_table is not None : 
-        table_file = table_file + Voice_Map_Appendix(alt_table, table, GSbanks, XGbanks, bank_map_order,
-                                                     drum_bank_locations, voice_bankmaps, drumbank_prgmaps, alt_default)
+        appendix = bytearray(Voice_Map_Appendix(alt_table, table, GSbanks, XGbanks, bank_map_order,
+                                                drum_bank_locations, voice_bankmaps, drumbank_prgmaps, alt_default))
+        if gm2_banks :      # the GM2 rows are the same in both voice maps
+            for row in (8 + 128 * drum_bank_locations[Bank.GM2_DRUMS], 8 + 4 * 128 + 128 * bank_map_order.index(Bank.GM2)) : 
+                src = (drumbank_prgmaps if row < 8 + 4 * 128 else voice_bankmaps)[row - 8 - (0 if row < 8 + 4 * 128 else 4 * 128) :][:128]
+                appendix[row : row + 128] = src
+        table_file = table_file + bytes(appendix)
 
 
     return bytes(table_file), samplemonster

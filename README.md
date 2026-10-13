@@ -94,6 +94,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **`output` folder:** all generated files are written to `output` next to `main.py`.
 - **Folder layout:** only `main.py` stays in the root; all modules are in `utility`, development tools in `utility/dev` (see [Folder layout](#folder-layout)). The table converters are merged into `tableconvert.py`, the table creation into `decBase.py`, the MU80 investigation tools into `utility/dev/analyze_mu80.py`.
 - **Patcher:** releases contain a patcher with a window for Windows, Linux and macOS (Apple Silicon and Intel) in twelve languages instead of the Python files (see [Patcher](#patcher)). It runs the same converter as `main.py` and produces the same plugins.
+- **GM2 for MU50 / MU80 / MU90 / MU100** (issue #34): bank select MSB 121 (GM2 capital and variation tones, LSB 0-9) works like in the original S-YXG50, after a GM2 or an XG reset; GM2 drum programs (MSB 120) select the kits like GS. Before, GM2 files stayed silent on all melodic channels (see [Conversion details](#bank-maps-gm2)).
 - **Autobuild releases:** every change to `main.py`, the patcher or `utility` on `main` creates a versioned release (`autobuild-rN`) with the patchers.
 
 ---
@@ -486,6 +487,7 @@ Both maps share the same samples, elements and drum voices. The appendix behind 
 ### All models
 
 - **Bank maps:** program and drum kit bank maps are rebuilt for the S-YXG50 bank map format (XG, SFX, GS; MU128/MU1000 also GM2).
+<a id="bank-maps-gm2"></a>- **GM2 banks for every model** (issue #34): models without GM2 voices of their own (MU50, MU80, MU90, MU100) get the ten GM2 banks of Yamaha's own S-YXG50 table: bank select MSB 121 + LSB 0-9 plays the GM2 capital and variation tones (e.g. LSB 3, program 63 = Jump Brass, LSB 1, program 128 = Machine Gun), built from the model's own XG and GS voices (`utility/dataGM2.py`, a list of positions only); GM2 drum programs (MSB 120) select the kits like GS. As in the original S-YXG50, this works after a GM2 reset (`F0 7E 7F 09 03 F7`, which also sets the default banks MSB 121 / 120 for the GM2 file) and after an XG reset, so the default Reset Mode XG plays GM2 files; no separate GM2 mode is needed. Before, MSB 121 was silent after a GM2 reset and every GM2 drum program gave the standard kit.
 - **Duplicated banks:** a voice bank used on both the GS and the XG side is copied to the other side with its own index. The copy now also gets its program map. Before, the MU80's MSB 126/127 (which point to the GS bank) had an empty program map, so all 128 programs read the 8-byte debug label in front of the first voice as a voice (element count `0x70`).
 - **Ext drum voices:** drum keys that play a full voice are placed in voice bank A, which the drum voice offsets require.
 - **Drum EG rate (byte 13):** S-YXG50 = MU - `0x21`. The MU models store the rate with the offset that syxg50.dll adds itself. Without the correction, values >= `0x60` put the drum envelope into a special state, which made drums sound cut off. Calibrated against the S-YXG50 table: 245 of 253 matching MU80 drum voices, 426 of 460 MU90 drum voices.
