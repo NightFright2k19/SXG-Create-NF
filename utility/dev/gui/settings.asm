@@ -1,15 +1,15 @@
 ; Settings page (dialog 111) of syxg50.dll: "Utility" box and the Output Level range.
 ; Code cave at 0x1002F6D3 (unused NOP block inside .text, no relocations), position independent (call/pop,
 ; ebp = load delta). Shared state with gui.asm in .data (see there): 0x10056E40 pending reset,
-; 0x10056E41 Reset Mode XOR 3, 0x10056E58 event queue, 0x10056E64 "Enable SysEx in files", 0x10056E68 EnableWindow.
-; Controls: radio buttons 0x422 None, 0x423 GM, 0x424 GS, 0x425 XG ("Reset Mode" label 0x42A), checkbox 0x426
-; "Enable SysEx in files" (greys the Reset Mode out while on), radio buttons 0x427 Basic, 0x428 Native
+; 0x10056E41 Reset Mode XOR 3, 0x10056E58 event queue.
+; Controls: radio buttons 0x423 GM, 0x424 GS, 0x425 XG ("Reset Mode" label 0x42A), radio buttons 0x427 Basic, 0x428 Native
 ; ("MU Tone Map" label 0x429, MU100 / MU128 / MU1000 only). The tone map radios drive the hidden checkbox
 ; 0x420 of the voice map patch (checked = MU Basic), so its WM_INITDIALOG / Set Defaults / PSN_APPLY code
 ; stays as it is; without a voice map appendix (0x10056DC1 != 1) they are hidden.
-; Every click on these controls enables Apply (PSM_CHANGED). Reset Mode and "Enable SysEx in files" are kept in the
-; plugin state: getChunk / setChunk (vtable slots of both AudioEffect vtables, set in dllpatch.py) wrap the original
-; functions (and the voice map patch inside them) and append 'R','S',mode,sysex (4 bytes) to the chunk.
+; Every click on these controls enables Apply (PSM_CHANGED). A Reset Mode click sends that reset once. The Reset Mode
+; is kept in the plugin state: getChunk / setChunk (vtable slots of both AudioEffect vtables, set in dllpatch.py) wrap
+; the original functions (and the voice map patch inside them) and append 'R','S',mode,0 (4 bytes) to the chunk;
+; restoring a state sends its Reset Mode once. Mode 0 (None, older chunks) is read as XG.
 ; Output Level (trackbar 0x3FE): value 77-125 (101 = 0 dB, 0.5 dB steps, range set in dllpatch.py), tick at 101.
 
 ; --- page procedure (0x10030AF0, (page, hwnd, msg, wparam, lparam), ret 0x14) jumps here
@@ -22,7 +22,7 @@ dlg_hook:
     movzx eax, word ptr [esp + 0x10]
     cmp eax, 4
     je dh_after
-    cmp eax, 0x422
+    cmp eax, 0x423
     jb dlg_reload
     cmp eax, 0x428
     ja dlg_reload
@@ -36,35 +36,9 @@ dc_base:
     mov ebx, dword ptr [esp + 0x28]
     movzx eax, word ptr [esp + 0x30]
     cmp eax, 0x426
-    je dc_sysex
-    ja dc_tone
+    jae dc_tone
     sub eax, 0x422
-    mov ecx, eax
-    xor cl, 3
-    mov byte ptr [ebp + 0x10056e41], cl
-    test eax, eax
-    jne dc_pend
-    mov al, 5
-dc_pend:
-    push eax
-    cmp dword ptr [ebp + 0x10056e58], 0
-    jne dc_have
-    push 4
-    push 0x3000
-    push 0x10000
-    push 0
-    call dword ptr [ebp + 0x1004013c]
-    mov dword ptr [ebp + 0x10056e58], eax
-dc_have:
-    pop eax
-    mov byte ptr [ebp + 0x10056e40], al
-    jmp dc_end
-dc_sysex:
-    push 0x426
-    push ebx
-    call get_check
-    mov byte ptr [ebp + 0x10056e64], al
-    call enable_reset
+    call set_mode
     jmp dc_end
 dc_tone:
     xor ecx, ecx
@@ -119,13 +93,15 @@ da_base:
     call dword ptr [ebp + 0x10040174]
     jmp da_sync
 da_defaults:
-    mov byte ptr [ebp + 0x10056e41], 0
-    mov byte ptr [ebp + 0x10056e64], 0
+    cmp byte ptr [ebp + 0x10056e41], 0
+    je da_sync
+    mov eax, 3
+    call set_mode
 da_sync:
     movzx esi, byte ptr [ebp + 0x10056e41]
     xor esi, 3
     add esi, 0x422
-    mov edi, 0x422
+    mov edi, 0x423
 ds_loop:
     xor eax, eax
     cmp edi, esi
@@ -137,12 +113,6 @@ ds_loop:
     inc edi
     cmp edi, 0x426
     jb ds_loop
-    movzx eax, byte ptr [ebp + 0x10056e64]
-    push eax
-    push 0x426
-    push ebx
-    call dword ptr [ebp + 0x100401d0]
-    call enable_reset
     cmp byte ptr [ebp + 0x10056dc1], 1
     jne da_hide
     push 0x420
@@ -193,48 +163,22 @@ get_check:
     and eax, 1
     ret 8
 
-; enable_reset (ebx = page): Reset Mode radios and label enabled unless "Enable SysEx in files" is on
-enable_reset:
-    mov eax, dword ptr [ebp + 0x10056e68]
-    test eax, eax
-    jne er_have
-    lea eax, [ebp + txt_user32]
+; set_mode: eax = Reset Mode (1 GM, 2 GS, 3 XG) -> stored and sent once (pending, event queue on first use)
+set_mode:
     push eax
-    call dword ptr [ebp + 0x10040104]
-    test eax, eax
-    je er_ret
-    lea ecx, [ebp + txt_enable]
-    push ecx
-    push eax
-    call dword ptr [ebp + 0x10040030]
-    mov dword ptr [ebp + 0x10056e68], eax
-    test eax, eax
-    je er_ret
-er_have:
-    push esi
-    push edi
-    mov esi, eax
-    mov edi, 0x422
-er_loop:
-    push edi
-    push ebx
-    call dword ptr [ebp + 0x10040178]
-    xor ecx, ecx
-    cmp byte ptr [ebp + 0x10056e64], 0
-    sete cl
-    push ecx
-    push eax
-    call esi
-    inc edi
-    cmp edi, 0x426
-    jb er_loop
-    jne er_done
-    mov edi, 0x42a
-    jmp er_loop
-er_done:
-    pop edi
-    pop esi
-er_ret:
+    xor al, 3
+    mov byte ptr [ebp + 0x10056e41], al
+    cmp dword ptr [ebp + 0x10056e58], 0
+    jne sm_have
+    push 4
+    push 0x3000
+    push 0x10000
+    push 0
+    call dword ptr [ebp + 0x1004013c]
+    mov dword ptr [ebp + 0x10056e58], eax
+sm_have:
+    pop eax
+    mov byte ptr [ebp + 0x10056e40], al
     ret
 
 ; --- Output Level trackbar, WM_HSCROLL (0x10031142, eax = value byte, ebx = page): keep 77-125, then show it
@@ -255,7 +199,7 @@ lc_set:
     call 0x100311b0
     jmp 0x1003114c
 
-; --- getChunk (thiscall: void **data, bool isPreset; ret 8): original chunk + 'R','S',Reset Mode,SysEx in files
+; --- getChunk (thiscall: void **data, bool isPreset; ret 8): original chunk + 'R','S',Reset Mode,0
 chunk_get:
     push dword ptr [esp + 8]
     push dword ptr [esp + 8]
@@ -277,15 +221,15 @@ cg_base:
     movzx ecx, byte ptr [ebp + 0x10056e41]
     xor cl, 3
     mov byte ptr [edi + 2], cl
-    mov cl, byte ptr [ebp + 0x10056e64]
-    mov byte ptr [edi + 3], cl
+    mov byte ptr [edi + 3], 0
     add eax, 4
     mov dword ptr [esp + 0x1c], eax
 cg_out:
     popal
     ret 8
 
-; --- setChunk (thiscall: void *data, int size, bool isPreset; ret 0xc): takes 'R','S',mode,sysex off the end
+; --- setChunk (thiscall: void *data, int size, bool isPreset; ret 0xc): takes 'R','S',mode,x off the end and
+;     sends that Reset Mode once (0 = None of older versions -> XG)
 chunk_set:
     pushal
     call cs_base
@@ -299,20 +243,12 @@ cs_base:
     cmp word ptr [esi + eax - 4], 0x5352
     jne cs_out
     sub dword ptr [esp + 0x28], 4
-    mov cl, byte ptr [esi + eax - 2]
-    and cl, 3
-    xor cl, 3
-    mov byte ptr [ebp + 0x10056e41], cl
-    mov cl, byte ptr [esi + eax - 1]
-    and cl, 1
-    mov byte ptr [ebp + 0x10056e64], cl
+    movzx eax, byte ptr [esi + eax - 2]
+    and eax, 3
+    jne cs_mode
+    mov al, 3
+cs_mode:
+    call set_mode
 cs_out:
     popal
     jmp 0x10002bb0
-
-txt_user32:
-    .ascii "USER32.dll"
-    .byte 0
-txt_enable:
-    .ascii "EnableWindow"
-    .byte 0
