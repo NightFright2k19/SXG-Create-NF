@@ -41,8 +41,10 @@ def system_language(known) -> str :
         if os.environ.get(var) : names.append(os.environ[var])
     try : names.append(locale.getlocale()[0] or '')
     except Exception : pass
+    alias = {'iw' : 'he', 'in' : 'id', 'pes' : 'fa'}     # old codes some systems report
     for n in names :
         code = n.replace('-', '_').split('_')[0].split('.')[0].lower()
+        code = alias.get(code, code)
         if code in known : return code
     return 'en'
 
@@ -91,7 +93,8 @@ def main_window() :
     head = ttk.Frame(frame); head.grid(row = 0, column = 0, columnspan = 3, sticky = 'ew')
     ttk.Label(head, text = 'SXG-Create-NF Patcher', font = ('TkDefaultFont', 13, 'bold')).pack(side = 'left')
     lang_var = tk.StringVar(value = LANGUAGES[st['lang']])
-    lang_box = ttk.Combobox(head, textvariable = lang_var, values = list(LANGUAGES.values()), state = 'readonly', width = 11)
+    lang_box = ttk.Combobox(head, textvariable = lang_var, values = list(LANGUAGES.values()), state = 'readonly',
+                            width = 16, height = len(LANGUAGES))
     lang_box.pack(side = 'right')
     intro = ttk.Label(frame); intro.grid(row = 1, column = 0, columnspan = 3, sticky = 'w', pady = (2, 10))
     box = ttk.LabelFrame(frame, padding = 10); box.grid(row = 2, column = 0, columnspan = 3, sticky = 'ew')

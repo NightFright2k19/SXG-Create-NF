@@ -93,7 +93,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **Wildcards** (`*.bin`) are expanded by the script; `SXG_NO_PAUSE=1` skips the final key press.
 - **`output` folder:** all generated files are written to `output` next to `main.py`.
 - **Folder layout:** only `main.py` stays in the root; all modules are in `utility`, development tools in `utility/dev` (see [Folder layout](#folder-layout)). The table converters are merged into `tableconvert.py`, the table creation into `decBase.py`, the MU80 investigation tools into `utility/dev/analyze_mu80.py`.
-- **Patcher:** releases contain a patcher with a window for Windows, Linux and macOS (Apple Silicon and Intel) in twelve languages instead of the Python files (see [Patcher](#patcher)). It runs the same converter as `main.py` and produces the same plugins.
+- **Patcher:** releases contain a patcher with a window for Windows, Linux and macOS (Apple Silicon and Intel) in 29 languages instead of the Python files (see [Patcher](#patcher)). It runs the same converter as `main.py` and produces the same plugins.
 - **GM2 for MU50 / MU80 / MU90 / MU100** (issue #34): bank select MSB 121 (GM2 capital and variation tones, LSB 0-9) works like in the original S-YXG50, after a GM2 or an XG reset; GM2 drum programs (MSB 120) select the kits like GS. Before, GM2 files stayed silent on all melodic channels (see [Conversion details](#bank-maps-gm2)).
 - **Autobuild releases:** every change to `main.py`, the patcher or `utility` on `main` creates a versioned release (`autobuild-rN`) with the patchers.
 
@@ -114,7 +114,7 @@ The easiest way: download the patcher for your system from the latest **Autobuil
 2. Start the patcher. It lists every complete ROM set it found and the DLL. If it finds no ROMs, it asks for the folder; **Choose folder…** and **Choose DLL…** point it to other places at any time.
 3. Click **Patch**. All listed models are converted, one after another. The plugins end up in the folder **`Plugins`** next to the patcher: one DLL per model (`syxgmu50.dll`, `syxg80.dll` ... `syxg1000.dll`) with the tables inside (`--embed`), no ini or table files needed. **Open folder** shows them.
 
-- **Language:** the system language if available, else English; the menu at the top right switches between English, Deutsch, Français, Italiano, Español, Português, 中文, हिन्दी, বাংলা, Русский, 日本語 and Türkçe.
+- **Language:** the system language if available, else English; the menu at the top right switches between 29 languages, each shown in its own name and sorted alphabetically by the Latin spelling of that name: العربية, Bahasa Indonesia, বাংলা, Čeština, Dansk, Deutsch, Ελληνικά, English, Español, فارسی, Français, 한국어, हिन्दी, Italiano, עברית, Magyar, Nederlands, 日本語, Polski, Português, Română, Русский, Српски, Svenska, ไทย, Tiếng Việt, Türkçe, Українська, 中文.
 - **Show details** shows the converter's log (the same text the Python script prints).
 - **Not signed:** the patcher files carry no code signature, so the system warns on the first start:
   - **Windows:** SmartScreen shows "Windows protected your PC". Click **More info**, then **Run anyway**.
