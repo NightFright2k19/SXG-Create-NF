@@ -7,7 +7,8 @@ This document is the reference for the current state of SXG-Create: what changed
 ## Table of contents
 
 - [Changes compared to the original SXG-Create](#changes-compared-to-the-original-sxg-create)
-- [Quick start](#quick-start)
+- [Patcher](#patcher)
+- [Quick start (Python script)](#quick-start-python-script)
 - [Folder layout](#folder-layout)
 - [Command line parameters](#command-line-parameters)
 - [Supported models and ROM sets](#supported-models-and-rom-sets)
@@ -92,12 +93,39 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **Wildcards** (`*.bin`) are expanded by the script; `SXG_NO_PAUSE=1` skips the final key press.
 - **`output` folder:** all generated files are written to `output` next to `main.py`.
 - **Folder layout:** only `main.py` stays in the root; all modules are in `utility`, development tools in `utility/dev` (see [Folder layout](#folder-layout)). The table converters are merged into `tableconvert.py`, the table creation into `decBase.py`, the MU80 investigation tools into `utility/dev/analyze_mu80.py`.
-- **Autobuild releases:** every change to `main.py` or `utility` on `main` creates a versioned release (`autobuild-rN`) with just the files needed for a conversion.
+- **Patcher:** releases contain a patcher with a window for Windows, Linux and macOS (Apple Silicon and Intel) in twelve languages instead of the Python files (see [Patcher](#patcher)). It runs the same converter as `main.py` and produces the same plugins.
+- **Autobuild releases:** every change to `main.py`, the patcher or `utility` on `main` creates a versioned release (`autobuild-rN`) with the patchers.
 
 ---
 
-## Quick start
+## Patcher
 
+The easiest way: download the patcher for your system from the latest **Autobuild** release. It is a single program file; nothing is installed.
+
+| System | File | Start |
+|---|---|---|
+| Windows | `SXG-Create-NF-Patcher-rN-windows.exe` | double-click |
+| Linux | `SXG-Create-NF-Patcher-rN-linux.tar.gz` | extract, then run `SXG-Create-NF-Patcher` |
+| macOS (M1 and newer) | `SXG-Create-NF-Patcher-rN-macos-applesilicon.zip` | extract, then open `SXG-Create-NF-Patcher.app` |
+| macOS (Intel) | `SXG-Create-NF-Patcher-rN-macos-intel.zip` | extract, then open `SXG-Create-NF-Patcher.app` |
+
+1. Put the patcher in a folder together with your MU ROM files and the original `syxg50.dll` (626,688 bytes). Subfolders are fine, e.g. one per model; file names don't matter (detection by CRC32).
+2. Start the patcher. It lists every complete ROM set it found and the DLL. If it finds no ROMs, it asks for the folder; **Choose folder…** and **Choose DLL…** point it to other places at any time.
+3. Click **Patch**. All listed models are converted, one after another. The plugins end up in the folder **`Plugins`** next to the patcher: one DLL per model (`syxgmu50.dll`, `syxg80.dll` ... `syxg1000.dll`) with the tables inside (`--embed`), no ini or table files needed. **Open folder** shows them.
+
+- **Language:** the system language if available, else English; the menu at the top right switches between English, Deutsch, Français, Italiano, Español, Português, 中文, हिन्दी, বাংলা, Русский, 日本語 and Türkçe.
+- **Show details** shows the converter's log (the same text the Python script prints).
+- **Not signed:** the patcher files carry no code signature, so the system warns on the first start:
+  - **Windows:** SmartScreen shows "Windows protected your PC". Click **More info**, then **Run anyway**.
+  - **macOS:** Gatekeeper says the app "cannot be opened because the developer cannot be verified" (or that it is damaged). Right-click (Control-click) the app, choose **Open**, then **Open** again; on macOS 15 and newer: try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Alternatively, in Terminal: `xattr -dr com.apple.quarantine SXG-Create-NF-Patcher.app`.
+  - **Linux:** if the file is not executable after extracting: `chmod +x SXG-Create-NF-Patcher`. The window needs a desktop session (X11 or Wayland with XWayland).
+- **Development:** the patcher is `patcher.py` (texts in `patcher_i18n.py`); it imports `main.py` and the modules in `utility` unchanged and runs each model through `main.py`'s command line (`patcher --cli <arguments>`). The release workflow freezes it with PyInstaller on each system. `python patcher.py` starts it from the repository (Python 3.12 with Tk).
+
+---
+
+## Quick start (Python script)
+
+For development, or without the patcher:
 1. Download the latest **Autobuild** release (or clone the repository) and extract it.
 2. Put your MU ROM files and the original `syxg50.dll` (626,688 bytes) into the `source` folder. Subfolders are fine, e.g. one per model.
 3. Run:

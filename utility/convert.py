@@ -1,3 +1,4 @@
+import sys
 
 
 from dataenum import *
@@ -141,7 +142,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
         case MU.MU2000 : 
             Friendly_error('MU2000: same voice data as the MU1000 (only the filter/level scaling is stored as '
                            'per-note tables). Please convert the MU1000 ROM set, the result is the same sound set.')
-            exit(1)
+            sys.exit(1)
 
         case _ : 
             raise NotImplementedError()
@@ -182,7 +183,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
     embed = buildtarget.EMBED
     if embed and not dll : 
         Friendly_error('--embed needs a syxg50.dll among the input files')
-        exit(1)
+        sys.exit(1)
     if not embed : 
         WriteBytesToFile(table_bin, new_table_name, root_dir=out_path)
 
@@ -192,7 +193,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
                            dll_name=buildtarget.DLL_NAME)
         except (dllpatch.DllPatchError, AssertionError) as e : 
             Friendly_error(f'DLL not patched: {e}')
-            exit(1)
+            sys.exit(1)
 
     # patched DLL + ini: "Enhanced" (24-bit loop length) for the classic layout, "Full" for the big one
     print('S-YXG50 table layout: ' + ('big (MU100 and later)' if buildtarget.SYXG50_BIG else 'classic'))
@@ -207,7 +208,7 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
 
     if not embed and FileExists(new_waverom_name, root_dir=out_path) : 
         Friendly_error(f'\'{new_waverom_name}\' already exists, exiting early')
-        exit(1)
+        sys.exit(1)
 
     # * construct our (deferred) new waverom
     waverom = samplemonster.Generate()

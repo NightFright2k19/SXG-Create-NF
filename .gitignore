@@ -1,4 +1,9 @@
-__pycache__/
-output/
-source/*
 !source/place_roms_here.txt
+*.spec
+Plugins/
+__pycache__/
+build/
+dist/
+output/
+patcher_version.py
+source/*

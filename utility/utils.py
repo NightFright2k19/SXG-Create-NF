@@ -1,3 +1,4 @@
+import sys
 from zlib import crc32
 from pathlib import Path
 from typing import Literal
@@ -75,7 +76,7 @@ def Friendly_error(s : str | None, code : int = 1) :
     if not os.environ.get('SXG_NO_PAUSE') : 
         try : input('press any key to exit')
         except EOFError : pass
-    exit(code)
+    sys.exit(code)
 
 
 

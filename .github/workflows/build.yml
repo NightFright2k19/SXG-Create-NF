@@ -1,13 +1,18 @@
 name: SXG-Create-NF Autobuild
 
+# Releases contain the patcher (patcher.py frozen with PyInstaller) for Windows, Linux and macOS
+# (Apple Silicon and Intel). The patcher runs the same converter as main.py, so it always produces the
+# same plugins as the Python script, which stays in the repository for development.
+
 on:
   push:
     branches: [main]
     paths:
       - 'main.py'
+      - 'patcher*.py'
       - 'utility/**'
       - '!utility/dev/**'
-
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 permissions:
@@ -18,158 +23,161 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Create release archive
+  version:
+    name: Determine release number
     runs-on: ubuntu-24.04
-
+    outputs:
+      revision: ${{ steps.version.outputs.revision }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
       - name: Check Python syntax
-        run: python3 -m py_compile main.py utility/*.py
+        run: python3 -m py_compile main.py patcher.py patcher_i18n.py utility/*.py
 
-      - name: Determine next release number
+      - name: Next release number
         id: version
         uses: actions/github-script@v8
         with:
           script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-
-            const releases = await github.paginate(
-              github.rest.repos.listReleases,
-              { owner, repo, per_page: 100 }
-            );
-
-            let maxRevision = 0;
-            for (const release of releases) {
-              const match = release.tag_name.match(/^autobuild-r(\d+)$/);
-              if (match) {
-                maxRevision = Math.max(maxRevision, parseInt(match[1], 10));
-              }
+            const releases = await github.paginate(github.rest.repos.listReleases,
+              { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 });
+            let max = 0;
+            for (const r of releases) {
+              const m = r.tag_name.match(/^autobuild-r(\d+)$/);
+              if (m) max = Math.max(max, parseInt(m[1], 10));
             }
+            core.setOutput('revision', max + 1);
+            core.setOutput('tag', `autobuild-r${max + 1}`);
+            console.log(`Next autobuild: r${max + 1}`);
 
-            const nextRevision = maxRevision + 1;
-            core.setOutput('revision', nextRevision);
-            core.setOutput('tag', `autobuild-r${nextRevision}`);
-            core.setOutput('zip', `sxg_create_nf_autobuild_r${nextRevision}.zip`);
+  build:
+    name: Patcher ${{ matrix.label }}
+    needs: version
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { os: windows-latest, label: Windows,           asset: windows }
+          - { os: ubuntu-22.04,   label: Linux,             asset: linux }
+          - { os: macos-15,       label: macOS Apple Silicon, asset: macos-applesilicon }
+          - { os: macos-15-intel, label: macOS Intel,       asset: macos-intel }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-            console.log(`Latest autobuild: r${maxRevision}`);
-            console.log(`Next autobuild: r${nextRevision}`);
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Prepare release package
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build patcher
         env:
-          ZIP_NAME: ${{ steps.version.outputs.zip }}
+          REVISION: r${{ needs.version.outputs.revision }}
         run: |
           set -euo pipefail
+          echo "VERSION = '$REVISION'" > patcher_version.py
+          HIDDEN=""
+          for f in utility/*.py; do HIDDEN="$HIDDEN --hidden-import $(basename "$f" .py)"; done
+          python -m PyInstaller --onefile --windowed --noconfirm --clean \
+            --name SXG-Create-NF-Patcher \
+            --paths utility --paths . \
+            --add-data "utility/bitmaps:bitmaps" \
+            --hidden-import main --hidden-import patcher_i18n --hidden-import patcher_version $HIDDEN \
+            patcher.py
+          ls -la dist
 
-          PACKAGE_DIR="$GITHUB_WORKSPACE/package"
-          rm -rf "$PACKAGE_DIR" "$ZIP_NAME"
-          mkdir -p "$PACKAGE_DIR/source" "$PACKAGE_DIR/utility/bitmaps"
-
-          # files in the ZIP root, next to the main script
-          for file in main.py README.md LICENSE; do
-            if [ ! -f "$file" ]; then
-              echo "ERROR: Required file '$file' was not found."
-              exit 1
-            fi
-            cp "$file" "$PACKAGE_DIR/"
-          done
-
-          # ROM / DLL placeholder
-          cp source/place_roms_here.txt "$PACKAGE_DIR/source/"
-
-          # converter modules and DLL bitmaps (utility/dev is for development only)
-          shopt -s nullglob
-          modules=(utility/*.py)
-          bitmaps=(utility/bitmaps/*.bmp)
-          if [ ${#modules[@]} -eq 0 ] || [ ${#bitmaps[@]} -eq 0 ]; then
-            echo "ERROR: utility modules or bitmaps missing."
-            exit 1
-          fi
-          cp "${modules[@]}" "$PACKAGE_DIR/utility/"
-          cp "${bitmaps[@]}" "$PACKAGE_DIR/utility/bitmaps/"
-
-          echo "Package contents:"
-          find "$PACKAGE_DIR" -type f -printf '%P\n' | sort
-
-          (cd "$PACKAGE_DIR" && zip -9 -r -X "../$ZIP_NAME" .)
-          ls -lh "$ZIP_NAME"
-
-      - name: Verify ZIP contents
+      - name: Self test and package
         env:
-          ZIP_NAME: ${{ steps.version.outputs.zip }}
+          NAME: SXG-Create-NF-Patcher-r${{ needs.version.outputs.revision }}-${{ matrix.asset }}
         run: |
           set -euo pipefail
+          mkdir -p upload
+          case "${{ runner.os }}" in
+            Windows)
+              ./dist/SXG-Create-NF-Patcher.exe --selftest
+              cp dist/SXG-Create-NF-Patcher.exe "upload/$NAME.exe" ;;
+            Linux)
+              ./dist/SXG-Create-NF-Patcher --selftest
+              tar -C dist -czf "upload/$NAME.tar.gz" SXG-Create-NF-Patcher ;;
+            macOS)
+              ./dist/SXG-Create-NF-Patcher.app/Contents/MacOS/SXG-Create-NF-Patcher --selftest
+              ditto -c -k --keepParent dist/SXG-Create-NF-Patcher.app "upload/$NAME.zip" ;;
+          esac
+          ls -la upload
 
-          actual_files="$(unzip -Z1 "$ZIP_NAME" | awk '!/\/$/ { print }' | sort)"
-          printf '%s\n' "$actual_files"
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: patcher-${{ matrix.asset }}
+          path: upload/*
+          if-no-files-found: error
 
-          unexpected_files="$(
-            printf '%s\n' "$actual_files" \
-              | grep -Ev '^(main\.py|README\.md|LICENSE|source/place_roms_here\.txt|utility/[^/]+\.py|utility/bitmaps/[^/]+\.bmp)$' \
-              || true
-          )"
-          if [ -n "$unexpected_files" ]; then
-            echo "ERROR: Unexpected files found in ZIP:"
-            printf '%s\n' "$unexpected_files"
-            exit 1
-          fi
+  release:
+    name: Create release
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download patchers
+        uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
 
-          # the package must import cleanly on its own
-          mkdir -p check && cd check && unzip -q "../$ZIP_NAME"
-          python3 -c "import sys; sys.path.insert(0, 'utility'); import convert, dllpatch, dataCRCs"
-          echo "ZIP contents verified successfully."
+      - name: List assets
+        run: ls -la assets
 
       - name: Create GitHub release
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ steps.version.outputs.tag }}
-          name: Autobuild r${{ steps.version.outputs.revision }}
+          tag: ${{ needs.version.outputs.tag }}
+          name: Autobuild r${{ needs.version.outputs.revision }}
           prerelease: true
-          artifacts: ${{ steps.version.outputs.zip }}
+          artifacts: assets/*
           artifactErrorsFailBuild: true
           body: |
-            This automated release contains the latest files to convert **Yamaha MU** ROMs into tables and patched DLLs for the **S-YXG50** soft synth.
+            The **SXG-Create-NF Patcher** converts **Yamaha MU** ROMs into plugins for the **S-YXG50** soft synth.
 
             **SUPPORTED MODELS**
             - MU50, MU80, MU90 / MU90B, MU100 / MU100B, MU128, MU1000 (MU2000: uses the MU1000 set)
 
+            **DOWNLOAD**
+            - Windows: `...-windows.exe`
+            - Linux: `...-linux.tar.gz` (extract, then run `SXG-Create-NF-Patcher`)
+            - macOS: `...-macos-applesilicon.zip` (M1 and newer) or `...-macos-intel.zip` (extract, then open the app)
+
             **INSTRUCTIONS**
-            - Extract the archive. Keep `main.py` next to the folders `source` and `utility`.
-            - Place your MU ROM files and the original `syxg50.dll` (626,688 bytes) in `source` (subfolders are fine).
-            - Run the script (Python 3.12 or newer, no extra packages): **python main.py --embed**
-            - The converted files (table, wave file, patched DLL and ini) end up in a new folder named `output`.
-            - See README.md for details.
+            - Put the patcher in a folder together with your MU ROM files and the original `syxg50.dll` (626,688 bytes); subfolders are fine. The patcher can also be pointed to another folder or to the DLL.
+            - Start it, check the list of found models, click **Patch**.
+            - The plugins (one DLL per model, tables inside) end up in the folder `Plugins` next to the patcher.
+            - The files are not signed: Windows SmartScreen and macOS Gatekeeper warn on the first start. See README.md ("Patcher") for how to start it anyway.
 
       - name: Delete previous Autobuild releases and tags
         uses: actions/github-script@v8
         env:
-          CURRENT_REVISION: ${{ steps.version.outputs.revision }}
-          CURRENT_TAG: ${{ steps.version.outputs.tag }}
+          CURRENT_REVISION: ${{ needs.version.outputs.revision }}
+          CURRENT_TAG: ${{ needs.version.outputs.tag }}
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const currentRevision = parseInt(process.env.CURRENT_REVISION, 10);
             const currentTag = process.env.CURRENT_TAG;
-
-            const releases = await github.paginate(
-              github.rest.repos.listReleases,
-              { owner, repo, per_page: 100 }
-            );
-
+            const releases = await github.paginate(github.rest.repos.listReleases, { owner, repo, per_page: 100 });
             for (const release of releases) {
               const match = release.tag_name.match(/^autobuild-r(\d+)$/);
               if (!match || release.tag_name === currentTag) continue;
               if (parseInt(match[1], 10) >= currentRevision) continue;
-
               console.log(`Deleting old Autobuild release ${release.tag_name}.`);
               await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
-
               try {
                 await github.rest.git.deleteRef({ owner, repo, ref: `tags/${release.tag_name}` });
               } catch (error) {

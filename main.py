@@ -90,7 +90,7 @@ def main() :
             s = f'input {file} is not a file!'
             # raise Exception(s)
             Friendly_error(s)
-            exit(1)
+            sys.exit(1)
         files.append(Path(file))
 
     # ROMs (and a DLL, if none was given) from the "source" folder next to the script
@@ -114,20 +114,20 @@ def main() :
     dlls = [d for d in dlls if not (d.name.lower().endswith('.orig.dll') and (d.parent, d.name[:-9].lower() + '.dll') in names)]
     if len(dlls) > 1 :
         Friendly_error(f'more than one DLL given: {[str(d) for d in dlls]}')
-        exit(1)
+        sys.exit(1)
     dll = dlls[0] if dlls else None
     if dll :
         try :
             dll_desc = dllpatch.Identify(dll)
         except dllpatch.DllPatchError as e :
             Friendly_error(str(e))
-            exit(1)
+            sys.exit(1)
         print(f'DLL: {dll_desc}')
 
     if not files :
         Print_Input_Roms()
         Friendly_error('')
-        exit(1)
+        sys.exit(1)
 
     print(f'calculating CRC32 ({len(files)} files)...')
     crcs_paths : dict[str, Path] = {calccrc32(x) : x for x in files} # dict comprehension
@@ -143,7 +143,7 @@ def main() :
     if not found :
         Print_Input_Roms()
         Friendly_error('valid ROMs not found')
-        exit(1)
+        sys.exit(1)
 
     decodable = [t for t in found if t.Can_Decode()]
     for t in found :
@@ -180,7 +180,9 @@ def main() :
     for table_type in decodable :
         paths_program, paths_waves = table_type.Order_Pathlists(crcs_paths)
         model = table_type.source.name
-        cmd = [sys.executable, str(Path(__file__).resolve())] + [str(p) for p in paths_program + paths_waves]
+        # the patcher (patcher.py, frozen into one executable) runs this script with '--cli'
+        me = [sys.executable, '--cli'] if getattr(sys, 'frozen', False) else [sys.executable, str(Path(__file__).resolve())]
+        cmd = me + [str(p) for p in paths_program + paths_waves]
         if dll : cmd += [str(dll), '--dll-name', dllpatch.Model_Dll_Name(model)]
         cmd += ['--out-dir', output_folder(paths_program)]
         if buildtarget.EMBED : cmd.append('--embed')
