@@ -74,7 +74,15 @@ def scan(folder : Path, dll_choice : Path | None, log) :
     for t in found :
         programs, waves = t.Order_Pathlists(crcs)
         models.append((t.name, programs, waves))
+    # S-YXG2006LE: its own engine (SGP2.OLD / SGP2.DLL) and tables, patched in addition to the MU plugins
+    import sgp2patch
+    sizes = {937984, 716608, 11723868}
+    sgp2 = sgp2patch.Find({calccrc32(p) : p for p in files if p.stat().st_size in sizes})
+    if sgp2 : models.append((SGP2_NAME, list(sgp2), []))
     return models, dll, (None if dll else problem)
+
+SGP2_NAME = 'S-YXG2006LE'
+def mu_models(models) : return [m for m in models if m[0] != SGP2_NAME]
 
 def main_window() :
     import tkinter as tk
@@ -136,7 +144,8 @@ def main_window() :
         key, kw = st['status']; status['text'] = T(key, **kw)
         det_btn['text'] = T('hide') if st['details'] else T('details')
         patch_btn['text'] = T('patch'); open_btn['text'] = T('open_folder')
-        can = not st['busy'] and st['models'] and ok
+        mu = mu_models(st['models'])
+        can = not st['busy'] and st['models'] and (ok or not mu)
         patch_btn.state(['!disabled'] if can else ['disabled'])
         for b in (browse, dll_btn) : b.state(['disabled'] if st['busy'] else ['!disabled'])
     def set_status(key, **kw) : st['status'] = (key, kw); refresh()
@@ -154,7 +163,7 @@ def main_window() :
         st.update(busy = False, models = models, dll = dll, problem = problem)
         if problem and st['dll_choice'] : write_log(T('dll_bad') + ' ' + problem + '\n')
         if not models : set_status('no_roms' if st['folder'] != HERE else 'need_roms')
-        elif not dll : set_status('need_dll')
+        elif not dll and mu_models(models) : set_status('need_dll')
         else : set_status('ready', n = len(models))
         if not models and st['folder'] == HERE and not st.get('asked') :
             st['asked'] = True; root.after(200, choose_folder)
@@ -174,7 +183,9 @@ def main_window() :
     def start_patch() :
         out = plugins_dir(); out.mkdir(exist_ok = True)
         files = [str(p) for _, pr, wv in st['models'] for p in pr + wv]
-        args = files + [str(st['dll']), '--embed', '--out-dir', str(out)]
+        if st['dll'] is not None and mu_models(st['models']) : files.append(str(st['dll']))
+        else : files = [str(p) for name, pr, wv in st['models'] if name == SGP2_NAME for p in pr]
+        args = files + ['--embed', '--out-dir', str(out)]
         me = [sys.executable] if FROZEN else [sys.executable, str(Path(__file__).resolve())]
         st.update(busy = True, total = len(st['models']), done_n = 0); open_btn.grid_remove()
         progress.configure(maximum = len(st['models']), value = 0)
@@ -203,6 +214,8 @@ def main_window() :
         failed = [m[0].split(' ')[0] for m in st['models'] if f'  {m[0]}: FAILED' in log_text]
         if code != 0 and not failed : failed = [m[0].split(' ')[0] for m in st['models']] if len(st['models']) == 1 else ['?']
         n = len(list(plugins_dir().glob('*.dll')))
+        if 'S-YXG2006LE: ' in log_text and 'written' not in log_text.split('S-YXG2006LE: ')[-1].split('\n')[0] :
+            failed.append(SGP2_NAME)
         if failed : set_status('failed', models = ', '.join(failed))
         else : set_status('done', n = n)
         open_btn.grid(row = 7, column = 2, sticky = 'e', pady = (8, 0))

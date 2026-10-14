@@ -908,6 +908,7 @@ def apply_names(data : bytearray, model : str | None, table_name : str | None) :
 #   FileVersion        2016.04.25.0018  -> YYYY.MM.DD
 #   LegalCopyright     ..., 2016 VEG    -> ..., 2016 VEG, 2026 Soundshock/NightFright
 CREDITS = '2016 VEG, 2026 Soundshock/NightFright'
+CREDITS_SGP2 = '2026 Soundshock/NightFright'          # S-YXG2006LE (sgp2patch.py)
 
 def apply_version_date(data : bytearray, today = None) :
     import datetime

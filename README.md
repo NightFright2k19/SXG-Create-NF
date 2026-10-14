@@ -15,6 +15,7 @@ Converts the ROM sets of Yamaha MU-series tone generators (MU50 to MU1000) into 
 - [Output files and table layouts](#output-files-and-table-layouts)
 - [Why the wave files got bigger](#why-the-wave-files-got-bigger)
 - [DLL patching](#dll-patching)
+- [S-YXG2006LE](#s-yxg2006le)
 - [Setup page](#setup-page)
 - [MU Basic voice maps](#mu-basic-voice-maps)
 - [What the conversion does, per model](#what-the-conversion-does-per-model)
@@ -38,6 +39,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **MU100** (new): three 32-bit wave ROM pairs in one address space, three wavedata tables with their own offset tables, 32-bit voice program maps, MU100 Native and MU Basic voice maps.
 - **MU128 and MU1000** (new): program flash from high/low 16-bit halves, 84-byte elements (mapped almost 1:1, verified on 2,317 elements shared with the MU100), 42-byte drum voices with byte 0 moved to `+23`, voice maps MU Native / MU Basic, GS, MSB 48 and GM2.
 - **MU2000** detected, but not converted: it has the same sound data as the MU1000, so the MU1000 set is used instead (see [Supported models](#supported-models-and-rom-sets)).
+- **S-YXG2006LE** (new): Yamaha's own engine (`SGP2.OLD` / `SGP2.DLL`) is patched and its tables are used unconverted, see [S-YXG2006LE](#s-yxg2006le).
 - **MU Basic voice map** for MU100 / MU128 / MU1000: the MU90-compatible map is built into the same table as the native one and can be switched in the Setup dialog (MU Native is the default). The earlier `--mu-basic` switch was removed.
 
 ### Table formats
@@ -226,6 +228,8 @@ File names are only examples; the files are recognised by their CRC32.
 
 > **MU2000:** it has the same voice data as the MU1000 (1,635 voices, 1,027 drum voices, 2,901 samples, the same wave ROMs). Only the element filter/level scaling is stored differently: instead of 4 break points, each element holds an index into 1,377 tables of 128 notes, which lie in the upper half of the 4 MB firmware image (at `0x23CED0`, location from TaleTN's MUTable). An earlier version of this README said this table was missing from the ROM dump; that was wrong. The tables are the MU1000's break points interpolated per note, so they convert back to break points (1,376 of 1,377 exactly, one within 1 step on one note). A test conversion of the MU2000 set rendered bit-identically to the MU1000 conversion (464 voices, 6,496 notes) with a byte-identical wave file. Since the result is the same, SXG-Create uses the MU1000 set (the MU2000 set is skipped when both are present, otherwise a message asks for the MU1000 set).
 
+| S-YXG2006LE | `SGP2.OLD` or `SGP2.DLL`, `sxgbnw6l.tbl` | `sxgdat6l.tbl` | original, not converted |
+
 The S-YXG50's own tables and `Vampire.dll` are recognised as well, but they are not a conversion source.
 
 ---
@@ -412,6 +416,27 @@ DisableGUI=0
 1. **Table:** it reads `SoftSynth` from `[Config]` in `<dll name>.ini` and loads that file from the DLL's folder.
 2. **Wave file:** the table header names the wave file, which is loaded from the same folder. Both files are read whole, so file size is not limited.
 3. **Embedded:** without the key, the DLL loads the table named in its string table from its own resources (5 MB version, or a DLL made with `--embed`).
+
+---
+
+## S-YXG2006LE
+
+The S-YXG2006LE engine differs from the S-YXG50 in ways a table conversion can't reproduce: its filter EG does not follow velocity, and its filter does not follow the key. SXG-Create therefore patches Yamaha's own DLL instead of converting the tables. With `SGP2.OLD` (or `SGP2.DLL`), `sxgbnw6l.tbl` and `sxgdat6l.tbl` among the inputs or in `source/` (recognised by CRC32), it writes `syxg2006le.dll` and copies the two tables unchanged (`--embed`: they go into the DLL), in addition to the MU plugins when MU ROMs and `syxg50.dll` are there as well. The patcher finds the three files the same way, lists them as **S-YXG2006LE** and writes the DLL with the tables inside to `Plugins`; it works with only these three files, with only MU ROMs and `syxg50.dll`, or with both.
+
+Patches (`utility/sgp2patch.py`, code in `utility/dev/sgp2/params.asm`):
+- **Host lock off:** the plugin only started in a host whose vendor string is `YAMAHA` (`0x2AAE` `je` → `jmp`).
+- **Parameters** in the host's generic plugin window, in the order of the S-YXG50 plugins' Settings page, saved with the project (own chunk `SXR6` (the chunks of earlier test builds, `SXR5` / `SXR4`, are read as well); older `SXR3` / `SXR2` chunks are converted: Reset Mode None / GM2 becomes XGLite, a Reverb / Chorus Return above 0 becomes On, Master Volume starts at 0 dB; the plugin saves nothing itself). All parameters are stepped: values snap to the nearest step, the plugin reports the steps to the host (effGetParameterProperties) and sends the snapped value back (audioMasterAutomate / UpdateDisplay), so sliders jump to the step:
+  - **Polyphony** 8-256 notes (default 256). The engine has 32 voices. Above 32 the plugin runs up to eight engines (32 voices each, created at mains on as needed): a new note goes to the first engine with a free voice, its note-off to the same engine, everything else (controllers, program changes, SysEx, the settings below) to all of them, and their outputs are added. An extra engine renders only while it has voices and for 192000 samples after the last one ended (release and effect tails); asleep it only takes events. Beyond the limit a new note is dropped, so sounding notes keep playing (the engine itself does the same when its voices are busy); a note held by the sustain pedal counts until the pedal is released. A higher Polyphony takes effect at the next mains on (e.g. reloading the project). A long held note (like the test tone of a polyphony test) therefore keeps sounding at any limit; the limit shows in the notes that come later.
+  - **Reverb (CC 91)** and **Chorus (CC 93)**: On / Off (default On). Off sets the effect return to 0, On to the default 64. The 2006LE has no variation effect (CC 94 does nothing), so there is no Variation switch.
+  - **Master Volume** -12 ... +12 dB in 0.5 dB steps (default 0 dB): gain on the plugin's output, like the Output Level of the MU plugins (processReplacing).
+  - **Master Tune** -100 ... +100 cent, **Transpose** -24 ... +24 semitones.
+  - Reverb, Chorus, Master Tune and Transpose are sent as parameter SysEx on change and again right after every reset, ours or one in the song (a reset sets them back to the engine defaults). After a GS reset they go out as GS system parameters (the engine ignores XG parameter SysEx in GS mode), otherwise as XG System / Effect parameters.
+  - **Reset Mode**: GM / GS / XGLite (default XGLite). It is sent once: at the first mains on, when it is changed and when the host restores the plugin state. Resets from the host follow it like in the MU plugins: **XGLite**: all pass; **GS**: GM System On / GM2 On is replaced by the GS reset, GS and XG pass; **GM**: GS and XG resets are dropped. All other SysEx always passes. GM2 needs no mode of its own: the engine has GM2 banks and plays MSB 121 / 120 after a GM2 reset (from the file) and in XGLite mode. The engine handles the resets itself and applies events right after one correctly, so no pause is needed.
+- **Version info** (file properties): FileVersion / ProductVersion become the build date (YYYY.MM.DD, also the binary version YYYY,MM,DD,0), FileDescription / ProductName `Yamaha S-YXG2006LE`, CompanyName `Yamaha Corporation`, and the copyright line gets the credits, like the MU plugins. The resources therefore move to a new section `.rsrc2` (the original `.rsrc` is not the last section and can't grow).
+- **Embedded tables:** the two table loaders (`0x4C780` file size, `0x4C7D0` read) take `SXGBNW6L.TBL` / `SXGDAT6L.TBL` from `RT_RCDATA` resources when present (new section `.rsrc2`). Otherwise they read the files from the DLL's folder.
+- The code lives in a new section `.sxg` (hook at `0x2CF4` in `main`). It wraps dispatcher / process / processReplacing and has base relocations, so the DLL can be loaded at any address.
+
+The DLL has no editor of its own (its dialog resources are unused), so there is no Setup page or panel.
 
 ---
 

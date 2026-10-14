@@ -13,6 +13,7 @@ import buildtarget
 
 import convert
 import dllpatch
+import sgp2patch
 
 # input: MU roms (in any order), optionally one syxg50.dll (any file name, recognised by its content).
 # ROMs are also searched in the folder 'source' next to this script (subfolders included). When the ROM
@@ -102,6 +103,24 @@ def main() :
             print(f'source folder: {len(extra)} files in {SOURCE_DIR}')
             files += extra
             from_source_dir = set(extra)
+
+    # S-YXG2006LE: the original engine (SGP2.OLD / SGP2.DLL) is patched and its tables are copied unconverted
+    # (or embedded). It is built in addition to the MU plugins when syxg50.dll and MU ROMs are there as well.
+    crcs = {calccrc32(f) : f for f in files if f.stat().st_size <= ROM_MAX_SIZE}
+    sgp2 = sgp2patch.Find(crcs)
+    if sgp2 :
+        sgp2patch.Build(sgp2, Path(out_dir) if out_dir is not None else OUTPUT_DIR, buildtarget.EMBED)
+        files = [f for f in files if f not in sgp2]
+        if not files :
+            Friendly_error('End of Code', 0)
+    else :
+        loose = sgp2patch.Parts(crcs)
+        if loose :
+            print('S-YXG2006LE: ' + ', '.join(p.name for p in loose) + ' found, but not all three files'
+                  ' (SGP2.OLD or SGP2.DLL, sxgbnw6l.tbl, sxgdat6l.tbl): skipped')
+            files = [f for f in files if f not in loose]
+            if not files :
+                Friendly_error('End of Code', 0)
 
     # a DLL among the inputs: patched and written next to the table
     dlls = [f for f in files if dllpatch.Is_Dll(f)]
