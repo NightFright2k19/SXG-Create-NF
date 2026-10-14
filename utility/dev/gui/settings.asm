@@ -1,15 +1,13 @@
-; Settings page (dialog 111) of syxg50.dll: "Utility" box and the Output Level range.
+; Settings page (dialog 111) of syxg50.dll: Send Reset buttons, MU Tone Map and the Output Level range.
 ; Code cave at 0x1002F6D3 (unused NOP block inside .text, no relocations), position independent (call/pop,
-; ebp = load delta). Shared state with gui.asm in .data (see there): 0x10056E40 pending reset,
-; 0x10056E41 Reset Mode XOR 3, 0x10056E58 event queue.
-; Controls: radio buttons 0x423 GM, 0x424 GS, 0x425 XG ("Reset Mode" label 0x42A), radio buttons 0x427 Basic, 0x428 Native
-; ("MU Tone Map" label 0x429, MU100 / MU128 / MU1000 only). The tone map radios drive the hidden checkbox
-; 0x420 of the voice map patch (checked = MU Basic), so its WM_INITDIALOG / Set Defaults / PSN_APPLY code
-; stays as it is; without a voice map appendix (0x10056DC1 != 1) they are hidden.
-; Every click on these controls enables Apply (PSM_CHANGED). A Reset Mode click sends that reset once. The Reset Mode
-; is kept in the plugin state: getChunk / setChunk (vtable slots of both AudioEffect vtables, set in dllpatch.py) wrap
-; the original functions (and the voice map patch inside them) and append 'R','S',mode,0 (4 bytes) to the chunk;
-; restoring a state sends its Reset Mode once. Mode 0 (None, older chunks) is read as XG.
+; ebp = load delta). Shared state with gui.asm in .data (see there): 0x10056E40 pending reset, 0x10056E58 queue.
+; Controls: push buttons 0x423 GM, 0x424 GS, 0x425 XG, 0x42B GM2 ("Send Reset", issue #37): a click sends that
+; reset once (pending for the audio thread); nothing is selected or saved. Radio buttons 0x427 Basic,
+; 0x428 Native ("MU Tone Map" label 0x429, MU100 / MU128 / MU1000 only) drive the hidden checkbox 0x420 of the
+; voice map patch (checked = MU Basic) and enable Apply; without a voice map appendix (0x10056DC1 != 1) they
+; are hidden. The plugin state: getChunk / setChunk (vtable slots of both AudioEffect vtables, set in
+; dllpatch.py) wrap the original functions and append 'R','P',0,extra voices (4 bytes); the byte that held the
+; Reset Mode of earlier versions is ignored.
 ; Output Level (trackbar 0x3FE): value 77-125 (101 = 0 dB, 0.5 dB steps, range set in dllpatch.py), tick at 101.
 
 ; --- page procedure (0x10030AF0, (page, hwnd, msg, wparam, lparam), ret 0x14) jumps here
@@ -36,10 +34,13 @@ dh_cmd:
     movzx eax, word ptr [esp + 0x10]
     cmp eax, 4
     je dh_after
+    cmp eax, 0x42b
+    je dh_btn
     cmp eax, 0x423
     jb dlg_reload
     cmp eax, 0x428
     ja dlg_reload
+dh_btn:
     cmp word ptr [esp + 0x12], 0
     jne dh_ret1
     pushal
@@ -49,11 +50,19 @@ dc_base:
     sub ebp, dc_base
     mov ebx, dword ptr [esp + 0x28]
     movzx eax, word ptr [esp + 0x30]
+    cmp eax, 0x42b
+    je dc_gm2
     cmp eax, 0x426
     jae dc_tone
     sub eax, 0x422
-    call set_mode
-    jmp dc_end
+    call send_reset
+    popal
+    jmp dh_ret1
+dc_gm2:
+    mov eax, 4
+    call send_reset
+    popal
+    jmp dh_ret1
 dc_tone:
     xor ecx, ecx
     cmp eax, 0x427
@@ -121,26 +130,7 @@ da_defaults:
     push 256
     push ebx
     call 0x10030ea0
-    cmp byte ptr [ebp + 0x10056e41], 0
-    je da_sync
-    mov eax, 3
-    call set_mode
 da_sync:
-    movzx esi, byte ptr [ebp + 0x10056e41]
-    xor esi, 3
-    add esi, 0x422
-    mov edi, 0x423
-ds_loop:
-    xor eax, eax
-    cmp edi, esi
-    sete al
-    push eax
-    push edi
-    push ebx
-    call dword ptr [ebp + 0x100401d0]
-    inc edi
-    cmp edi, 0x426
-    jb ds_loop
     cmp byte ptr [ebp + 0x10056dc1], 1
     jne da_hide
     push 0x420
@@ -191,11 +181,10 @@ get_check:
     and eax, 1
     ret 8
 
-; set_mode: eax = Reset Mode (1 GM, 2 GS, 3 XG) -> stored and sent once (pending, event queue on first use)
-set_mode:
+; send_reset: eax = reset (1 GM, 2 GS, 3 XG, 4 GM2) -> pending, sent once by the audio thread (event queue on
+; first use)
+send_reset:
     push eax
-    xor al, 3
-    mov byte ptr [ebp + 0x10056e41], al
     cmp dword ptr [ebp + 0x10056e58], 0
     jne sm_have
     push 4
@@ -292,9 +281,7 @@ cg_base:
     mov dword ptr [edx], edi
     rep movsb
     mov word ptr [edi], 0x5052
-    movzx ecx, byte ptr [ebp + 0x10056e41]
-    xor cl, 3
-    mov byte ptr [edi + 2], cl
+    mov byte ptr [edi + 2], 0
     mov cl, byte ptr [ebp + 0x10056eb8]
     xor cl, 0x80
     mov byte ptr [edi + 3], cl
@@ -304,8 +291,8 @@ cg_out:
     popal
     ret 8
 
-; --- setChunk (thiscall: void *data, int size, bool isPreset; ret 0xc): takes 'R','S',mode,x off the end and
-;     sends that Reset Mode once (0 = None of older versions -> XG)
+; --- setChunk (thiscall: void *data, int size, bool isPreset; ret 0xc): takes 'R','S' / 'R','P',x,extra off the
+;     end (the Reset Mode byte of earlier versions is ignored, no reset is sent)
 chunk_set:
     pushal
     call cs_base
@@ -329,12 +316,6 @@ cs_tag:
     xor cl, 0x80
     mov byte ptr [ebp + 0x10056eb8], cl
     sub dword ptr [esp + 0x28], 4
-    movzx eax, byte ptr [esi + eax - 2]
-    and eax, 3
-    jne cs_mode
-    mov al, 3
-cs_mode:
-    call set_mode
 cs_out:
     popal
     jmp 0x10002bb0

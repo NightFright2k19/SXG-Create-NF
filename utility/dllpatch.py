@@ -308,19 +308,19 @@ SYXG50_GUI = [
     (0x3233D, '8d 4c 24 10 51', 'e9 73 96 02 00'),
     (0x320EE, '5b 8b 8d 88 00 00 00', 'e9 d5 98 02 00 90 90'),
     (0x32407, '8b 4c 24 64 8b 54 24 60', 'e9 37 94 02 00 90 90 90'),
-    (0x31142, '0f b6 08 51 53 e8 64 00 00 00', 'e9 ef e7 ff ff 90 90 90 90 90'),
-    (0x30F31, '0f b7 44 24 14 83 f8 07 0f 87 23 02 00 00 ff 24 85 70 11 03 10', 'e9 21 ea ff ff 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90'),
-    (0x33150, ' '.join(['90'] * 750),
-              '60 e8 00 00 00 00 5d 81 ed 56 31 03 10 8b 54 24 28 8b 72 40 8b 8e b0 00 00 00 89 8d 44 6e 05 10 85 c9 0f 84 fe 00 00 00 80 bd 64 6e 05 10 00 75 0c c6 85 64 6e 05 10 01 e8 2e 01 00 00 e8 e6 00 00 00 8b 8d 44 6e 05 10 31 c0 86 85 40 6e 05 10 85 c0 74 4d 83 f8 06 74 35 83 f8 02 74 0c 77 14 8d bd 24 34 03 10 6a 06 eb 12 8d bd 2a 34 03 10 6a 0b eb 08 8d bd 35 34 03 10 6a 09 57 e8 69 82 02 00 c7 85 54 6e 05 10 c0 12 00 00 eb 13 83 bd 54 6e 05 10 00 75 0a c7 85 54 6e 05 10 01 00 00 00 8b 85 54 6e 05 10 0b 85 5c 6e 05 10 74 72 8b bd 58 6e 05 10 85 ff 74 68 8b 9e e0 00 00 00 85 db 74 18 8b 0b 31 d2 39 ca 7d 10 51 52 8b 44 93 08 e8 73 01 00 00 5a 59 42 eb ec c7 86 e0 00 00 00 00 00 00 00 8b 44 24 34 29 85 54 6e 05 10 7f 35 c7 85 54 6e 05 10 00 00 00 00 8b 8d 5c 6e 05 10 85 c9 74 1c 89 0f c7 85 5c 6e 05 10 00 00 00 00 c7 85 60 6e 05 10 00 00 00 00 89 be e0 00 00 00 e8 3c 83 02 00 61 c3 8b 9e e0 00 00 00 85 db 74 38 31 d2 3b 13 7d 32 8b 7c 93 08 83 3f 06 75 26 52 8b 4f 10 8b 47 18 e8 55 00 00 00 85 c0 74 15 83 f8 02 74 0b 80 bd 40 6e 05 10 00 75 07 b0 06 e8 12 00 00 00 5a 42 eb ca c3 0f b6 85 41 6e 05 10 34 03 75 02 b0 03 88 85 40 6e 05 10 83 bd 58 6e 05 10 00 75 1a 6a 04 68 00 30 00 00 68 00 00 01 00 6a 00 ff 95 3c 01 04 10 89 85 58 6e 05 10 c3 e8 2a 00 00 00 0f b6 8d 41 6e 05 10 80 f1 03 80 f9 02 77 18 74 0b 83 f8 02 72 11 b8 01 00 00 00 c3 83 f8 01 75 06 b8 02 00 00 00 c3 31 c0 c3 52 89 c2 31 c0 83 f9 05 72 6c 80 3a f0 75 67 80 7a 01 7e 75 18 80 7a 03 09 75 5b 8a 4a 04 80 c9 02 80 f9 03 75 50 b8 01 00 00 00 eb 49 83 f9 08 72 44 80 7a 01 41 75 16 81 7a 03 42 12 40 00 75 35 80 7a 07 7f 75 2f b8 02 00 00 00 eb 28 80 7a 01 43 75 22 8a 4a 02 80 e1 f0 80 f9 10 75 17 81 7a 03 4c 00 00 7e 74 09 81 7a 03 4c 00 00 7f 75 05 b8 03 00 00 00 5a c3 83 38 06 75 15 50 51 52 8b 48 10 8b 40 18 e8 46 ff ff ff 85 c0 5a 59 58 75 70 8b 95 5c 6e 05 10 81 fa 00 01 00 00 73 62 56 89 c6 6b ca 20 8d 8c 0f 08 04 00 00 89 4c 97 08 57 51 89 cf b9 20 00 00 00 f3 a4 59 5f c7 41 08 00 00 00 00 83 39 06 75 31 8b 41 10 8b 95 60 6e 05 10 8d 34 02 81 fe 00 80 00 00 77 23 89 b5 60 6e 05 10 8d 94 17 08 24 00 00 8b 71 18 89 51 18 57 51 89 d7 89 c1 f3 a4 59 5f ff 85 5c 6e 05 10 5e c3 f0 7e 7f 09 01 f7 f0 41 10 42 12 40 00 7f 00 41 f7 f0 43 10 4c 00 00 7e 00 f7'),
-    (0x2F6D3, ' '.join(['90'] * 961),
-              '8b 44 24 0c 83 f8 4e 75 31 8b 4c 24 14 81 79 08 36 ff ff ff 0f 85 bd 00 00 00 e8 00 00 00 00 59 81 e9 f2 f6 02 10 8a 91 b9 6e 05 10 80 f2 80 88 91 b8 6e 05 10 e9 99 00 00 00 3d 10 01 00 00 0f 84 9a 00 00 00 3d 11 01 00 00 0f 85 87 00 00 00 0f b7 44 24 10 83 f8 04 0f 84 81 00 00 00 3d 23 04 00 00 72 6e 3d 28 04 00 00 77 67 66 83 7c 24 12 00 75 57 60 e8 00 00 00 00 5d 81 ed 4d f7 02 10 8b 5c 24 28 0f b7 44 24 30 3d 26 04 00 00 73 0c 2d 22 04 00 00 e8 94 01 00 00 eb 17 31 c9 3d 27 04 00 00 0f 94 c1 51 68 20 04 00 00 53 ff 95 d0 01 04 10 6a 00 53 68 68 04 00 00 53 ff 95 70 01 04 10 50 ff 95 74 01 04 10 61 b8 01 00 00 00 c2 14 00 8b 44 24 0c 83 c0 b2 e9 45 13 00 00 ff 74 24 14 ff 74 24 14 ff 74 24 14 ff 74 24 14 ff 74 24 14 e8 07 01 00 00 50 60 e8 00 00 00 00 5d 81 ed d2 f7 02 10 8b 5c 24 2c 81 7c 24 30 10 01 00 00 75 3f 6a 65 6a 00 68 04 04 00 00 68 fe 03 00 00 53 ff 95 78 01 04 10 50 ff 95 74 01 04 10 8a 85 b8 6e 05 10 34 80 88 85 b9 6e 05 10 84 c0 74 36 0f b6 c0 05 80 00 00 00 50 53 e8 7c 16 00 00 eb 25 c6 85 b9 6e 05 10 80 68 00 01 00 00 53 e8 68 16 00 00 80 bd 41 6e 05 10 00 74 0a b8 03 00 00 00 e8 b7 00 00 00 0f b6 b5 41 6e 05 10 83 f6 03 81 c6 22 04 00 00 bf 23 04 00 00 31 c0 39 f7 0f 94 c0 50 57 53 ff 95 d0 01 04 10 47 81 ff 26 04 00 00 72 e7 80 bd c1 6d 05 10 01 75 2c 68 20 04 00 00 53 e8 51 00 00 00 89 c6 56 68 27 04 00 00 53 ff 95 d0 01 04 10 83 f6 01 56 68 28 04 00 00 53 ff 95 d0 01 04 10 eb 1f bf 27 04 00 00 57 53 ff 95 78 01 04 10 6a 00 50 ff 95 b0 01 04 10 47 81 ff 2a 04 00 00 72 e6 61 58 c2 14 00 8b 44 24 0c 83 c0 b2 e9 19 12 00 00 ff 74 24 08 ff 74 24 08 ff 95 78 01 04 10 6a 00 6a 00 68 f0 00 00 00 50 ff 95 74 01 04 10 83 e0 01 c2 08 00 50 34 03 88 85 41 6e 05 10 83 bd 58 6e 05 10 00 75 1a 6a 04 68 00 30 00 00 68 00 00 01 00 6a 00 ff 95 3c 01 04 10 89 85 58 6e 05 10 58 88 85 40 6e 05 10 c3 8a 08 80 f9 4d 73 02 b1 4d 80 f9 7d 76 02 b1 7d 88 08 0f b6 c9 51 53 e8 5e 18 00 00 e9 f5 17 00 00 0f b7 44 24 14 83 f8 07 0f 87 fd 17 00 00 e8 00 00 00 00 59 81 e9 6a f9 02 10 6a 00 6a 00 68 00 04 00 00 ff 74 24 28 ff 91 74 01 04 10 83 f8 08 7d 05 b8 08 00 00 00 3d 00 01 00 00 7e 05 b8 00 01 00 00 e8 00 00 00 00 59 81 e9 9f f9 02 10 89 c2 81 ea 80 00 00 00 7f 02 31 d2 88 91 b9 6e 05 10 89 c2 81 fa 80 00 00 00 7e 05 ba 80 00 00 00 8b 4c 24 20 88 11 50 53 e8 cc 14 00 00 e9 73 17 00 00 ff 74 24 08 ff 74 24 08 e8 6a 31 fd ff 60 e8 00 00 00 00 5d 81 ed ec f9 02 10 89 c1 83 f9 40 77 35 8b 54 24 24 8b 32 8d bd 70 6e 05 10 89 3a f3 a4 66 c7 07 52 50 0f b6 8d 41 6e 05 10 80 f1 03 88 4f 02 8a 8d b8 6e 05 10 80 f1 80 88 4f 03 83 c0 04 89 44 24 1c 61 c2 08 00 60 e8 00 00 00 00 5d 81 ed 39 fa 02 10 8b 44 24 28 83 f8 09 72 45 8b 74 24 24 b9 80 00 00 00 66 81 7c 06 fc 52 53 74 14 66 81 7c 06 fc 52 50 75 2a 8a 4c 06 ff 80 f9 80 76 02 b1 80 80 f1 80 88 8d b8 6e 05 10 83 6c 24 28 04 0f b6 44 06 fe 83 e0 03 75 02 b0 03 e8 74 fe ff ff 61 e9 1c 31 fd ff'),
+    (0x31142, '0f b6 08 51 53 e8 64 00 00 00', 'e9 c6 e7 ff ff 90 90 90 90 90'),
+    (0x30F31, '0f b7 44 24 14 83 f8 07 0f 87 23 02 00 00 ff 24 85 70 11 03 10', 'e9 f8 e9 ff ff 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90'),
+    (0x33150, ' '.join(['90'] * 397),
+              '60 e8 00 00 00 00 5d 81 ed 56 31 03 10 8b 54 24 28 8b 72 40 8b 8e b0 00 00 00 89 8d 44 6e 05 10 85 c9 0f 84 d2 00 00 00 31 c0 86 85 40 6e 05 10 85 c0 74 41 83 f8 02 74 1a 83 f8 03 74 1f 8d bd bd 32 03 10 83 f8 04 75 06 8d bd d7 32 03 10 6a 06 eb 12 8d bd c3 32 03 10 6a 0b eb 08 8d bd ce 32 03 10 6a 09 57 e8 80 82 02 00 c7 85 54 6e 05 10 c0 12 00 00 8b 85 54 6e 05 10 0b 85 5c 6e 05 10 74 72 8b bd 58 6e 05 10 85 ff 74 68 8b 9e e0 00 00 00 85 db 74 18 8b 0b 31 d2 39 ca 7d 10 51 52 8b 44 93 08 e8 52 00 00 00 5a 59 42 eb ec c7 86 e0 00 00 00 00 00 00 00 8b 44 24 34 29 85 54 6e 05 10 7f 35 c7 85 54 6e 05 10 00 00 00 00 8b 8d 5c 6e 05 10 85 c9 74 1c 89 0f c7 85 5c 6e 05 10 00 00 00 00 c7 85 60 6e 05 10 00 00 00 00 89 be e0 00 00 00 e8 68 83 02 00 61 c3 8b 95 5c 6e 05 10 81 fa 00 01 00 00 73 62 56 89 c6 6b ca 20 8d 8c 0f 08 04 00 00 89 4c 97 08 57 51 89 cf b9 20 00 00 00 f3 a4 59 5f c7 41 08 00 00 00 00 83 39 06 75 31 8b 41 10 8b 95 60 6e 05 10 8d 34 02 81 fe 00 80 00 00 77 23 89 b5 60 6e 05 10 8d 94 17 08 24 00 00 8b 71 18 89 51 18 57 51 89 d7 89 c1 f3 a4 59 5f ff 85 5c 6e 05 10 5e c3 f0 7e 7f 09 01 f7 f0 41 10 42 12 40 00 7f 00 41 f7 f0 43 10 4c 00 00 7e 00 f7 f0 7e 7f 09 03 f7'),
+    (0x2F6D3, ' '.join(['90'] * 894),
+              '8b 44 24 0c 83 f8 4e 75 31 8b 4c 24 14 81 79 08 36 ff ff ff 0f 85 dd 00 00 00 e8 00 00 00 00 59 81 e9 f2 f6 02 10 8a 91 b9 6e 05 10 80 f2 80 88 91 b8 6e 05 10 e9 b9 00 00 00 3d 10 01 00 00 0f 84 ba 00 00 00 3d 11 01 00 00 0f 85 a7 00 00 00 0f b7 44 24 10 83 f8 04 0f 84 a1 00 00 00 3d 2b 04 00 00 74 12 3d 23 04 00 00 0f 82 83 00 00 00 3d 28 04 00 00 77 7c 66 83 7c 24 12 00 75 6c 60 e8 00 00 00 00 5d 81 ed 58 f7 02 10 8b 5c 24 28 0f b7 44 24 30 3d 2b 04 00 00 74 14 3d 26 04 00 00 73 1a 2d 22 04 00 00 e8 61 01 00 00 61 eb 3b b8 04 00 00 00 e8 54 01 00 00 61 eb 2e 31 c9 3d 27 04 00 00 0f 94 c1 51 68 20 04 00 00 53 ff 95 d0 01 04 10 6a 00 53 68 68 04 00 00 53 ff 95 70 01 04 10 50 ff 95 74 01 04 10 61 b8 01 00 00 00 c2 14 00 8b 44 24 0c 83 c0 b2 e9 25 13 00 00 ff 74 24 14 ff 74 24 14 ff 74 24 14 ff 74 24 14 ff 74 24 14 e8 c6 00 00 00 50 60 e8 00 00 00 00 5d 81 ed f2 f7 02 10 8b 5c 24 2c 81 7c 24 30 10 01 00 00 75 3f 6a 65 6a 00 68 04 04 00 00 68 fe 03 00 00 53 ff 95 78 01 04 10 50 ff 95 74 01 04 10 8a 85 b8 6e 05 10 34 80 88 85 b9 6e 05 10 84 c0 74 23 0f b6 c0 05 80 00 00 00 50 53 e8 5c 16 00 00 eb 12 c6 85 b9 6e 05 10 80 68 00 01 00 00 53 e8 48 16 00 00 80 bd c1 6d 05 10 01 75 2c 68 20 04 00 00 53 e8 51 00 00 00 89 c6 56 68 27 04 00 00 53 ff 95 d0 01 04 10 83 f6 01 56 68 28 04 00 00 53 ff 95 d0 01 04 10 eb 1f bf 27 04 00 00 57 53 ff 95 78 01 04 10 6a 00 50 ff 95 b0 01 04 10 47 81 ff 2a 04 00 00 72 e6 61 58 c2 14 00 8b 44 24 0c 83 c0 b2 e9 3a 12 00 00 ff 74 24 08 ff 74 24 08 ff 95 78 01 04 10 6a 00 6a 00 68 f0 00 00 00 50 ff 95 74 01 04 10 83 e0 01 c2 08 00 50 83 bd 58 6e 05 10 00 75 1a 6a 04 68 00 30 00 00 68 00 00 01 00 6a 00 ff 95 3c 01 04 10 89 85 58 6e 05 10 58 88 85 40 6e 05 10 c3 8a 08 80 f9 4d 73 02 b1 4d 80 f9 7d 76 02 b1 7d 88 08 0f b6 c9 51 53 e8 87 18 00 00 e9 1e 18 00 00 0f b7 44 24 14 83 f8 07 0f 87 26 18 00 00 e8 00 00 00 00 59 81 e9 41 f9 02 10 6a 00 6a 00 68 00 04 00 00 ff 74 24 28 ff 91 74 01 04 10 83 f8 08 7d 05 b8 08 00 00 00 3d 00 01 00 00 7e 05 b8 00 01 00 00 e8 00 00 00 00 59 81 e9 76 f9 02 10 89 c2 81 ea 80 00 00 00 7f 02 31 d2 88 91 b9 6e 05 10 89 c2 81 fa 80 00 00 00 7e 05 ba 80 00 00 00 8b 4c 24 20 88 11 50 53 e8 f5 14 00 00 e9 9c 17 00 00 ff 74 24 08 ff 74 24 08 e8 93 31 fd ff 60 e8 00 00 00 00 5d 81 ed c3 f9 02 10 89 c1 83 f9 40 77 2c 8b 54 24 24 8b 32 8d bd 70 6e 05 10 89 3a f3 a4 66 c7 07 52 50 c6 47 02 00 8a 8d b8 6e 05 10 80 f1 80 88 4f 03 83 c0 04 89 44 24 1c 61 c2 08 00 60 e8 00 00 00 00 5d 81 ed 07 fa 02 10 8b 44 24 28 83 f8 09 72 34 8b 74 24 24 b9 80 00 00 00 66 81 7c 06 fc 52 53 74 14 66 81 7c 06 fc 52 50 75 19 8a 4c 06 ff 80 f9 80 76 02 b1 80 80 f1 80 88 8d b8 6e 05 10 83 6c 24 28 04 61 e9 5f 31 fd ff'),
 ]
-GUI_CAVE_END = 0x3343E
+GUI_CAVE_END = 0x332DD
 # getChunk / setChunk slots of both AudioEffect vtables (0x10040550, 0x10040768) -> chunk_get / chunk_set
 # (settings.asm), which call the original functions: Reset Mode in the plugin state.
 SYXG50_GUI_CHUNK = [
-    (0x40594, '50 2b 00 10', 'd9 f9 02 10'), (0x407AC, '50 2b 00 10', 'd9 f9 02 10'),
-    (0x40598, 'b0 2b 00 10', '33 fa 02 10'), (0x407B0, 'b0 2b 00 10', '33 fa 02 10'),
+    (0x40594, '50 2b 00 10', 'b0 f9 02 10'), (0x407AC, '50 2b 00 10', 'b0 f9 02 10'),
+    (0x40598, 'b0 2b 00 10', '01 fa 02 10'), (0x407B0, 'b0 2b 00 10', '01 fa 02 10'),
 ]
 GUI_DATA_END = 0x56EB8
 LEVEL_RANGE = (77, 125)               # Output Level trackbar values, 101 = 0 dB, 0.5 dB per step
@@ -658,26 +658,26 @@ def build_dialog(head : bytes, items : list[dict]) -> bytes :
         out += sz_or_ord(it['cls']) + sz_or_ord(it['text']) + struct.pack('<H', len(it['extra'])) + it['extra']
     return bytes(out)
 
-SETTINGS_PAGE_HEIGHT = 170               # dialog units (was 160): room for the Utility frame (MU50/80/90: 160)
+SETTINGS_PAGE_HEIGHT = 177               # dialog units (was 160): room for the Utility frame (MU50/80/90: 167)
 def _ctl(cls, text, x, y, cx, cy, style, cid = 0xFFFFFFFF) :
     return dict(help = 0, exstyle = 0, style = style, x = x, y = y, cx = cx, cy = cy, id = cid, cls = cls, text = text, extra = b'')
 def utility_controls(full : bool) -> list[dict] :
-    # MU100 / MU128 / MU1000: "Utility" frame, Reset Mode (left, with its label) and MU Tone Map (right);
-    # MU50 / MU80 / MU90: the frame itself is "Reset Mode", radio buttons flush with its "R"; see SYXG50_GUI / settings.asm
+    # Send Reset push buttons GM / GS / XG / GM2 (issue #37; size and pitch of the S-YXG50's old Polyphony
+    # preset buttons: 20 x 15, 25 apart), see settings.asm / gui.asm.
+    # MU100 / MU128 / MU1000: "Utility" frame, Send Reset (left, label above the buttons) and MU Tone Map (right);
+    # MU50 / MU80 / MU90: the frame itself is "Send Reset", buttons flush with its title
     radio, first = 0x50010009, 0x50030009      # BS_AUTORADIOBUTTON | WS_TABSTOP, + WS_GROUP for the first of a group
+    button = 0x50010000                        # BS_PUSHBUTTON | WS_TABSTOP
+    def buttons(x0, y) :
+        return [_ctl(0x80, t, x0 + 25 * i, y, 20, 15, button | (0x20000 if i == 0 else 0), cid)
+                for i, (t, cid) in enumerate((('GM', 0x423), ('GS', 0x424), ('XG', 0x425), ('GM2', 0x42B)))]
     if not full :
-        return [_ctl(0x80, 'Reset Mode', 5, 113, 225, 24, 0x50000007),
-                _ctl(0x80, 'GM', 11, 123, 24, 10, first, 0x423),
-                _ctl(0x80, 'GS', 37, 123, 24, 10, radio, 0x424),
-                _ctl(0x80, 'XG', 63, 123, 24, 10, radio, 0x425)]
-    return [_ctl(0x80, 'Utility', 5, 113, 225, 34, 0x50000007),
-            _ctl(0x82, 'Reset Mode', 12, 123, 108, 9, 0x50000001, 0x42A),
-            _ctl(0x80, 'GM', 29, 133, 24, 10, first, 0x423),
-            _ctl(0x80, 'GS', 55, 133, 24, 10, radio, 0x424),
-            _ctl(0x80, 'XG', 81, 133, 24, 10, radio, 0x425),
-            _ctl(0x82, 'MU Tone Map', 140, 123, 82, 9, 0x50000001, 0x429),
-            _ctl(0x80, 'Basic', 146, 133, 32, 10, first, 0x427),
-            _ctl(0x80, 'Native', 182, 133, 36, 10, radio, 0x428)]
+        return [_ctl(0x80, 'Send Reset', 5, 113, 225, 31, 0x50000007)] + buttons(11, 124)
+    return ([_ctl(0x80, 'Utility', 5, 113, 225, 41, 0x50000007),
+             _ctl(0x82, 'Send Reset', 12, 123, 108, 9, 0x50000001, 0x42A)] + buttons(19, 133) +
+            [_ctl(0x82, 'MU Tone Map', 140, 123, 82, 9, 0x50000001, 0x429),
+             _ctl(0x80, 'Basic', 146, 136, 32, 10, first, 0x427),
+             _ctl(0x80, 'Native', 182, 136, 36, 10, radio, 0x428)])
 
 def edit_settings_page(raw : bytes, full : bool) -> bytes :
     # dialog 111: layout of issue #26 (see SYXG50_GUI); y positions in dialog units
@@ -696,7 +696,7 @@ def edit_settings_page(raw : bytes, full : bool) -> bytes :
         elif cid == 0x3FE : it['y'], it['cy'], it['style'] = 87, 20, it['style'] & ~0x18   # ticks below: ends + centre (code)
         elif cid == 0x3FF or text == 'dB' : it['y'] = 89
         elif cid == VMAP_CONTROL_ID : it['style'] &= ~0x10000000  # hidden, driven by the MU Tone Map radios
-        elif cid == 4 : it['y'], it['style'] = 152 if full else 142, it['style'] | 0x300   # Set Defaults, BS_CENTER
+        elif cid == 4 : it['y'], it['style'] = 159 if full else 149, it['style'] | 0x300   # Set Defaults, BS_CENTER
         if cid == 4 : out += utility_controls(full)
         out.append(it)
     return build_dialog(bytes(head), out)

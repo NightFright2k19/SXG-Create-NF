@@ -1,4 +1,4 @@
-; S-YXG2006LE (SGP2.DLL): VST parameters (Polyphony, effects, master settings, Reset Mode) in a new
+; S-YXG2006LE (SGP2.DLL): VST parameters (Polyphony, effects, master settings, Send Reset) in a new
 ; section .sxg, in the order of the S-YXG50 plugins' Settings page
 ; main hook: eax = AEffect (plugin + 0x20); the AEffect callbacks are replaced, the originals kept
 .set NP, 7
@@ -148,13 +148,12 @@ fr_none:
 ;   further engines, up to 8, take the overflow), 1 Reverb (CC 91) and 2 Chorus (CC 93) Off / On (Off: the
 ;   effect return is set to 0, On: to the default 64; the 2006LE has no variation effect, CC 94 does nothing),
 ; 3 Master Volume -12 ... +12 dB in 0.5 dB steps (output gain, like the Output Level of the MU plugins),
-; 4 Master Tune (cent), 5 Transpose (semitones), 6 Reset Mode (GM / GS / XGLite)
+; 4 Master Tune (cent), 5 Transpose (semitones), 6 Send Reset (GM / GS / XGLite / GM2, one-shot)
 ; Reverb, Chorus, Master Tune and Transpose are sent as XG (after a GS reset: GS) system / effect SysEx in front
 ; of the host events when changed and after each reset.
-; Reset Mode is sent once: at the first mains-on, when it changes and when the host restores the plugin state.
-; Resets from the host follow it like in the MU plugins: XGLite: all pass (GM2 files play in XGLite mode, the
-; engine has the GM2 banks); GS: GM System On / GM2 On is replaced by the GS reset; GM: GS and XG resets are
-; dropped. All other SysEx always passes.
+; Send Reset (issue #37): GM / GS / XGLite / GM2; choosing a value sends that reset once. It shows XGLite after
+; loading and nothing is sent then; it is not restored from the plugin state. Resets and all other SysEx from the
+; host always pass.
 
 ; eax = parameter index, at most NP - 1
 clampi:
@@ -535,7 +534,7 @@ dsc_t:
 dsc_s:
     mov [ivals + 20], ecx
 dsc_set:
-    mov dword ptr [pending], 1
+    mov dword ptr [ivals + 24], 2          ; Send Reset is not restored: XGLite, nothing sent
     or dword ptr [dirty], DIRTY_ALL
 dsc_no:
     mov eax, 1
@@ -636,7 +635,7 @@ em_next:
     mov dword ptr [dirty], 0
     ret
 
-; processEvents: our events in front; resets from the host follow the Reset Mode (reset_rule)
+; processEvents: our events in front; resets from the host always pass
 d_events:
     mov dword ptr [got], 1
     push esi
@@ -661,12 +660,7 @@ de_loop:
     dec ecx
     cmp dword ptr [eax], 6           ; kVstSysExType
     jne de_keep
-    call reset_rule                  ; 0 pass, 1 drop, 2 replace by the GS reset
-    cmp edx, 1
-    je de_loop
-    jb de_put
-    lea eax, [ev_gs]
-de_put:
+
     mov [edi], eax
     add edi, 4
     inc ebx
@@ -786,27 +780,6 @@ rt_ret:
     pop ecx
     ret
 
-; reset_rule: VstSysExEvent eax -> edx = 0 pass, 1 drop, 2 replace by the GS reset (Reset Mode 0 GM, 1 GS,
-; 2 XGLite)
-reset_rule:
-    call reset_type
-    test edx, edx
-    jz rr_pass
-    cmp dword ptr [ivals + 24], 1
-    ja rr_pass
-    je rr_gs
-    cmp edx, 2
-    jb rr_pass
-    mov edx, 1
-    ret
-rr_gs:
-    cmp edx, 1
-    jne rr_pass
-    mov edx, 2
-    ret
-rr_pass:
-    xor edx, edx
-    ret
 
 ; copy engine 1 events from index ecx up to ebx to the other engines as well
 cp_new:
@@ -1170,14 +1143,10 @@ ms_ret:
     ret
 
 ; at mains on create the engines Polyphony needs (32 voices each, up to 8); the first mains on also makes
-; the Reset Mode pending: the original main() once more
+; the original main() once more
 ; (our hook stays out of it), then open / sample rate / block size like the host did for engine 1
 mkx:
-    cmp dword ptr [started], 0
-    jne mk_go
-    mov dword ptr [started], 1
-    mov dword ptr [pending], 1
-mk_go:
+
     push esi
     push edi
     mov edi, [ivals]
@@ -1401,19 +1370,19 @@ pr_out:
 .align 4
 names: .int s_poly, s_rev, s_cho, s_vol, s_tune, s_trn, s_reset
 labels: .int s_empty, s_empty, s_empty, s_db, s_cent, s_semi, s_empty
-pmax: .int 248, 1, 1, 48, 200, 48, 2
+pmax: .int 248, 1, 1, 48, 200, 48, 3
 pdef: .int 248, 1, 1, 24, 100, 24, 2
 poff: .int -8, 0, 0, 0, 100, 24, 0
 pflag: .int 0xE, 0xF, 0xF, 0xE, 0xE, 0xE, 0xE   ; IsSwitch 1, IntMinMax 2, FloatStep 4, IntStep 8
 etab: .int 0, offon, offon, voltxt, 0, 0, modes
 pev: .int 0, ev_rev, ev_cho, 0, ev_tune, ev_trn, 0
 pev_gs: .int 0, eg_rev, eg_cho, 0, eg_tune, eg_trn, 0
-modes: .int s_gm, s_gs, s_xgl
+modes: .int s_gm, s_gs, s_xgl, s_gm2
 old_mode: .byte 2, 0, 1, 2, 2, 0, 0, 0
 offon: .int s_off, s_on
-resets: .int ev_gm, ev_gs, ev_xg
+resets: .int ev_gm, ev_gs, ev_xg, ev_gm2
 VOLTABLES
-s_reset: .asciz "Reset Mode"
+s_reset: .asciz "Send Reset"
 s_kernel: .asciz "KERNEL32.dll"
 s_find: .asciz "FindResourceA"
 s_load: .asciz "LoadResource"
@@ -1431,11 +1400,13 @@ s_empty: .byte 0
 s_gm: .asciz "GM"
 s_gs: .asciz "GS"
 s_xgl: .asciz "XGLite"
+s_gm2: .asciz "GM2"
 s_on: .asciz "On"
 s_off: .asciz "Off"
 .align 4
 ; VstSysExEvent: type 6, byteSize 32, deltaFrames, flags, dumpBytes, resvd1, sysexDump*, resvd2
 ev_gm: .int 6, 32, 0, 0, 6, 0, sx_gm, 0
+ev_gm2: .int 6, 32, 0, 0, 6, 0, sx_gm2, 0
 ev_gs: .int 6, 32, 0, 0, 11, 0, sx_gs, 0
 ev_xg: .int 6, 32, 0, 0, 9, 0, sx_xg, 0
 ev_tune: .int 6, 32, 0, 0, 12, 0, sx_tune, 0
@@ -1447,6 +1418,7 @@ eg_trn: .int 6, 32, 0, 0, 11, 0, gs_trn, 0
 eg_rev: .int 6, 32, 0, 0, 11, 0, gs_rev, 0
 eg_cho: .int 6, 32, 0, 0, 11, 0, gs_cho, 0
 sx_gm: .byte 0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7
+sx_gm2: .byte 0xF0, 0x7E, 0x7F, 0x09, 0x03, 0xF7
 sx_gs: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x7F, 0x00, 0x41, 0xF7
 sx_xg: .byte 0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x7E, 0x00, 0xF7
 sx_tune: .byte 0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0xF7
