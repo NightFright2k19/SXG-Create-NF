@@ -144,10 +144,11 @@ jobs:
           artifacts: assets/*
           artifactErrorsFailBuild: true
           body: |
-            The **SXG-Create-NF Patcher** converts **Yamaha MU** ROMs into plugins for the **S-YXG50** soft synth.
+            The **SXG-Create-NF Patcher** converts **Yamaha MU** ROMs into plugins for the **S-YXG50** soft synth and patches Yamaha's **S-YXG2006LE** into a plugin that runs in any host.
 
             **SUPPORTED MODELS**
             - MU50, MU80, MU90 / MU90B, MU100 / MU100B, MU128, MU1000 (MU2000: uses the MU1000 set)
+            - S-YXG2006LE (Yamaha's own engine and tables, not converted: `SGP2.OLD` or `SGP2.DLL`, `sxgbnw6l.tbl`, `sxgdat6l.tbl`)
 
             **DOWNLOAD**
             - Windows: `...-windows.exe`
@@ -155,9 +156,9 @@ jobs:
             - macOS: `...-macos-applesilicon.zip` (M1 and newer) or `...-macos-intel.zip` (extract, then open the app)
 
             **INSTRUCTIONS**
-            - Put the patcher in a folder together with your MU ROM files and the original `syxg50.dll` (626,688 bytes); subfolders are fine. The patcher can also be pointed to another folder or to the DLL.
-            - Start it, check the list of found models, click **Patch**.
-            - The plugins (one DLL per model, tables inside) end up in the folder `Plugins` next to the patcher.
+            - Put the patcher in a folder together with your MU ROM files and the original `syxg50.dll` (626,688 bytes), and/or the three S-YXG2006LE files; subfolders are fine. The patcher can also be pointed to another folder or to the DLL.
+            - Start it, check the list of found models, click **Patch**. MU models and the S-YXG2006LE are built in the same run; each also works on its own.
+            - The plugins (one DLL per model, tables inside; `syxg2006le.dll` for the S-YXG2006LE) end up in the folder `Plugins` next to the patcher.
             - The files are not signed: Windows SmartScreen and macOS Gatekeeper warn on the first start. See README.md ("Patcher") for how to start it anyway.
 
       - name: Delete previous Autobuild releases and tags
