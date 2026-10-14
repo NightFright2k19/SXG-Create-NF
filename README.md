@@ -2,7 +2,7 @@
 
 Converts the ROM sets of Yamaha MU-series tone generators (MU50 to MU1000) into tables and wave data for the **S-YXG50** soft synthesizer (`syxg50.dll`), and patches the DLL so that it can play them as close to the original module as the S-YXG50 engine allows.
 
-<img width="510" height="429" alt="mu_patcher" src="https://github.com/user-attachments/assets/38376f6d-17b4-4d40-9fad-ea7b7445bca9" />
+<img width="518" height="448" alt="SXG-Create-NF Patcher" src="utility/dev/gui/patcher.png" />
 
 ## Table of contents
 
@@ -76,7 +76,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 ### DLL patching (new)
 
 - SXG-Create patches a supplied `syxg50.dll` (626,688 bytes or the 5 MB version, any file name) and writes a matching ini; the original is kept as `<name>.orig.dll`. Patch level follows the table: **"Enhanced"** (classic) or **"Full"** (big layout). Already-patched DLLs are accepted and checked patch by patch.
-- **Table loading:** ini section/key `[Config]` / `SoftSynth`, 24-bit loop length, and for "Full" all big-layout parser changes (program maps, wavedata offsets with three pages, drum voice fields, formats, root key).
+- **Table loading:** ini section `[<plugin id>]` (e.g. `[SYXG100]`), `[SYXG50]` or `[Config]`, table key `VoiceTable` or `SoftSynth` (issue #36), 24-bit loop length, and for "Full" all big-layout parser changes (program maps, wavedata offsets with three pages, drum voice fields, formats, root key).
 - **Effects:** missing effect types mapped to the nearest available type, return levels scaled per type (calibrated against the S-MU2000) and recomputed on a type change, fade-in after a type change shortened from 0.3-1 s to 80-90 ms.
 - **Drum setup EG offsets** for ext drum voices no longer act twice as strong.
 - **Voice map switch** ("Full"): radio buttons "MU Tone Map" (Basic / Native) in the Setup dialog switch MU100 / MU128 / MU1000 tables between MU Native and MU Basic, saved with the host's plugin state like the other Setup options (no files written); optional start value `MUBasic=1` in the ini; works with external and embedded tables. A change takes effect immediately for new notes on all parts (no program change needed).
@@ -97,6 +97,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **Folder layout:** only `main.py` stays in the root; all modules are in `utility`, development tools in `utility/dev` (see [Folder layout](#folder-layout)). The table converters are merged into `tableconvert.py`, the table creation into `decBase.py`, the MU80 investigation tools into `utility/dev/analyze_mu80.py`.
 - **Patcher:** releases contain a patcher with a window for Windows, Linux and macOS (Apple Silicon and Intel) in 29 languages instead of the Python files (see [Patcher](#patcher)). It runs the same converter as `main.py` and produces the same plugins.
 - **Panel: channel and bank select** (issue #35): the title strip control selects the MIDI channel (CHN 01-16) and steps the program or, after a click on its label, the bank select MSB / LSB of that channel (see [Panel controls](#panel-controls-channel-program-bank)).
+- **ini like the original S-YXG50** (issue #36): the converter writes `[<plugin id>]` (e.g. `[SYXG100]`) with `VoiceTable=`; `[Config]` / `SoftSynth=` of earlier versions and the original `[SYXG50]` section are read as well, so the debug panel switch of Falcosoft's MIDI Player / VST MIDI Driver works (see [The ini](#the-ini)).
 - **GM2 for MU50 / MU80 / MU90 / MU100** (issue #34): bank select MSB 121 (GM2 capital and variation tones, LSB 0-9) works like in the original S-YXG50, after a GM2 or an XG reset; GM2 drum programs (MSB 120) select the kits like GS. Before, GM2 files stayed silent on all melodic channels (see [Conversion details](#bank-maps-gm2)).
 - **Autobuild releases:** every change to `main.py`, the patcher or `utility` on `main` creates a versioned release (`autobuild-rN`) with the patchers.
 
@@ -161,7 +162,7 @@ This writes to `output`:
 SXGMU1KX.TBL     table
 SXGMU1KX.UPCM    wave data
 syxg1000.dll     patched DLL ("Full")
-syxg1000.ini     SoftSynth=SXGMU1KX.TBL
+syxg1000.ini     [SYXG1000] VoiceTable=SXGMU1KX.TBL
 ```
 
 Copy all four files into one folder.
@@ -336,7 +337,7 @@ Any input file that starts with `MZ` is taken as the DLL and identified by its c
 | Offset | Patch | Level |
 |---|---|---|
 | `0x519EC` | ini section `SYXG50` -> `Config` | both |
-| `0x519F4` | ini key `VoiceTable` -> `SoftSynth` | both |
+| `0x330FC`, `0x3311C` + code in section `.sxp` (`dev/poly/ini.asm`) | ini lookup (issue #36): each key is read from `[Config]`, then `[SYXG50]`, then `[<plugin id>]` (`ini_id` in the code, set per model); the table from `VoiceTable` or `SoftSynth`. The original strings `SYXG50` / `VoiceTable` (`0x519EC`, `0x519F4`) stay as they are. | both |
 | `0x1A6F0`, `0x1A6FC` | key-on masks for start offset / loop length: 16 -> 24 bit | both |
 | `0x045E0` | voice program maps: 32-bit byte offsets | Full |
 | `0x04DF4` + code cave `0x3F3E0` | wavedata offset table 32-bit + **768 multisamples** (three pages, see above); `.text` VirtualSize enlarged to cover the cave | Full |
@@ -387,17 +388,24 @@ The S-YXG50 sound engine itself, including its MMX/SSE paths, is not changed bey
 The ini is written on every run (not with `--embed`) and points to the table that was just built (CRLF line endings):
 
 ```ini
-[Config]
-SoftSynth=SXGMU1KX.TBL
+[SYXG1000]
+VoiceTable=SXGMU1KX.TBL
 Process=1
 XGLite=0
 DebugPanel=0
 DisableGUI=0
 ```
 
+The section is the plugin's own name in capitals, the DLL name without `.dll`: `[SYXGMU50]`, `[SYXG80]`, `[SYXG90]`, `[SYXG100]`, `[SYXG128]`, `[SYXG1000]`. Two other sections are read as well, so older and original ini files keep working (issue #36):
+
+- `[Config]` with `SoftSynth=` (written by SXG-Create before; still read and checked first),
+- `[SYXG50]`, the section of the original S-YXG50. Falcosoft's MIDI Player and VST MIDI Driver write `DebugPanel` there when you switch the debug view with their UI button; it is read before the plugin's own section, so that switch works with these plugins as well.
+
+Each key is looked up in `[Config]`, then `[SYXG50]`, then `[<plugin id>]`; the first section that has it wins. The table key can be `VoiceTable` (as in the original S-YXG50) or `SoftSynth`. The S-YXG2006LE reads no ini (its settings are VST parameters).
+
 | Key | Meaning |
 |---|---|
-| `SoftSynth` | Table file to load, relative to the DLL's folder. The wave file name is stored in the table header, so it doesn't need an entry. |
+| `VoiceTable` (or `SoftSynth`) | Table file to load, relative to the DLL's folder. The wave file name is stored in the table header, so it doesn't need an entry. |
 | `Process` | Processing switch of the S-YXG50 (left at 1) |
 | `XGLite` | XG Lite mode (0 = off) |
 | `DebugPanel` | 1 = show the monitor panel instead of the normal panel: part levels 1-16, polyphony, TG load (total / setup / wave / synth), effect load (total / reverb / chorus / variation), output, CPU load (TG / driver) and a Setup button. All readouts work (checked under Wine with notes playing). |
@@ -407,13 +415,13 @@ DisableGUI=0
 ### Embedded tables (`--embed`)
 
 - Table and wave file are stored in the patched DLL as `RT_RCDATA` resources under their file names, the same way the 5 MB `syxg50.dll` stores its own tables. Those old tables (`SXGBIN41.TBL`, `SXGWAVE4.TBL`) are removed first.
-- The default table name in the DLL's string table is set to the new table, so the DLL finds it without an ini. No ini is written, and an existing ini of the same name is removed (an ini with a `SoftSynth` entry would make the DLL look for an external file instead).
+- The default table name in the DLL's string table is set to the new table, so the DLL finds it without an ini. No ini is written, and an existing ini of the same name is removed (an ini with a `VoiceTable` / `SoftSynth` entry would make the DLL look for an external file instead).
 - A DLL supplied as `syxg50.dll` is written under the model's name (`syxgmu50.dll`, `syxg80.dll` ... `syxg1000.dll`, see [File names](#file-names)); other names are kept.
 - One file to copy, at the cost of DLL size (MU1000: about 88 MB).
 
 ### How the DLL loads the table
 
-1. **Table:** it reads `SoftSynth` from `[Config]` in `<dll name>.ini` and loads that file from the DLL's folder.
+1. **Table:** it reads `VoiceTable` (or `SoftSynth`) from `<dll name>.ini` (sections as above) and loads that file from the DLL's folder.
 2. **Wave file:** the table header names the wave file, which is loaded from the same folder. Both files are read whole, so file size is not limited.
 3. **Embedded:** without the key, the DLL loads the table named in its string table from its own resources (5 MB version, or a DLL made with `--embed`).
 
@@ -505,7 +513,7 @@ The MU100, MU128 and MU1000 have two voice maps, which the module switches with 
 - **Setup dialog:** open Setup in the S-YXG50 panel, pick **Basic** under **"MU Tone Map"** and press Apply/OK. **Set Defaults** returns to the start value.
 - **When it takes effect:** immediately, for the next note on every part (the current programs are selected again in the new map with the next MIDI event). Notes already sounding keep their voice. Parts with *receive program change* switched off keep their voice until a reset.
 - **Saving:** like the other Setup options, the setting is part of the plugin state (VST chunk) that the host saves with its project, preset or plugin settings and restores on the next load. The DLL itself writes no files. A host that does not save plugin state starts with the start value every time. Confirmed: in the **Falcosoft MIDI Player** the setting survives a restart once the VSTi settings are saved there; in the **VST MIDI Driver** it is saved with "Apply" in its configuration.
-- **Start value:** MU Native. An optional `MUBasic=1` in `[Config]` of `<dll name>.ini` makes MU Basic the start value (only read, never written). A saved plugin state overrides it; older saved states without the setting keep the start value.
+- **Start value:** MU Native. An optional `MUBasic=1` in the plugin's section (or `[Config]` / `[SYXG50]`) of `<dll name>.ini` makes MU Basic the start value (only read, never written). A saved plugin state overrides it; older saved states without the setting keep the start value.
 - **Embedded tables (`--embed`):** the switch works the same and needs no ini; the DLL stays a single file (no ini, no registry).
 - **Other tables:** with MU50 / MU80 / MU90 tables, or MU100+ tables from earlier versions, the checkbox is hidden.
 
