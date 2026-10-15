@@ -1,7 +1,7 @@
 ; Settings page (dialog 111) of syxg50.dll: Send Reset buttons, MU Tone Map and the Output Level range.
 ; Code cave at 0x1002F6D3 (unused NOP block inside .text, no relocations), position independent (call/pop,
 ; ebp = load delta). Shared state with gui.asm in .data (see there): 0x10056E40 pending reset, 0x10056E58 queue.
-; Controls: push buttons 0x423 GM, 0x424 GS, 0x425 XG, 0x42B GM2 ("Send Reset", issue #37): a click sends that
+; Controls: push buttons 0x42C MT-32, 0x423 GM, 0x424 GS, 0x425 XG, 0x42B GM2 ("Send Reset", issue #37): a click sends that
 ; reset once (pending for the audio thread); nothing is selected or saved. Radio buttons 0x427 Basic,
 ; 0x428 Native ("MU Tone Map" label 0x429, MU100 / MU128 / MU1000 only) drive the hidden checkbox 0x420 of the
 ; voice map patch (checked = MU Basic) and enable Apply; without a voice map appendix (0x10056DC1 != 1) they
@@ -36,6 +36,8 @@ dh_cmd:
     je dh_after
     cmp eax, 0x42b
     je dh_btn
+    cmp eax, 0x42c
+    je dh_btn
     cmp eax, 0x423
     jb dlg_reload
     cmp eax, 0x428
@@ -50,11 +52,18 @@ dc_base:
     sub ebp, dc_base
     mov ebx, dword ptr [esp + 0x28]
     movzx eax, word ptr [esp + 0x30]
+    cmp eax, 0x42c
+    je dc_mt
     cmp eax, 0x42b
     je dc_gm2
     cmp eax, 0x426
     jae dc_tone
     sub eax, 0x422
+    call send_reset
+    popal
+    jmp dh_ret1
+dc_mt:
+    mov eax, 5
     call send_reset
     popal
     jmp dh_ret1

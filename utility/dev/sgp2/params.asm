@@ -148,10 +148,11 @@ fr_none:
 ;   further engines, up to 8, take the overflow), 1 Reverb (CC 91) and 2 Chorus (CC 93) Off / On (Off: the
 ;   effect return is set to 0, On: to the default 64; the 2006LE has no variation effect, CC 94 does nothing),
 ; 3 Master Volume -12 ... +12 dB in 0.5 dB steps (output gain, like the Output Level of the MU plugins),
-; 4 Master Tune (cent), 5 Transpose (semitones), 6 Send Reset (GM / GS / XGLite / GM2, one-shot)
+; 4 Master Tune (cent), 5 Transpose (semitones), 6 Send Reset (MT-32 / GM / GS / XGLite / GM2, one-shot)
 ; Reverb, Chorus, Master Tune and Transpose are sent as XG (after a GS reset: GS) system / effect SysEx in front
 ; of the host events when changed and after each reset.
-; Send Reset (issue #37): GM / GS / XGLite / GM2; choosing a value sends that reset once. It shows XGLite after
+; Send Reset (issue #37): MT-32 / GM / GS / XGLite / GM2; choosing a value sends that reset once (MT-32: the GS
+; reset plus the part settings of Falcosoft's GS MT-32 sequence, dev/gui/mt32.syx). It shows XGLite after
 ; loading and nothing is sent then; it is not restored from the plugin state. Resets and all other SysEx from the
 ; host always pass.
 
@@ -534,7 +535,7 @@ dsc_t:
 dsc_s:
     mov [ivals + 20], ecx
 dsc_set:
-    mov dword ptr [ivals + 24], 2          ; Send Reset is not restored: XGLite, nothing sent
+    mov dword ptr [ivals + 24], 3          ; Send Reset is not restored: XGLite, nothing sent
     or dword ptr [dirty], DIRTY_ALL
 dsc_no:
     mov eax, 1
@@ -547,14 +548,24 @@ emit:
     mov dword ptr [pending], 0
     call clr_notes
     mov eax, [ivals + 24]
-    mov eax, [resets + eax * 4]
-    mov [edi], eax
-    add edi, 4
-    inc ebx
-    xor eax, eax
-    cmp dword ptr [ivals + 24], 1
-    sete al
-    mov [gsmode], eax
+    mov eax, [resets + eax * 4]            ; list: count, events (MT-32: GS reset + 26 part settings)
+    mov ecx, [eax]
+em_rl:
+    mov edx, [eax + ecx * 4]
+    mov [edi + ecx * 4 - 4], edx
+    loop em_rl
+    mov ecx, [eax]
+    lea edi, [edi + ecx * 4]
+    add ebx, ecx
+    mov eax, [ivals + 24]                  ; GS mode after GS and MT-32
+    xor ecx, ecx
+    cmp eax, 2
+    sete cl
+    test eax, eax
+    jnz em_gsm
+    mov ecx, 1
+em_gsm:
+    mov [gsmode], ecx
     or dword ptr [dirty], DIRTY_ALL        ; a reset restores the defaults: send ours again
 em_par:
     mov eax, [ivals + 4]
@@ -1370,17 +1381,22 @@ pr_out:
 .align 4
 names: .int s_poly, s_rev, s_cho, s_vol, s_tune, s_trn, s_reset
 labels: .int s_empty, s_empty, s_empty, s_db, s_cent, s_semi, s_empty
-pmax: .int 248, 1, 1, 48, 200, 48, 3
-pdef: .int 248, 1, 1, 24, 100, 24, 2
+pmax: .int 248, 1, 1, 48, 200, 48, 4
+pdef: .int 248, 1, 1, 24, 100, 24, 3
 poff: .int -8, 0, 0, 0, 100, 24, 0
 pflag: .int 0xE, 0xF, 0xF, 0xE, 0xE, 0xE, 0xE   ; IsSwitch 1, IntMinMax 2, FloatStep 4, IntStep 8
 etab: .int 0, offon, offon, voltxt, 0, 0, modes
 pev: .int 0, ev_rev, ev_cho, 0, ev_tune, ev_trn, 0
 pev_gs: .int 0, eg_rev, eg_cho, 0, eg_tune, eg_trn, 0
-modes: .int s_gm, s_gs, s_xgl, s_gm2
-old_mode: .byte 2, 0, 1, 2, 2, 0, 0, 0
+modes: .int s_mt, s_gm, s_gs, s_xgl, s_gm2
+old_mode: .byte 3, 1, 2, 3, 3, 0, 0, 0
 offon: .int s_off, s_on
-resets: .int ev_gm, ev_gs, ev_xg, ev_gm2
+resets: .int rl_mt, rl_gm, rl_gs, rl_xg, rl_gm2
+rl_gm: .int 1, ev_gm
+rl_gs: .int 1, ev_gs
+rl_xg: .int 1, ev_xg
+rl_gm2: .int 1, ev_gm2
+MTTABLES
 VOLTABLES
 s_reset: .asciz "Send Reset"
 s_kernel: .asciz "KERNEL32.dll"
@@ -1401,6 +1417,7 @@ s_gm: .asciz "GM"
 s_gs: .asciz "GS"
 s_xgl: .asciz "XGLite"
 s_gm2: .asciz "GM2"
+s_mt: .asciz "MT-32"
 s_on: .asciz "On"
 s_off: .asciz "Off"
 .align 4
@@ -1430,7 +1447,7 @@ gs_trn: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x05, 0x40, 0x00, 0xF7
 gs_rev: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x01, 0x33, 0x40, 0x00, 0xF7
 gs_cho: .byte 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x01, 0x3A, 0x40, 0x00, 0xF7
 .align 4
-ivals: .int 248, 1, 1, 24, 100, 24, 2     ; = pdef
+ivals: .int 248, 1, 1, 24, 100, 24, 3     ; = pdef
 pending: .int 0
 started: .int 0
 dirty: .int 0

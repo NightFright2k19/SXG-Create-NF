@@ -2,6 +2,7 @@
 # Assembles the code for the new section .sxg at SECTION_VA. IMG stands for the image base; the code is
 # assembled at two bases and the dwords that differ are the absolute addresses that need base relocations.
 import keystone, struct, sys, textwrap, re
+from pathlib import Path
 sys.path.insert(0, __file__.rsplit('/', 4)[0] + '/utility')
 from sgp2patch import B, SECTION_VA
 src = '\n'.join(l.split(';')[0] for l in open(sys.argv[1]).read().split('\n')).replace('IMG', f'sec - {SECTION_VA:#x}')
@@ -9,6 +10,14 @@ src = '\n'.join(l.split(';')[0] for l in open(sys.argv[1]).read().split('\n')).r
 for name, value in re.findall(r'^\.set ([A-Z_]+), (\S+)', src, re.M) :
     src = re.sub(rf'^\.set {name}, .*$', '', src, flags = re.M)
     src = re.sub(rf'\b{name}\b', value, src)
+# MT: Falcosoft's GS MT-32 sequence (dev/gui/mt32.syx, 27 SysEx), one VstSysExEvent each
+syx = (Path(sys.argv[1]).resolve().parent.parent / 'gui' / 'mt32.syx').read_bytes()
+msgs = []
+while syx :
+    n = syx.index(0xF7) + 1; msgs.append(syx[:n]); syx = syx[n:]
+src = src.replace('MTTABLES', 'rl_mt: .int ' + str(len(msgs)) + ', ' + ', '.join(f'ev_mt{i}' for i in range(len(msgs))) + '\n'
+    + ''.join(f'ev_mt{i}: .int 6, 32, 0, 0, {len(m)}, 0, sx_mt{i}, 0\n' for i, m in enumerate(msgs))
+    + ''.join(f'sx_mt{i}: .byte ' + ', '.join(f'0x{b:02X}' for b in m) + '\n' for i, m in enumerate(msgs)) + '.align 4')
 # Master Volume: -12 ... +12 dB in 0.5 dB steps: display texts and output gains
 vol = [i / 2 - 12 for i in range(49)]
 src = src.replace('VOLTABLES', 'voltxt: .int ' + ', '.join(f'sv{i}' for i in range(49)) + '\n'
