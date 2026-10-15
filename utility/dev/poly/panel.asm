@@ -1,32 +1,28 @@
-; Panel controls in the title strip (issues #16, #23, #35), part of section .sxp (assembled after poly.asm):
-;   CHN < 01 >        MIDI channel 1-16 for the selector on the right (not saved, starts at 01)
-;   PRE v < 001 >     program of that channel; a click on the label switches PRE -> MSB -> LSB -> PRE (bank
-;                     select MSB / LSB 000-127; PRE after loading, not saved)
-; Buttons: single click, hold (repeat after 400 ms every 75 ms, panel timer 0x2317), mouse wheel over a control.
-; Positions (dev/gui/mkpreset.py, layout.txt; all x plus panel_dx): buttons 15 x 15 at x 118 / 166 (CHN) and 223 / 281, rows 4-18;
-; readouts (bitmap 105 digits 10 x 13) at 139 (2 digits) and 244 (3 digits), row 5; switchable label 27 x 15 at
-; 193; bitmap 106 holds the pressed buttons at x 160 / 175 and the labels PRE / MSB / LSB at 190 / 217 / 244.
+; Panel controls (issues #16, #23, #35, #42), part of section .sxp (assembled after poly.asm). Since #42 the
+; panel is 24 pixels higher (400 x 114) and has a control row of its own under the title strip:
+;   CHN < 01 >   PRG < 001 >   MSB < 000 >   LSB < 000 >
+; CHN: MIDI channel 1-16 for the three others (not saved, starts at 01); PRG: program of that channel; MSB / LSB:
+; its bank select. A bank value the engine ignores in its current mode (GM: MSB and LSB, GS: LSB) shows "---" and
+; is not sent. Buttons: single click, hold (repeat after 400 ms every 75 ms, panel timer 0x2317), mouse wheel.
+; Positions (bitmap 101 from dev/gui/mkpanel.py): buttons 15 x 15 in row 31, see btn_table; digits (bitmap 105,
+; 10 x 13) in row 32 at 46 (CHN, 2), 137 (PRG), 242 (MSB), 344 (LSB); bitmap 106 holds the pressed left / right
+; button at x 160 / 175 and a dash at 190.
 ; The values come from the part of the selected channel (part_ptr: the synth [engine +8] keeps the parts in the
-; order of channels 10, 1-9, 11-16, records of 0x11C bytes from +0x248: +0 bank MSB, +1 bank LSB, +2 program). A PRE step sends a program change, an MSB / LSB
-; step a bank select (CC 0 / CC 32) followed by the program change of the current program, so the new bank
-; sounds at once (audio thread, panel_prog, called by send_pending; to both engines). A bank select the engine
-; ignores in its current mode (GM: MSB and LSB, GS: LSB) shows as "---" and is not sent.
-; .data: 0x10056E42 pending step (signed), 0x10056E43 held button (1 / 2 = value down / up, 3 / 4 = channel
-; down / up), 0x10056E44 engine, 0x10056E48 / 0x10056E4C SetTimer / KillTimer, 0x10056E50 wheel remainder,
-; 0x10056F00 channel (0-15), 0x10056F01 label (0 = PRE, 1 = MSB, 2 = LSB).
+; order of channels 10, 1-9, 11-16, records of 0x11C bytes from +0x248: +0 bank MSB, +1 bank LSB, +2 program).
+; A PRG step sends a program change, an MSB / LSB step a bank select (CC 0 / CC 32) followed by the program change
+; of the current program, so the new bank sounds at once (audio thread, panel_prog, called by send_pending; to
+; both engines).
+; .data: 0x10056E42 / 0x10056F01 / 0x10056F02 pending PRG / MSB / LSB step (signed), 0x10056E43 held button
+; (1 / 2 PRG down / up, 3 / 4 CHN, 5 / 6 MSB, 7 / 8 LSB), 0x10056E44 engine, 0x10056E48 / 0x10056E4C SetTimer /
+; KillTimer, 0x10056E50 wheel remainder, 0x10056F00 channel (0-15).
 
-; --- panel_prog (audio thread, from send_pending): pending step -> program change / bank select
+; --- panel_prog (audio thread, from send_pending): pending steps -> program change / bank select
 panel_prog:
     pushal
     call pp_base
 pp_base:
     pop ebp
     sub ebp, pp_base
-    xor eax, eax
-    xchg byte ptr [ebp + 0x10056e42], al
-    test al, al
-    je pp_ret
-    movsx ebx, al
     mov ecx, dword ptr [ebp + 0x10056e44]
     test ecx, ecx
     je pp_ret
@@ -35,28 +31,45 @@ pp_base:
     mov eax, edi
     call part_ptr
     mov esi, eax
-    movzx edx, byte ptr [ebp + 0x10056f01]
-    cmp edx, 1
-    je pp_msb
-    ja pp_lsb
+    xor eax, eax
+    xchg byte ptr [ebp + 0x10056e42], al
+    test al, al
+    je pp_m
+    movsx ebx, al
     movzx eax, byte ptr [esi + 2]
     add eax, ebx
     and eax, 0x7f
     call pp_pc
-    jmp pp_ret
-pp_msb:
+pp_m:
+    xor eax, eax
+    xchg byte ptr [ebp + 0x10056f01], al
+    test al, al
+    je pp_l
+    movsx ebx, al
+    mov edx, 1
     mov ecx, dword ptr [ebp + 0x10056e44]
     call bank_ignored
-    jne pp_ret
+    jne pp_l
     movzx eax, byte ptr [esi]
     xor ecx, ecx
-    jmp pp_bank
-pp_lsb:
+    call pp_bank
+pp_l:
+    xor eax, eax
+    xchg byte ptr [ebp + 0x10056f02], al
+    test al, al
+    je pp_ret
+    movsx ebx, al
+    mov edx, 2
     mov ecx, dword ptr [ebp + 0x10056e44]
     call bank_ignored
     jne pp_ret
     movzx eax, byte ptr [esi + 1]
     mov ecx, 32
+    call pp_bank
+pp_ret:
+    popal
+    ret
+; pp_bank: eax = current value, ebx = step, ecx = controller (0 / 32), edi = channel, esi = part
 pp_bank:
     add eax, ebx
     and eax, 0x7f
@@ -69,8 +82,6 @@ pp_bank:
     call both_short
     movzx eax, byte ptr [esi + 2]
     call pp_pc
-pp_ret:
-    popal
     ret
 ; bank_ignored: ecx = engine, edx = 1 (MSB) or 2 (LSB) -> ZF clear (jne) if the engine ignores that bank select
 ; in its current mode: after a GM reset both (synth +0x63B0 = 1; 0 = XG, 2 = GM2), after a GS reset the LSB
@@ -120,6 +131,10 @@ pp_pc:
     call both_short
     ret
 
+; button table: held code, x (row 31, 15 x 15); odd codes step down, even up
+btn_table:
+    .int 3, 25, 4, 73, 1, 116, 2, 174, 5, 221, 6, 279, 7, 323, 8, 381
+
 ; --- panel window (0x10032260, (this, hwnd, msg, wparam, lparam), locals 0x40 + 4 pushes: hwnd [esp+0x58],
 ;     wparam [esp+0x60], lparam [esp+0x64]); WM_LBUTTONDOWN (0x1003246B), WM_LBUTTONUP (0x10032427) and the
 ;     DefWindowProc branch (0x10032407: WM_TIMER, WM_MOUSEWHEEL) jump here
@@ -127,11 +142,10 @@ lbd_hook:
     mov eax, dword ptr [esp + 0x64]
     movsx ecx, ax
     sar eax, 16
-    cmp eax, 4
+    cmp eax, 31
     jl lbd_orig
-    cmp eax, 19
+    cmp eax, 46
     jge lbd_orig
-    xor edx, edx
     call hit_test
     test edx, edx
     je lbd_orig
@@ -141,19 +155,6 @@ lbd_base:
     pop ebp
     sub ebp, lbd_base
     mov ebx, dword ptr [esp + 0x78]
-    cmp edx, 5
-    jne lbd_button
-    movzx eax, byte ptr [ebp + 0x10056f01]
-    inc eax
-    cmp eax, 3
-    jb lbd_mode
-    xor eax, eax
-lbd_mode:
-    mov byte ptr [ebp + 0x10056f01], al
-    push ebx
-    call redraw_values
-    jmp lbd_end
-lbd_button:
     mov byte ptr [ebp + 0x10056e43], dl
     call do_step
     push ebx
@@ -178,47 +179,36 @@ lbd_orig:
     mov al, byte ptr [esi + 0x8c]
     jmp 0x10032475
 
-; hit_test: ecx = x (row already checked) -> edx = 1 / 2 value down / up, 3 / 4 channel down / up, 5 label, 0
+; hit_test: ecx = x (row already checked) -> edx = button code (0 = none)
 hit_test:
     push ebp
+    push esi
     call ht_base
 ht_base:
     pop ebp
     sub ebp, ht_base
-    sub ecx, dword ptr [ebp + panel_dx]
-    pop ebp
+    lea esi, [ebp + btn_table]
     xor edx, edx
-    mov eax, 3
-    cmp ecx, 118
-    jl ht_ret
-    cmp ecx, 133
-    jl ht_hit
-    inc eax
-    cmp ecx, 166
-    jl ht_ret
-    cmp ecx, 181
-    jl ht_hit
-    mov eax, 5
-    cmp ecx, 193
-    jl ht_ret
-    cmp ecx, 220
-    jl ht_hit
-    mov eax, 1
-    cmp ecx, 223
-    jl ht_ret
-    cmp ecx, 238
-    jl ht_hit
-    inc eax
-    cmp ecx, 281
-    jl ht_ret
-    cmp ecx, 296
-    jge ht_ret
-ht_hit:
-    mov edx, eax
+ht_loop:
+    mov eax, dword ptr [esi + edx * 8 + 4]
+    cmp ecx, eax
+    jl ht_next
+    add eax, 15
+    cmp ecx, eax
+    jge ht_next
+    mov edx, dword ptr [esi + edx * 8]
+    jmp ht_ret
+ht_next:
+    inc edx
+    cmp edx, 8
+    jb ht_loop
+    xor edx, edx
 ht_ret:
+    pop esi
+    pop ebp
     ret
 
-; do_step: edx = held button (1-4): value steps go to the audio thread, channel steps act at once
+; do_step: edx = button code: the channel steps at once, PRG / MSB / LSB steps go to the audio thread
 do_step:
     mov al, 1
     test dl, 1
@@ -226,7 +216,17 @@ do_step:
     neg al
 ds_up:
     cmp dl, 3
-    jae ds_chn
+    jb ds_pre
+    cmp dl, 5
+    jb ds_chn
+    cmp dl, 7
+    jb ds_msb
+    lock add byte ptr [ebp + 0x10056f02], al
+    ret
+ds_msb:
+    lock add byte ptr [ebp + 0x10056f01], al
+    ret
+ds_pre:
     lock add byte ptr [ebp + 0x10056e42], al
     ret
 ds_chn:
@@ -315,20 +315,29 @@ dw_base:
     sub ecx, dword ptr [esp]
     sub edx, dword ptr [esp + 4]
     add esp, 16
-    sub ecx, dword ptr [ebp + panel_dx]
-    cmp edx, 4
+    cmp edx, 31
     jl dw_out
-    cmp edx, 19
+    cmp edx, 46
     jge dw_out
-    mov edi, 3
-    cmp ecx, 118
+    mov edi, 4                               ; group by x: CHN 25-87, PRG 116-188, MSB 221-293, LSB 323-395
+    cmp ecx, 25
     jl dw_out
-    cmp ecx, 181
+    cmp ecx, 88
     jl dw_area
-    mov edi, 1
-    cmp ecx, 193
+    mov edi, 2
+    cmp ecx, 116
     jl dw_out
-    cmp ecx, 296
+    cmp ecx, 189
+    jl dw_area
+    mov edi, 6
+    cmp ecx, 221
+    jl dw_out
+    cmp ecx, 294
+    jl dw_area
+    mov edi, 8
+    cmp ecx, 323
+    jl dw_out
+    cmp ecx, 396
     jge dw_out
 dw_area:
     movsx eax, word ptr [esp + 0x82]
@@ -337,8 +346,18 @@ dw_area:
     mov ecx, 120
     idiv ecx
     mov dword ptr [ebp + 0x10056e50], edx
-    cmp edi, 3
+    cmp edi, 4
     je dw_chn
+    cmp edi, 2
+    je dw_pre
+    cmp edi, 6
+    je dw_msb
+    lock add byte ptr [ebp + 0x10056f02], al
+    jmp dw_draw
+dw_msb:
+    lock add byte ptr [ebp + 0x10056f01], al
+    jmp dw_draw
+dw_pre:
     lock add byte ptr [ebp + 0x10056e42], al
     jmp dw_draw
 dw_chn:
@@ -392,7 +411,7 @@ idle_hook:
     mov ecx, dword ptr [ebp + 0x88]
     jmp 0x100320f5
 
-; redraw_values(hwnd): readouts and label through the window DC
+; redraw_values(hwnd): readouts through the window DC
 redraw_values:
     pushal
     call rv_base
@@ -413,7 +432,7 @@ rv_end:
     popal
     ret 4
 
-; draw_buttons(hwnd): the four buttons, pressed (bitmap 106) or normal (bitmap 101)
+; draw_buttons(hwnd): the eight buttons, pressed (bitmap 106) or normal (bitmap 101)
 draw_buttons:
     pushal
     call db_base
@@ -431,22 +450,17 @@ db_base:
     je db_rel
     mov edi, eax
     movzx ebx, byte ptr [ebp + 0x10056e43]
-    mov eax, 3
-    mov ecx, 118
-    mov edx, 160
+    xor edx, edx
+db_loop:
+    push edx
+    lea eax, [ebp + btn_table]
+    mov ecx, dword ptr [eax + edx * 8 + 4]
+    mov eax, dword ptr [eax + edx * 8]
     call db_one
-    mov eax, 4
-    mov ecx, 166
-    mov edx, 175
-    call db_one
-    mov eax, 1
-    mov ecx, 223
-    mov edx, 160
-    call db_one
-    mov eax, 2
-    mov ecx, 281
-    mov edx, 175
-    call db_one
+    pop edx
+    inc edx
+    cmp edx, 8
+    jb db_loop
     push edi
     call dword ptr [ebp + 0x10040024]
 db_rel:
@@ -456,14 +470,17 @@ db_rel:
 db_end:
     popal
     ret 4
-; eax = button, ecx = panel x (without panel_dx), edx = x in bitmap 106; ebx = held button, esi = window DC,
-; edi = memory DC
+; db_one: eax = button code, ecx = x; ebx = held button, esi = window DC, edi = memory DC
 db_one:
-    add ecx, dword ptr [ebp + panel_dx]
     push ecx
-    push edx
     cmp eax, ebx
     jne db_normal
+    mov edx, 175                             ; pressed: bitmap 106, left (odd code) at 160, right at 175
+    test al, 1
+    je db_pr
+    mov edx, 160
+db_pr:
+    push edx
     push dword ptr [ebp + 0x10055338]
     push edi
     call dword ptr [ebp + 0x10040020]
@@ -477,23 +494,22 @@ db_normal:
     push dword ptr [ebp + 0x10055320]
     push edi
     call dword ptr [ebp + 0x10040020]
-    pop edx
     pop ecx
     push 0xcc0020
-    push 4
+    push 31
     push ecx
 db_blit:
     push edi
     push 15
     push 15
-    push 4
+    push 31
     push ecx
     push esi
     call dword ptr [ebp + 0x10040018]
     ret
 
-; draw_prog(hdc): label (bitmap 106), channel (2 digits) and the selected value (3 digits; blank until the
-; audio thread has seen the engine)
+; draw_prog(hdc): channel (2 digits) and program (PRG) / bank MSB / bank LSB (3 digits each) of that channel; blank until
+; the audio thread has seen the engine, "---" for a bank value the engine ignores
 draw_prog:
     pushal
     call dp_base
@@ -506,24 +522,6 @@ dp_base:
     test eax, eax
     je dp_end
     mov edi, eax
-    push dword ptr [ebp + 0x10055338]
-    push edi
-    call dword ptr [ebp + 0x10040020]
-    movzx eax, byte ptr [ebp + 0x10056f01]
-    imul eax, eax, 27
-    add eax, 190
-    push 0xcc0020
-    push 0
-    push eax
-    push edi
-    push 15
-    push 27
-    push 4
-    mov eax, 193
-    add eax, dword ptr [ebp + panel_dx]
-    push eax
-    push esi
-    call dword ptr [ebp + 0x10040018]
     push dword ptr [ebp + 0x1005533c]
     push edi
     call dword ptr [ebp + 0x10040020]
@@ -535,111 +533,149 @@ dp_base:
     mov ecx, 10
     div ecx
     push edx
-    mov ecx, 139
+    mov ecx, 46
     call dp_digit
     pop eax
-    mov ecx, 149
+    mov ecx, 56
     call dp_digit
     mov ecx, dword ptr [ebp + 0x10056e44]
     test ecx, ecx
-    jne dp_value
-    mov eax, 10
-    mov ecx, 244
-    call dp_digit
-    mov eax, 10
-    mov ecx, 254
-    call dp_digit
-    mov eax, 10
-    jmp dp_last
-dp_value:
+    jne dp_values
+    mov ebx, -1
+    mov ecx, 137
+    call dp_three
+    mov ecx, 242
+    call dp_three
+    mov ecx, 344
+    call dp_three
+    jmp dp_rel
+dp_values:
     movzx eax, byte ptr [ebp + 0x10056f00]
     and eax, 15
     call part_ptr
-    lea ecx, [eax - 0x364]
-    movzx edx, byte ptr [ebp + 0x10056f01]
-    cmp edx, 2
-    jbe dp_sel
-    xor edx, edx
-dp_sel:
-    xor eax, eax
-    cmp edx, 0
-    jne dp_bank
-    movzx ebx, byte ptr [ecx + 0x366]
+    mov edx, eax                             ; edx = part (MSB, LSB, program)
+    push edx
+    movzx ebx, byte ptr [edx + 2]
     inc ebx
-    jmp dp_show
-dp_bank:
-    push ecx
+    mov ecx, 137
+    call dp_three
+    pop edx
+    push edx
+    movzx ebx, byte ptr [edx]
+    push edx
+    mov edx, 1
     mov ecx, dword ptr [ebp + 0x10056e44]
     call bank_ignored
-    pop ecx
-    jne dp_dashes
-    movzx ebx, byte ptr [ecx + edx + 0x363]
-dp_show:
-    mov eax, ebx
-    xor edx, edx
-    mov ecx, 100
-    div ecx
-    mov ecx, 244
-    call dp_digit
-    mov eax, ebx
-    xor edx, edx
-    mov ecx, 10
-    div ecx
-    xor edx, edx
-    div ecx
-    mov eax, edx
-    mov ecx, 254
-    call dp_digit
-    mov eax, ebx
-    xor edx, edx
-    mov ecx, 10
-    div ecx
-    mov eax, edx
-dp_last:
-    mov ecx, 264
-    call dp_digit
-    jmp dp_rel
-dp_dashes:
-    push dword ptr [ebp + 0x10055338]
-    push edi
-    call dword ptr [ebp + 0x10040020]
-    mov ecx, 244
-    call dp_dash
-    mov ecx, 254
-    call dp_dash
-    mov ecx, 264
-    call dp_dash
+    pop edx
+    je dp_msb
+    mov ebx, -2
+dp_msb:
+    mov ecx, 242
+    call dp_three
+    pop edx
+    movzx ebx, byte ptr [edx + 1]
+    mov edx, 2
+    mov ecx, dword ptr [ebp + 0x10056e44]
+    call bank_ignored
+    je dp_lsb
+    mov ebx, -2
+dp_lsb:
+    mov ecx, 344
+    call dp_three
 dp_rel:
     push edi
     call dword ptr [ebp + 0x10040024]
 dp_end:
     popal
     ret 4
-; dp_dash: ecx = x; a dash (bitmap 106 at x 271, memory DC edi has bitmap 106 selected)
+; dp_three: ebx = value (-1 blank, -2 dashes), ecx = x of the first digit
+dp_three:
+    cmp ebx, -2
+    je dt3_dash
+    push ecx
+    mov eax, ebx
+    cmp ebx, -1
+    jne dt3_d1
+    mov eax, 10
+    call dp_digit
+    pop ecx
+    push ecx
+    add ecx, 10
+    mov eax, 10
+    call dp_digit
+    pop ecx
+    add ecx, 20
+    mov eax, 10
+    jmp dp_digit
+dt3_d1:
+    xor edx, edx
+    push ecx
+    mov ecx, 100
+    div ecx
+    pop ecx
+    call dp_digit
+    pop ecx
+    push ecx
+    add ecx, 10
+    mov eax, ebx
+    xor edx, edx
+    push ecx
+    mov ecx, 10
+    div ecx
+    xor edx, edx
+    div ecx
+    mov eax, edx
+    pop ecx
+    call dp_digit
+    pop ecx
+    add ecx, 20
+    mov eax, ebx
+    xor edx, edx
+    push ecx
+    mov ecx, 10
+    div ecx
+    mov eax, edx
+    pop ecx
+    jmp dp_digit
+dt3_dash:
+    push ecx                                 ; SelectObject changes ecx
+    push dword ptr [ebp + 0x10055338]
+    push edi
+    call dword ptr [ebp + 0x10040020]
+    pop ecx
+    push ecx
+    call dp_dash
+    pop ecx
+    push ecx
+    add ecx, 10
+    call dp_dash
+    pop ecx
+    add ecx, 20
+    call dp_dash
+    push dword ptr [ebp + 0x1005533c]
+    push edi
+    call dword ptr [ebp + 0x10040020]
+    ret
+; dp_dash: ecx = x; a dash (bitmap 106 at x 190, memory DC edi has bitmap 106 selected)
 dp_dash:
-    mov eax, 271
+    mov eax, 190
     jmp dp_go
-; eax = digit (10 = blank), ecx = x; esi = target DC, edi = memory DC with bitmap 105
+; dp_digit: eax = digit (10 = blank), ecx = x; esi = target DC, edi = memory DC with bitmap 105
 dp_digit:
     imul eax, eax, 10
 dp_go:
-    add ecx, dword ptr [ebp + panel_dx]
     push 0xcc0020
     push 0
     push eax
     push edi
     push 13
     push 10
-    push 5
+    push 32
     push ecx
     push esi
     call dword ptr [ebp + 0x10040018]
     ret
 
-; panel_dx: horizontal offset of both controls, set per model by dllpatch.py (PANEL_DX) so they sit in the
-; middle between the YAMAHA logo and the model name: +8 for S-YXG50 / 80 / 90, +4 for S-YXG100 / 128, 0 for S-YXG1000
-panel_dx:
-    .int 0
 txt_user32:
     .ascii "USER32.dll"
     .byte 0
