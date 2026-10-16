@@ -15,6 +15,10 @@
 ; .data: 0x10056E42 / 0x10056F01 / 0x10056F02 pending PRG / MSB / LSB step (signed), 0x10056E43 held button
 ; (1 / 2 PRG down / up, 3 / 4 CHN, 5 / 6 MSB, 7 / 8 LSB), 0x10056E44 engine, 0x10056E48 / 0x10056E4C SetTimer /
 ; KillTimer, 0x10056E50 wheel remainder, 0x10056F00 channel (0-15).
+; Preview note (issue #43): holding the left mouse button in the POLYPHONY field (x 245-298, y 57-103) plays a
+; note on the selected channel (velocity 100), the mouse wheel over the field changes the pitch (C1-G9, default
+; C4 = 60; a held note is retriggered). .data: 0x10056F04 note XOR 0x3C (zeroed .data = 60), 0x10056F05 note
+; sounding + 1 (0 = none, audio thread), 0x10056F06 mouse button held, 0x10056F07 channel of the sounding note.
 
 ; --- panel_prog (audio thread, from send_pending): pending steps -> program change / bank select
 panel_prog:
@@ -28,6 +32,7 @@ pp_base:
     je pp_ret
     movzx edi, byte ptr [ebp + 0x10056f00]
     and edi, 15
+    call pp_prev
     mov eax, edi
     call part_ptr
     mov esi, eax
@@ -67,6 +72,44 @@ pp_l:
     mov ecx, 32
     call pp_bank
 pp_ret:
+    popal
+    ret
+; pp_prev: the preview note follows the mouse button (held -> note on, released or changed -> note off first);
+; edi = channel, keeps all registers
+pp_prev:
+    pushal
+    xor ebx, ebx
+    cmp byte ptr [ebp + 0x10056f06], 0
+    je pv_cmp
+    movzx ebx, byte ptr [ebp + 0x10056f04]
+    xor ebx, 0x3c
+    inc ebx
+pv_cmp:
+    movzx eax, byte ptr [ebp + 0x10056f05]
+    cmp eax, ebx
+    je pv_ret
+    test eax, eax
+    je pv_on
+    dec eax
+    shl eax, 8
+    or eax, 0x400080
+    movzx ecx, byte ptr [ebp + 0x10056f07]
+    or eax, ecx
+    push eax
+    call both_short
+pv_on:
+    mov byte ptr [ebp + 0x10056f05], bl
+    test ebx, ebx
+    je pv_ret
+    mov eax, edi
+    mov byte ptr [ebp + 0x10056f07], al
+    lea eax, [ebx - 1]
+    shl eax, 8
+    or eax, 0x640090
+    or eax, edi
+    push eax
+    call both_short
+pv_ret:
     popal
     ret
 ; pp_bank: eax = current value, ebx = step, ecx = controller (0 / 32), edi = channel, esi = part
@@ -145,7 +188,7 @@ lbd_hook:
     cmp eax, 31
     jl lbd_orig
     cmp eax, 46
-    jge lbd_orig
+    jge lbd_prev
     call hit_test
     test edx, edx
     je lbd_orig
@@ -178,6 +221,26 @@ lbd_orig:
     mov esi, dword ptr [esp + 0x54]
     mov al, byte ptr [esi + 0x8c]
     jmp 0x10032475
+; preview note: left button in the POLYPHONY field, eax = y, ecx = x
+lbd_prev:
+    cmp eax, 57
+    jl lbd_orig
+    cmp eax, 104
+    jge lbd_orig
+    cmp ecx, 245
+    jl lbd_orig
+    cmp ecx, 299
+    jge lbd_orig
+    pushal
+    call lbp_base
+lbp_base:
+    pop ebp
+    sub ebp, lbp_base
+    mov byte ptr [ebp + 0x10056f06], 1
+    push dword ptr [esp + 0x78]
+    call dword ptr [ebp + 0x100401a4]
+    popal
+    jmp 0x100324b3
 
 ; hit_test: ecx = x (row already checked) -> edx = button code (0 = none)
 hit_test:
@@ -241,6 +304,13 @@ lbu_hook:
 lbu_base:
     pop ebp
     sub ebp, lbu_base
+    cmp byte ptr [ebp + 0x10056f06], 0
+    je lbu_btn
+    mov byte ptr [ebp + 0x10056f06], 0
+    call dword ptr [ebp + 0x100401a0]
+    popal
+    jmp 0x100324b3
+lbu_btn:
     cmp byte ptr [ebp + 0x10056e43], 0
     je lbu_none
     mov byte ptr [ebp + 0x10056e43], 0
@@ -318,7 +388,18 @@ dw_base:
     cmp edx, 31
     jl dw_out
     cmp edx, 46
+    jl dw_ctl
+    cmp edx, 57
+    jl dw_out
+    cmp edx, 104
     jge dw_out
+    cmp ecx, 245
+    jl dw_out
+    cmp ecx, 299
+    jge dw_out
+    mov edi, 10
+    jmp dw_area
+dw_ctl:
     mov edi, 4                               ; group by x: CHN 25-87, PRG 116-188, MSB 221-293, LSB 323-395
     cmp ecx, 25
     jl dw_out
@@ -346,6 +427,8 @@ dw_area:
     mov ecx, 120
     idiv ecx
     mov dword ptr [ebp + 0x10056e50], edx
+    cmp edi, 10
+    je dw_note
     cmp edi, 4
     je dw_chn
     cmp edi, 2
@@ -359,6 +442,22 @@ dw_msb:
     jmp dw_draw
 dw_pre:
     lock add byte ptr [ebp + 0x10056e42], al
+    jmp dw_draw
+dw_note:
+    movsx eax, al
+    movzx edx, byte ptr [ebp + 0x10056f04]
+    xor edx, 0x3c
+    add edx, eax
+    cmp edx, 24
+    jge dw_n1
+    mov edx, 24
+dw_n1:
+    cmp edx, 127
+    jle dw_n2
+    mov edx, 127
+dw_n2:
+    xor edx, 0x3c
+    mov byte ptr [ebp + 0x10056f04], dl
     jmp dw_draw
 dw_chn:
     add al, byte ptr [ebp + 0x10056f00]
