@@ -15,7 +15,7 @@
 ; .data: 0x10056E42 / 0x10056F01 / 0x10056F02 pending PRG / MSB / LSB step (signed), 0x10056E43 held button
 ; (1 / 2 PRG down / up, 3 / 4 CHN, 5 / 6 MSB, 7 / 8 LSB), 0x10056E44 engine, 0x10056E48 / 0x10056E4C SetTimer /
 ; KillTimer, 0x10056E50 wheel remainder, 0x10056F00 channel (0-15).
-; Preview note (issue #43): holding the left mouse button in the POLYPHONY field (x 246-297, y 58-101) plays a
+; Preview note (issue #43): holding the left mouse button in the POLYPHONY field (x 245-298, y 57-103) plays a
 ; note on the selected channel (velocity 100), the mouse wheel over the field changes the pitch (C1-G9, default
 ; C4 = 60; a held note is retriggered). .data: 0x10056F04 note XOR 0x3C (zeroed .data = 60), 0x10056F05 note
 ; sounding + 1 (0 = none, audio thread), 0x10056F06 mouse button held, 0x10056F07 channel of the sounding note.
@@ -223,13 +223,13 @@ lbd_orig:
     jmp 0x10032475
 ; preview note: left button in the POLYPHONY field, eax = y, ecx = x
 lbd_prev:
-    cmp eax, 58
+    cmp eax, 57
     jl lbd_orig
-    cmp eax, 102
+    cmp eax, 104
     jge lbd_orig
-    cmp ecx, 246
+    cmp ecx, 245
     jl lbd_orig
-    cmp ecx, 298
+    cmp ecx, 299
     jge lbd_orig
     pushal
     call lbp_base
@@ -389,13 +389,13 @@ dw_base:
     jl dw_out
     cmp edx, 46
     jl dw_ctl
-    cmp edx, 58
+    cmp edx, 57
     jl dw_out
-    cmp edx, 102
+    cmp edx, 104
     jge dw_out
-    cmp ecx, 246
+    cmp ecx, 245
     jl dw_out
-    cmp ecx, 298
+    cmp ecx, 299
     jge dw_out
     mov edi, 10
     jmp dw_area
