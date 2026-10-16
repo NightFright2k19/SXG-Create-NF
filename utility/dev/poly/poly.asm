@@ -7,7 +7,7 @@
 ;   0x10056EB8  extra voices above 128 (0-128, Settings page / plugin state) XOR 0x80, so the zeroed .data means
 ;               128 extra voices (256 in total, the default); total = 128 + extra
 ;   0x10056EB9  extra voices on the Settings page (before Apply)
-;   0x10056EBC  slot of the plugin being processed (for both_sysex / both_short)
+;   0x10056EBC  unused (was the slot being processed; shared state broke parallel processing)
 ;   0x10056EC0  4 slots x 16 bytes: +0 plugin object A, +4 AEffect of instance B, +8 samples B stays awake,
 ;               +0xC event lists (16 KB: list A at +0, list B at +0x2008)
 ; Instance B is created (VSTPluginMain 0x10003610, own audioMaster stub) in the first block of the plugin and
@@ -41,7 +41,18 @@ pm_base:
     sub ebp, pm_base
     mov eax, dword ptr [esp + 0x24]
     mov esi, dword ptr [eax + 0x40]
-    mov ebx, dword ptr [ebp + 0x10056ebc]
+    lea ebx, [ebp + 0x10056ec0]
+    mov ecx, 4
+pm_find:
+    cmp dword ptr [ebx], esi
+    jne pm_fn
+    cmp dword ptr [ebx + 4], 0
+    jne pm_found
+pm_fn:
+    add ebx, 16
+    loop pm_find
+    xor ebx, ebx
+pm_found:
     test ebx, ebx
     je pm_a
     push edi
@@ -92,42 +103,40 @@ pm_idle:
     jg pm_done
     mov dword ptr [ebx + 8], 0
 pm_done:
-    mov dword ptr [ebp + 0x10056ebc], 0
     popal
     ret
 
-; --- slot_setup (after pushal; effect at [esp+0x28]): slot of plugin A -> 0x10056EBC (0 = none). Creates
-;     instance B when there are extra voices and no B yet.
+; --- slot_setup (after pushal; effect at [esp+0x28]): finds or claims the slot of plugin A and creates its
+;     instance B when there is none yet. Hosts may process several instances in parallel threads, so a free slot
+;     is claimed with lock cmpxchg and nothing about the current slot is kept in shared .data (poly_main and
+;     both_sysex / both_short look their slot up themselves).
 slot_setup:
     call ss_base
 ss_base:
     pop ebp
     sub ebp, ss_base
-    mov dword ptr [ebp + 0x10056ebc], 0
     mov eax, dword ptr [esp + 0x28]
     mov esi, dword ptr [eax + 0x40]
     lea ebx, [ebp + 0x10056ec0]
-    xor edi, edi
     mov ecx, 4
 ss_find:
     cmp dword ptr [ebx], esi
     je ss_have
-    cmp dword ptr [ebx], 0
-    jne ss_next
-    test edi, edi
-    jne ss_next
-    mov edi, ebx
-ss_next:
     add ebx, 16
     loop ss_find
-    test edi, edi
-    je ss_ret
-    mov ebx, edi
-    call create_b
-    cmp dword ptr [ebx + 4], 0
-    je ss_ret
+    lea ebx, [ebp + 0x10056ec0]
+    mov ecx, 4
+ss_claim:
+    xor eax, eax
+    lock cmpxchg dword ptr [ebx], esi
+    je ss_have
+    add ebx, 16
+    loop ss_claim
+    ret
 ss_have:
-    mov dword ptr [ebp + 0x10056ebc], ebx
+    cmp dword ptr [ebx + 4], 0
+    jne ss_ret
+    call create_b
 ss_ret:
     ret
 
@@ -150,9 +159,8 @@ cb_main:
     add esp, 4
     test eax, eax
     je cb_ret
-    mov dword ptr [ebx + 4], eax
     mov dword ptr [ebx + 8], 0
-    mov dword ptr [ebx], esi
+    mov dword ptr [ebx + 4], eax
     xor ecx, ecx
     xor edx, edx
     call disp_b
@@ -439,7 +447,7 @@ bx_base:
     sub ebp, bx_base
     mov edi, dword ptr [ebp + 0x10056e44]
     call bx_one
-    mov ebx, dword ptr [ebp + 0x10056ebc]
+    call slot_of_engine
     test ebx, ebx
     je bx_out
     mov eax, dword ptr [ebx + 4]
@@ -450,6 +458,24 @@ bx_base:
 bx_out:
     popal
     ret 8
+; slot_of_engine: edi = engine of plugin A -> ebx = its slot with an instance B (0 if none)
+slot_of_engine:
+    lea ebx, [ebp + 0x10056ec0]
+    mov ecx, 4
+se_find:
+    mov eax, dword ptr [ebx]
+    test eax, eax
+    je se_next
+    cmp edi, dword ptr [eax + 0xb0]
+    jne se_next
+    cmp dword ptr [ebx + 4], 0
+    jne se_ret
+se_next:
+    add ebx, 16
+    loop se_find
+    xor ebx, ebx
+se_ret:
+    ret
 bx_one:
     push dword ptr [esp + 0x2c]
     push dword ptr [esp + 0x2c]
@@ -465,7 +491,7 @@ bs_base:
     sub ebp, bs_base
     mov edi, dword ptr [ebp + 0x10056e44]
     call bs_one
-    mov ebx, dword ptr [ebp + 0x10056ebc]
+    call slot_of_engine
     test ebx, ebx
     je bs_out
     mov eax, dword ptr [ebx + 4]
@@ -507,9 +533,9 @@ pd_find:
     xor edx, edx
     call disp_b
 pd_free:
-    mov dword ptr [ebx], 0
     mov dword ptr [ebx + 4], 0
     mov dword ptr [ebx + 8], 0
+    mov dword ptr [ebx], 0                   ; last: the slot is free for other instances only now
 pd_next:
     add ebx, 16
     dec edi
