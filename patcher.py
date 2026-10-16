@@ -164,7 +164,7 @@ def main_window() :
         files = [str(p) for _, pr, wv in st['models'] for p in pr + wv]
         args = files + ['--embed', '--out-dir', str(out)]
         me = [sys.executable] if FROZEN else [sys.executable, str(Path(__file__).resolve())]
-        st.update(busy = True, total = len(st['models']), done_n = 0); open_btn.grid_remove()
+        st.update(busy = True, total = len(st['models']), done_n = 0, finished_models = 0, running = st['models'][0][0]); open_btn.grid_remove()
         progress.configure(maximum = len(st['models']), value = 0)
         set_status('converting', model = st['models'][0][0].split(' ')[0], i = 1, total = len(st['models']))
         def work() :
@@ -179,12 +179,20 @@ def main_window() :
     def line(text) :
         write_log(text)
         s = text.strip()
-        if s.startswith('==== ') and s != '==== summary' :
-            names = [m[0] for m in st['models']]
-            hit = [i for i, n in enumerate(names) if s[5:].startswith(n)]
+        names = [m[0] for m in st['models']]
+        # main.py reports "---- <model>: started" when a model's conversion begins and prints its log under
+        # "==== <model>" when it is done (several models are converted at the same time)
+        if s.startswith('---- ') and s.endswith(': started') :
+            hit = [n for n in names if s[5:].startswith(n)]
+            if hit : st['running'] = hit[0]
+        elif s.startswith('==== ') and s != '==== summary' :
+            hit = [n for n in names if s[5:].startswith(n)]
             if hit :
-                i = hit[0]; progress.configure(value = i)
-                set_status('converting', model = names[i].split(' ')[0], i = i + 1, total = len(names))
+                st['finished_models'] = st.get('finished_models', 0) + 1
+                progress.configure(value = st['finished_models'])
+        else : return
+        n = st.get('finished_models', 0)
+        set_status('converting', model = st.get('running', names[0]).split(' ')[0], i = min(n + 1, len(names)), total = len(names))
     def finished(code) :
         st['busy'] = False; progress.configure(value = progress['maximum'])
         log_text = log.get('1.0', 'end')
