@@ -1,9 +1,11 @@
 # SXG-Create-NF Patcher (issue #33): window around main.py for Windows, Linux and macOS.
 # Releases freeze this file with PyInstaller into one executable per system (.github/workflows/build.yml);
 # it runs exactly the same converter as main.py, so both always produce the same plugins.
-# * ROM files and syxg50.dll are searched in the patcher's folder (subfolders included) by CRC32, or in a
-#   folder / DLL the user chooses. 'Patch' converts every complete model with --embed into the folder
-#   'Plugins' next to the patcher (one DLL per model, tables inside).
+# * ROM files are searched in the patcher's folder (subfolders included) by CRC32, or in a folder the user
+#   chooses. 'Patch' converts every complete model with --embed into the folder 'Plugins' next to the patcher
+#   (one DLL per model, tables inside). The plugins are made from the pre-patched templates bundled with the
+#   patcher (utility/template.py, issue #40), so no syxg50.dll is needed; the S-YXG2006LE still needs the
+#   user's SGP2.OLD / SGP2.DLL (sgp2patch.py).
 # * patcher --cli <args> runs main.py's command line (used for the per-model runs).
 # * Language: the system language, else English; a menu at the top right switches it.
 import sys, os, threading, queue, subprocess, locale
@@ -48,19 +50,13 @@ def system_language(known) -> str :
         if code in known : return code
     return 'en'
 
-def scan(folder : Path, dll_choice : Path | None, log) :
-    # -> (models: list of (name, programs, waves)), dll (Path or None), dll_problem (str or None)
-    import dllpatch
+def scan(folder : Path, log) :
+    # -> models: list of (name, programs, waves)
     from utils import calccrc32
     from dataCRCs import ROMLIST
     from dataenum import MU
     files = [p for p in folder.rglob('*') if p.is_file() and p.stat().st_size <= 64 << 20
              and 'Plugins' not in p.relative_to(folder).parts[:1]]
-    dlls = [dll_choice] if dll_choice else [p for p in files if p.suffix.lower() == '.dll' and dllpatch.Is_Dll(p)]
-    dll, problem = None, None
-    for d in dlls :
-        try : dllpatch.Identify(d); dll = d; break
-        except Exception as e : problem = f'{d}: {e}'
     crcs = {}
     for p in files :
         if p.suffix.lower() in ('.dll', '.exe', '.zip', '.7z', '.txt', '.md', '.ini', '.tbl', '.upcm') : continue
@@ -79,10 +75,9 @@ def scan(folder : Path, dll_choice : Path | None, log) :
     sizes = {937984, 716608, 11723868}
     sgp2 = sgp2patch.Find({calccrc32(p) : p for p in files if p.stat().st_size in sizes})
     if sgp2 : models.append((SGP2_NAME, list(sgp2), []))
-    return models, dll, (None if dll else problem)
+    return models
 
 SGP2_NAME = 'S-YXG2006LE'
-def mu_models(models) : return [m for m in models if m[0] != SGP2_NAME]
 
 def main_window() :
     import tkinter as tk
@@ -92,8 +87,8 @@ def main_window() :
     root = tk.Tk()
     root.title(f'SXG-Create-NF Patcher {VERSION}')
     root.resizable(False, False)
-    st = dict(lang = system_language(LANGUAGES), folder = HERE, dll = None, dll_choice = None, models = [],
-              busy = False, details = False, status = ('scanning', {}), problem = None)
+    st = dict(lang = system_language(LANGUAGES), folder = HERE, models = [],
+              busy = False, details = False, status = ('scanning', {}))
     q = queue.Queue()
     def T(key, **kw) : return TEXT[st['lang']].get(key, TEXT['en'][key]).format(**kw)
 
@@ -112,12 +107,6 @@ def main_window() :
     browse = ttk.Button(box); browse.grid(row = 0, column = 2, sticky = 'e')
     rows = ttk.Frame(box); rows.grid(row = 1, column = 0, columnspan = 3, sticky = 'ew', pady = (6, 0))
     rows.columnconfigure(1, weight = 1)
-    dll_row = ttk.Frame(box); dll_row.grid(row = 2, column = 0, columnspan = 3, sticky = 'ew', pady = (2, 0))
-    dll_row.columnconfigure(1, weight = 1)
-    dll_mark = ttk.Label(dll_row, width = 2); dll_mark.grid(row = 0, column = 0, sticky = 'w')
-    dll_name = ttk.Label(dll_row); dll_name.grid(row = 0, column = 1, sticky = 'w', padx = 6)
-    dll_state = ttk.Label(dll_row, foreground = '#555'); dll_state.grid(row = 0, column = 2, sticky = 'e')
-    dll_btn = ttk.Button(dll_row); dll_btn.grid(row = 0, column = 3, sticky = 'e', padx = (8, 0))
     target = ttk.Label(frame, foreground = '#444'); target.grid(row = 3, column = 0, columnspan = 3, sticky = 'w', pady = (8, 0))
     progress = ttk.Progressbar(frame, mode = 'determinate'); progress.grid(row = 4, column = 0, columnspan = 3, sticky = 'ew', pady = (8, 0))
     ttk.Separator(frame).grid(row = 5, column = 0, columnspan = 3, sticky = 'ew', pady = 10)
@@ -131,23 +120,19 @@ def main_window() :
     def plugins_dir() : return HERE / 'Plugins'
     def refresh() :
         intro['text'] = T('intro'); box['text'] = T('files'); folder_lbl['text'] = T('folder') + ':'
-        folder_val['text'] = str(st['folder']); browse['text'] = T('browse'); dll_btn['text'] = T('choose_dll')
+        folder_val['text'] = str(st['folder']); browse['text'] = T('browse')
         for w in rows.winfo_children() : w.destroy()
         for i, (name, _, _) in enumerate(st['models']) :
             ttk.Label(rows, text = '✔', foreground = '#1a7f37', width = 2).grid(row = i, column = 0, sticky = 'w')
             ttk.Label(rows, text = name).grid(row = i, column = 1, sticky = 'w', padx = 6)
             ttk.Label(rows, text = T('complete'), foreground = '#555').grid(row = i, column = 2, sticky = 'e')
-        ok = st['dll'] is not None
-        dll_mark.configure(text = '✔' if ok else '✘', foreground = '#1a7f37' if ok else '#c62828')
-        dll_name['text'] = T('dll'); dll_state['text'] = T('dll_ok') if ok else T('dll_missing')
         target['text'] = T('target') + ':  ' + str(plugins_dir())
         key, kw = st['status']; status['text'] = T(key, **kw)
         det_btn['text'] = T('hide') if st['details'] else T('details')
         patch_btn['text'] = T('patch'); open_btn['text'] = T('open_folder')
-        mu = mu_models(st['models'])
-        can = not st['busy'] and st['models'] and (ok or not mu)
+        can = not st['busy'] and st['models']
         patch_btn.state(['!disabled'] if can else ['disabled'])
-        for b in (browse, dll_btn) : b.state(['disabled'] if st['busy'] else ['!disabled'])
+        browse.state(['disabled'] if st['busy'] else ['!disabled'])
     def set_status(key, **kw) : st['status'] = (key, kw); refresh()
     def write_log(text) :
         log.configure(state = 'normal'); log.insert('end', text); log.see('end'); log.configure(state = 'disabled')
@@ -155,15 +140,13 @@ def main_window() :
     def start_scan() :
         st['busy'] = True; set_status('scanning'); progress.configure(mode = 'indeterminate'); progress.start(12)
         def work() :
-            try : q.put(('scanned',) + scan(st['folder'], st['dll_choice'], None))
-            except Exception as e : q.put(('scanned', [], None, str(e)))
+            try : q.put(('scanned', scan(st['folder'], None)))
+            except Exception : q.put(('scanned', []))
         threading.Thread(target = work, daemon = True).start()
-    def scanned(models, dll, problem) :
+    def scanned(models) :
         progress.stop(); progress.configure(mode = 'determinate', value = 0)
-        st.update(busy = False, models = models, dll = dll, problem = problem)
-        if problem and st['dll_choice'] : write_log(T('dll_bad') + ' ' + problem + '\n')
+        st.update(busy = False, models = models)
         if not models : set_status('no_roms' if st['folder'] != HERE else 'need_roms')
-        elif not dll and mu_models(models) : set_status('need_dll')
         else : set_status('ready', n = len(models))
         if not models and st['folder'] == HERE and not st.get('asked') :
             st['asked'] = True; root.after(200, choose_folder)
@@ -171,10 +154,6 @@ def main_window() :
     def choose_folder() :
         d = filedialog.askdirectory(title = T('pick_folder'), initialdir = str(st['folder']))
         if d : st['folder'] = Path(d); start_scan()
-    def choose_dll() :
-        f = filedialog.askopenfilename(title = T('pick_dll'), initialdir = str(st['folder']),
-                                       filetypes = [('syxg50.dll', '*.dll'), ('*', '*')])
-        if f : st['dll_choice'] = Path(f); start_scan()
     def toggle_details() :
         st['details'] = not st['details']
         if st['details'] : log.grid(row = 8, column = 0, columnspan = 3, sticky = 'nsew', pady = (10, 0))
@@ -183,8 +162,6 @@ def main_window() :
     def start_patch() :
         out = plugins_dir(); out.mkdir(exist_ok = True)
         files = [str(p) for _, pr, wv in st['models'] for p in pr + wv]
-        if st['dll'] is not None and mu_models(st['models']) : files.append(str(st['dll']))
-        else : files = [str(p) for name, pr, wv in st['models'] if name == SGP2_NAME for p in pr]
         args = files + ['--embed', '--out-dir', str(out)]
         me = [sys.executable] if FROZEN else [sys.executable, str(Path(__file__).resolve())]
         st.update(busy = True, total = len(st['models']), done_n = 0); open_btn.grid_remove()
@@ -235,7 +212,7 @@ def main_window() :
         except queue.Empty : pass
         root.after(80, poll)
 
-    browse['command'] = choose_folder; dll_btn['command'] = choose_dll; det_btn['command'] = toggle_details
+    browse['command'] = choose_folder; det_btn['command'] = toggle_details
     patch_btn['command'] = start_patch; open_btn['command'] = open_folder
     lang_box.bind('<<ComboboxSelected>>', pick_lang)
     refresh(); start_scan(); poll()
@@ -244,7 +221,8 @@ def main_window() :
 if __name__ == '__main__' :
     if len(sys.argv) > 1 and sys.argv[1] == '--cli' : run_cli(sys.argv[2:])
     elif len(sys.argv) > 1 and sys.argv[1] == '--selftest' :
-        import dllpatch, convert, dataCRCs, main as _m
+        import dllpatch, convert, dataCRCs, template, main as _m
         assert (Path(dllpatch.__file__).parent / 'bitmaps').is_dir(), 'bitmaps missing'
+        template.check()                                    # every model's template is bundled and empty
         print('selftest ok', VERSION); sys.exit(0)
     else : main_window()

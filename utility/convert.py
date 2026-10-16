@@ -25,6 +25,7 @@ from utils import WriteBytesToFile, WriteTXT, FileExists, Dejumble, Friendly_err
 from pathlib import Path
 import buildtarget
 import dllpatch
+import template
 
 
 def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path], wave_roms : list[Path], dll : Path | None = None) : 
@@ -41,9 +42,6 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             # two of the pad samples can't fit into the 16 bit loop offset, and click when they loop
             # could be cleaned up by hand with a new loop point (with more body offset to fit the whole sample)
             # (and targeting vampire will probably fix it properly) 
-            new_table_version='SXG MU80' # 16 bytes max
-            new_table_name='SXGMU80a1.TBL' # ?? max
-            new_waverom_name='SXGMU80a1.UPCM' # 15 bytes max
   
             table_decoder = decMU80.MU80.From_Bytes(Dejumble(open( program_roms[0], mode='rb').read() ) )
             table_converter=tableconvert.fromMU80(MU.MU80)
@@ -54,9 +52,6 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
 
         case MU.MU50 : 
 
-            new_table_version='SXGMU50a1'
-            new_table_name=f'{new_table_version}.TBL'
-            new_waverom_name='SXGMU50a1.UPCM'
     
             table_decoder = decMU50.MU50.From_Bytes(Dejumble(open( program_roms[0], mode='rb').read() ) )
             table_converter=tableconvert.fromMU50(MU.MU50)
@@ -82,9 +77,6 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             # (but no way will they all fit in S-YXG50, wavedata entries is at 243/255 already)
             # MU90 has also found a new way to break the S-YXG50's bank map table (100% fixable)
 
-            new_table_version='SXG MU90'
-            new_table_name='SXGMU90t.TBL'
-            new_waverom_name='SXGMU90.UPCM'
 
             table_decoder = decMU90.MU90.From_Bytes(Dejumble(open( program_roms[0], mode='rb').read() ) )
             table_converter=tableconvert.fromMU90(MU.MU90)
@@ -99,9 +91,6 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             # * big table layout: ~30 MB of samples and more than 256 multisamples
             buildtarget.SYXG50_BIG = True
             # both voice maps in one table (MU100 Native + MU Basic, switched in the DLL's Settings page)
-            new_table_version='SXG MU100'
-            new_table_name='SXGMU100.TBL'
-            new_waverom_name='SXGMU100.UPCM'
             print('MU100 voice maps: MU100 Native (default) + MU Basic')
 
             prg100 = Dejumble(open( program_roms[0], mode='rb').read() )
@@ -121,10 +110,6 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             # * big table layout: up to ~50 MB of samples and more than 256 multisamples
             buildtarget.SYXG50_BIG = True
             # both voice maps in one table (MU Native + MU Basic, switched in the DLL's Settings page)
-            stem = 'SXGMU1K' if model == 'MU1000' else 'SXGMU128'
-            new_table_version=f'SXG {model}'
-            new_table_name=f'{stem}.TBL'
-            new_waverom_name=f'{stem}.UPCM'
             print(f'{model} voice maps: MU Native (default) + MU Basic')
 
             # program flash: high/low 16-bit halves of a 32-bit bus
@@ -148,12 +133,20 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             raise NotImplementedError()
 
 
-    # big layout: own file names (X = extended)
-    if buildtarget.SYXG50_BIG : 
-        stem = new_table_name.rsplit('.', 1)[0]
-        stem = stem[:-2] if stem.lower().endswith('a1') else stem
-        new_table_name = f'{stem}X.TBL'
-        new_waverom_name = f'{stem}X.UPCM'
+    # file names per model (template.MODEL_FILES, the templates use the same; big layout: X = extended)
+    if mu_src_original.name in template.MODEL_FILES : 
+        new_table_version, new_table_name, new_waverom_name, big = template.MODEL_FILES[mu_src_original.name]
+        assert big == buildtarget.SYXG50_BIG
+
+    # without a syxg50.dll the plugin is made from the model's template (template.py, issue #40)
+    tpl = None
+    if not dll : 
+        try : 
+            tpl = template.Load(mu_src_original.name)
+        except template.TemplateError as e : 
+            Friendly_error(f'template not readable: {e}')
+        if tpl is None and buildtarget.EMBED : 
+            Friendly_error(f'--embed needs a syxg50.dll among the input files or the template {template.Name(mu_src_original.name)}')
 
     table_decoder.waverom = in_wave_bytes     # source samples, for loudness estimates (elemreduce)
     table = decBase.Create_Table(table_decoder, mu_src, table_decoder.data, wave_roms)
@@ -181,23 +174,23 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
 
 
     embed = buildtarget.EMBED
-    if embed and not dll : 
-        Friendly_error('--embed needs a syxg50.dll among the input files')
-        sys.exit(1)
     if not embed : 
         WriteBytesToFile(table_bin, new_table_name, root_dir=out_path)
 
     def patch_dll(embed_files = None) : 
         try : 
-            dllpatch.Write(dll, out_path, new_table_name, buildtarget.SYXG50_BIG, mu_src_original.name, embed_files,
-                           dll_name=buildtarget.DLL_NAME)
-        except (dllpatch.DllPatchError, AssertionError) as e : 
+            if dll : 
+                dllpatch.Write(dll, out_path, new_table_name, buildtarget.SYXG50_BIG, mu_src_original.name, embed_files,
+                               dll_name=buildtarget.DLL_NAME)
+            else : 
+                template.Write(tpl, out_path, new_table_name, mu_src_original.name, embed_files, dll_name=buildtarget.DLL_NAME)
+        except (dllpatch.DllPatchError, template.TemplateError, AssertionError) as e : 
             Friendly_error(f'DLL not patched: {e}')
             sys.exit(1)
 
     # patched DLL + ini: "Enhanced" (24-bit loop length) for the classic layout, "Full" for the big one
     print('S-YXG50 table layout: ' + ('big (MU100 and later)' if buildtarget.SYXG50_BIG else 'classic'))
-    if dll and not embed : 
+    if (dll or tpl) and not embed : 
         patch_dll()
 
 

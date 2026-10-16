@@ -1,4 +1,3 @@
-!source/place_roms_here.txt
 *.spec
 Plugins/
 __pycache__/
@@ -7,3 +6,5 @@ dist/
 output/
 patcher_version.py
 source/*
+!source/place_roms_here.txt
+!source/syxg50.dll

@@ -3,6 +3,9 @@ name: SXG-Create-NF Autobuild
 # Releases contain the patcher (patcher.py frozen with PyInstaller) for Windows, Linux and macOS
 # (Apple Silicon and Intel). The patcher runs the same converter as main.py, so it always produces the
 # same plugins as the Python script, which stays in the repository for development.
+# Plugin templates (issue #40, utility/template.py): the first job makes them again from source/syxg50.dll
+# and commits them to templates/ when they changed; the patchers are built from that commit and carry the
+# templates in one 7z archive (LZMA2, Ultra, largest dictionary), so users no longer need syxg50.dll.
 
 on:
   push:
@@ -12,6 +15,8 @@ on:
       - 'patcher*.py'
       - 'utility/**'
       - '!utility/dev/**'
+      - 'source/syxg50.dll'
+      - 'templates/**'
       - '.github/workflows/build.yml'
   workflow_dispatch:
 
@@ -23,6 +28,56 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  templates:
+    name: Plugin templates
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # the templates' version date is the date of the last commit of their sources
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Make templates
+        run: python utility/template.py --make --check
+
+      - name: Commit changed templates
+        id: commit
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain templates)" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add templates
+            git commit -m 'Update plugin templates' -m "Made from $(git rev-parse --short HEAD) by the Autobuild workflow."
+            git pull --rebase origin main
+            git push origin HEAD:main
+          elif [ -n "$(git status --porcelain templates)" ]; then
+            echo "::warning::templates changed, not committed outside main"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Pack templates (7z, LZMA2, Ultra)
+        run: |
+          set -euo pipefail
+          # -md: largest LZMA2 dictionary (7-Zip reduces it to the size of the data); -mf=off: no BCJ filter
+          # (utility/template.py reads LZMA2 only); -mhc=off and no time stamps: plain header, same archive for same templates
+          7z a -t7z -m0=LZMA2 -mx=9 -mfb=273 -md=1536m -ms=on -mf=off -mhc=off -mtm=off -mtc=off -mta=off templates.7z ./templates/*.tpl
+          ls -la templates templates.7z
+
+      - name: Upload templates
+        uses: actions/upload-artifact@v4
+        with:
+          name: templates
+          path: templates.7z
+          if-no-files-found: error
+
   version:
     name: Determine release number
     runs-on: ubuntu-24.04
@@ -54,7 +109,7 @@ jobs:
 
   build:
     name: Patcher ${{ matrix.label }}
-    needs: version
+    needs: [version, templates]
     strategy:
       fail-fast: true
       matrix:
@@ -70,6 +125,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.templates.outputs.sha }}
+
+      - name: Download templates
+        uses: actions/download-artifact@v4
+        with:
+          name: templates
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -91,6 +153,7 @@ jobs:
             --name SXG-Create-NF-Patcher \
             --paths utility --paths . \
             --add-data "utility/bitmaps:bitmaps" \
+            --add-data "templates.7z:." \
             --hidden-import main --hidden-import patcher_i18n --hidden-import patcher_version $HIDDEN \
             patcher.py
           ls -la dist
@@ -123,7 +186,7 @@ jobs:
 
   release:
     name: Create release
-    needs: [version, build]
+    needs: [version, templates, build]
     runs-on: ubuntu-24.04
     steps:
       - name: Download patchers
@@ -139,6 +202,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ needs.version.outputs.tag }}
+          commit: ${{ needs.templates.outputs.sha }}
           name: Autobuild r${{ needs.version.outputs.revision }}
           prerelease: true
           artifacts: assets/*
@@ -156,7 +220,8 @@ jobs:
             - macOS: `...-macos-applesilicon.zip` (M1 and newer) or `...-macos-intel.zip` (extract, then open the app)
 
             **INSTRUCTIONS**
-            - Put the patcher in a folder together with your MU ROM files and the original `syxg50.dll` (626,688 bytes), and/or the three S-YXG2006LE files; subfolders are fine. The patcher can also be pointed to another folder or to the DLL.
+            - Put the patcher in a folder together with your MU ROM files and/or the three S-YXG2006LE files; subfolders are fine. The patcher can also be pointed to another folder.
+            - `syxg50.dll` is **no longer needed**: the patcher carries ready-patched plugin templates (without any ROM data) and only writes the converted ROMs into them. The S-YXG2006LE still needs your own `SGP2.OLD` or `SGP2.DLL`.
             - Start it, check the list of found models, click **Patch**. MU models and the S-YXG2006LE are built in the same run; each also works on its own.
             - The plugins (one DLL per model, tables inside; `syxg2006le.dll` for the S-YXG2006LE) end up in the folder `Plugins` next to the patcher.
             - The files are not signed: Windows SmartScreen and macOS Gatekeeper warn on the first start. See README.md ("Patcher") for how to start it anyway.

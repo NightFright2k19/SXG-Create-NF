@@ -22,7 +22,7 @@
 #     * table size limits: 32-bit sample addresses (wave file > 64 MB; drum keys: 30 bits), 768 multisamples,
 #       32-bit voice and ext voice offsets. The sound engine (incl. MMX/SSE) is unchanged.
 
-import zlib, struct
+import zlib, struct, sys
 from pathlib import Path
 
 
@@ -383,14 +383,15 @@ def pe_checksum_offset(data : bytes) -> int :
 def pe_checksum(data : bytes) -> int :
     # the standard PE checksum (same as Windows' CheckSumMappedFile)
     off = pe_checksum_offset(data)
+    # 16-bit words added with end-around carry: the same as their plain sum folded at the end
+    import array
     buf = bytearray(data)
     buf[off:off+4] = b'\0\0\0\0'
     if len(buf) % 2 : buf += b'\0'
-    s = 0
-    for (w,) in struct.iter_unpack('<H', buf) :
-        s += w
-        s = (s & 0xFFFF) + (s >> 16)
-    s = (s & 0xFFFF) + (s >> 16)
+    words = array.array('H', bytes(buf))
+    if sys.byteorder != 'little' : words.byteswap()
+    s = sum(words)
+    while s >> 16 : s = (s & 0xFFFF) + (s >> 16)
     return (s + len(data)) & 0xFFFFFFFF
 
 def text_virtual_size(data : bytearray, minimum : int) :
@@ -1090,7 +1091,7 @@ def Identify(path : Path) -> str :
     return f'{path.name}, not an original syxg50.dll (CRC32 {c}), checking patch by patch'
 
 def Patch(path : Path, full : bool, model : str | None = None, table_name : str | None = None,
-          embed : list[tuple[str, bytes]] | None = None) -> bytes :
+          embed : list[tuple[str, bytes]] | None = None, today = None) -> bytes :
     # full = False: "Enhanced" (classic table layout), True: "Full" (big table layout)
     data = bytearray(path.read_bytes())
     Identify(path)
@@ -1110,7 +1111,7 @@ def Patch(path : Path, full : bool, model : str | None = None, table_name : str 
     apply_bitmaps(data, model)
     apply_gui(data, full, model)
     apply_names(data, model, table_name)
-    apply_version_date(data)
+    apply_version_date(data, today)
     apply_poly(data, model)
     if embed :
         data = embed_files(data, embed)
