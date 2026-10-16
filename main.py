@@ -21,12 +21,14 @@ import sgp2patch
 # (syxg80.dll, syxg90.dll, syxg100.dll, syxg128.dll, syxg1000.dll; MU50: syxgmu50.dll).
 # The table layout follows the model: classic for MU50 / MU80 / MU90, big for MU100 / MU128 / MU1000.
 # With a DLL, a patched copy ("Enhanced" or "Full", see dllpatch.py) and a matching <name>.ini are
-# written next to the table. Everything is written to the folder 'output' next to this script.
+# written next to the table; without one, the plugin is made from the model's template (templates/*.tpl,
+# see template.py), which is what the patcher does. Everything is written to the folder 'output' next to
+# this script. A checkout has source/syxg50.dll, so main.py patches it unless the ROMs are given with --out-dir.
 
 # * only one target for now
 BUILD_TARGET = MU.SYXG50
 
-# ROM files (and the original syxg50.dll) are taken from a folder "source" next to this script
+# ROM files (and the original syxg50.dll, part of the repository) are taken from a folder "source" next to this script
 # (subfolders included); converted files go to "output"
 SOURCE_DIR = HERE / 'source'
 OUTPUT_DIR = HERE / 'output'

@@ -8,6 +8,7 @@ Converts the ROM sets of Yamaha MU-series tone generators (MU50 to MU1000) into 
 
 - [Changes compared to the original SXG-Create](#changes-compared-to-the-original-sxg-create)
 - [Patcher](#patcher)
+- [Plugin templates](#plugin-templates)
 - [Quick start (Python script)](#quick-start-python-script)
 - [Folder layout](#folder-layout)
 - [Command line parameters](#command-line-parameters)
@@ -90,7 +91,8 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 ### Usage and command line
 
 - **`--embed`:** table and wave data are stored inside the patched DLL (old `SXGBIN41.TBL` / `SXGWAVE4.TBL` removed), no ini needed.
-- **`source` folder:** ROMs and the original `syxg50.dll` are read from `source` next to `main.py`, including subfolders.
+- **`source` folder:** ROMs and the original `syxg50.dll` are read from `source` next to `main.py`, including subfolders. `syxg50.dll` is part of the repository (with the permission of its author, Evgeny Vrublevsky).
+- **Plugin templates** (issue #40): the patcher no longer needs `syxg50.dll`. It carries one ready-patched plugin per model without any ROM data (`templates/*.tpl`) and only writes the converted table and wave file into it (see [Plugin templates](#plugin-templates)). The S-YXG2006LE is patched from the user's `SGP2.OLD` / `SGP2.DLL` as before.
 - **Several models in one run:** all complete ROM sets found are converted, DLLs/inis named `syxg80.dll` ... `syxg1000.dll` (MU50: `syxgmu50.dll`); MU2000 is skipped when the MU1000 set is there.
 - **Wildcards** (`*.bin`) are expanded by the script; `SXG_NO_PAUSE=1` skips the final key press.
 - **`output` folder:** all generated files are written to `output` next to `main.py`.
@@ -117,8 +119,8 @@ The easiest way: download the patcher for your system from the latest **Autobuil
 | macOS (M1 and newer) | `SXG-Create-NF-Patcher-rN-macos-applesilicon.zip` | extract, then open `SXG-Create-NF-Patcher.app` |
 | macOS (Intel) | `SXG-Create-NF-Patcher-rN-macos-intel.zip` | extract, then open `SXG-Create-NF-Patcher.app` |
 
-1. Put the patcher in a folder together with your MU ROM files and the original `syxg50.dll` (626,688 bytes), and/or the three files of Yamaha's **S-YXG2006LE** (`SGP2.OLD` or `SGP2.DLL`, `sxgbnw6l.tbl`, `sxgdat6l.tbl`). Subfolders are fine, e.g. one per model; file names don't matter (detection by CRC32).
-2. Start the patcher. It lists every complete ROM set it found, the S-YXG2006LE (one line, when all three files are there) and the DLL. MU models need `syxg50.dll`; the S-YXG2006LE does not. If it finds no ROMs, it asks for the folder; **Choose folder…** and **Choose DLL…** point it to other places at any time.
+1. Put the patcher in a folder together with your MU ROM files, and/or the three files of Yamaha's **S-YXG2006LE** (`SGP2.OLD` or `SGP2.DLL`, `sxgbnw6l.tbl`, `sxgdat6l.tbl`). Subfolders are fine, e.g. one per model; file names don't matter (detection by CRC32). **`syxg50.dll` is no longer needed:** the patcher carries ready-patched plugin templates (see [Plugin templates](#plugin-templates)).
+2. Start the patcher. It lists every complete ROM set it found and the S-YXG2006LE (one line, when all three files are there). If it finds no ROMs, it asks for the folder; **Choose folder…** points it to another place at any time.
 3. Click **Patch**. All listed models are converted, one after another, and the S-YXG2006LE is patched in the same run. The plugins end up in the folder **`Plugins`** next to the patcher: one DLL per model (`syxgmu50.dll`, `syxg80.dll` ... `syxg1000.dll`) with the tables inside (`--embed`), no ini or table files needed, and `syxg2006le.dll` with its two tables inside (see [S-YXG2006LE](#s-yxg2006le) for its parameters). **Open folder** shows them.
 
 - **Language:** the system language if available, else English; the menu at the top right switches between 29 languages, each shown in its own name and sorted alphabetically by the Latin spelling of that name: العربية, Bahasa Indonesia, বাংলা, Čeština, Dansk, Deutsch, Ελληνικά, English, Español, فارسی, Français, 한국어, हिन्दी, Italiano, עברית, Magyar, Nederlands, 日本語, Polski, Português, Română, Русский, Српски, Svenska, ไทย, Tiếng Việt, Türkçe, Українська, 中文.
@@ -127,7 +129,20 @@ The easiest way: download the patcher for your system from the latest **Autobuil
   - **Windows:** SmartScreen shows "Windows protected your PC". Click **More info**, then **Run anyway**.
   - **macOS:** Gatekeeper says the app "cannot be opened because the developer cannot be verified" (or that it is damaged). Right-click (Control-click) the app, choose **Open**, then **Open** again; on macOS 15 and newer: try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Alternatively, in Terminal: `xattr -dr com.apple.quarantine SXG-Create-NF-Patcher.app`.
   - **Linux:** if the file is not executable after extracting: `chmod +x SXG-Create-NF-Patcher`. The window needs a desktop session (X11 or Wayland with XWayland).
-- **Development:** the patcher is `patcher.py` (texts in `patcher_i18n.py`); it imports `main.py` and the modules in `utility` unchanged and runs each model through `main.py`'s command line (`patcher --cli <arguments>`). The release workflow freezes it with PyInstaller on each system. `python patcher.py` starts it from the repository (Python 3.12 with Tk).
+- **Development:** the patcher is `patcher.py` (texts in `patcher_i18n.py`); it imports `main.py` and the modules in `utility` unchanged and runs each model through `main.py`'s command line (`patcher --cli <arguments>`, without a DLL, so the plugins come from the templates). The release workflow freezes it with PyInstaller on each system, with the templates in one 7z archive. `python patcher.py` starts it from the repository (Python 3.12 with Tk) and uses `templates/`. `patcher --selftest` checks that every template is there and empty.
+
+---
+
+## Plugin templates
+
+A template is the finished plugin of one model without ROM data: `syxg50.dll` with every patch of [DLL patching](#dll-patching) for that model (code, panel bitmaps, Setup page, names, version info), plus the table and wave file as embedded resources, exactly as `--embed` stores them, but filled with zeroes. On its own a template is useless. The patcher converts your ROMs and writes the table and wave file into the two placeholders; the result is the same plugin a run with `syxg50.dll` and `--embed` gives (byte for byte, apart from the date in the version info, see below).
+
+- **Files:** `templates/syxgmu50.tpl`, `syxg80.tpl`, `syxg90.tpl`, `syxg100.tpl`, `syxg128.tpl`, `syxg1000.tpl`, named after the plugins. `templates/templates.json` holds the sizes of the two placeholders per model.
+- **No ROM data:** the placeholders contain only zeroes; `python utility/template.py --check` (and `patcher --selftest`) verifies that.
+- **Made by the workflow:** `utility/template.py --make` builds them from `source/syxg50.dll`. The Autobuild workflow runs it on every push to `main` that touches the converter, commits the templates to `templates/` when they changed and builds the patchers from that commit, so every Autobuild release carries templates that match its code. In the patcher they are one 7z archive (LZMA2, Ultra, largest dictionary; mostly zeroes, so it is small), read with Python's own `lzma`, so nothing has to be installed.
+- **Version date:** the version info of a plugin shows the date of the last commit that changed the templates' sources (`syxg50.dll`, `dllpatch.py`, `template.py`, the bitmaps, `templates.json`), no longer the day of the conversion. The same commit always gives the same templates.
+- **Placeholder sizes:** a converted table or wave file that does not have the size of its placeholder (another ROM version of a model, or a converter change since the sizes were measured) still works: the resources are rebuilt around it, which only takes a little longer, and the log says so. `python utility/template.py --measure output` takes the sizes from plugins built with `--embed` and updates `templates.json`.
+- **S-YXG2006LE:** no template. Yamaha's `sgp2.dll` is not part of the repository; the patcher patches the user's `SGP2.OLD` / `SGP2.DLL` as before.
 
 ---
 
@@ -135,7 +150,7 @@ The easiest way: download the patcher for your system from the latest **Autobuil
 
 For development, or without the patcher:
 1. Download the latest **Autobuild** release (or clone the repository) and extract it.
-2. Put your MU ROM files and the original `syxg50.dll` (626,688 bytes) into the `source` folder. Subfolders are fine, e.g. one per model.
+2. Put your MU ROM files into the `source` folder. Subfolders are fine, e.g. one per model. The original `syxg50.dll` (626,688 bytes) is already there (part of the repository).
 3. Run:
 
 ```
@@ -146,7 +161,7 @@ The converted files end up in the `output` folder.
 
 - **Inputs:** ROM files in any order. SXG-Create detects the model from the CRC32 of the files, so the file names don't matter. Files larger than 64 MB in `source` are ignored.
 - **Command line:** ROM files and a DLL can also be given on the command line (or dropped onto `main.py`); they are used together with the contents of `source`.
-- **DLL:** one `syxg50.dll` under any file name. SXG-Create writes a patched copy plus a matching `.ini` (or, with `--embed`, a DLL that contains the table). Without a DLL, only the table and wave file are written.
+- **DLL:** one `syxg50.dll` under any file name. SXG-Create writes a patched copy plus a matching `.ini` (or, with `--embed`, a DLL that contains the table). Without a DLL (ROMs given on the command line with `--out-dir`, or `source/syxg50.dll` removed), the plugin is made from the model's [template](#plugin-templates), as the patcher does; without a template, only the table and wave file are written.
 - **Output folder:** always `output` next to `main.py` (created if needed).
 - **Requirements:** Python 3.12 or newer. No extra packages.
 
@@ -154,7 +169,7 @@ The converted files end up in the `output` folder.
 
 ```
 source/mu1000-v2.01-h.bin  source/mu1000-v2.01-l.bin  source/xv364a0.ic49  source/xv365a0.ic50
-source/xw848a0.ic53  source/xw849a0.ic54  source/syxg50.dll
+source/xw848a0.ic53  source/xw849a0.ic54  source/syxg50.dll (part of the repository)
 
 python main.py
 ```
@@ -189,7 +204,8 @@ This writes `syxgmu50.dll`, `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.
 ```
 main.py              the converter (run this)
 README.md, LICENSE
-source/              your ROM files and the original syxg50.dll (not part of the repository)
+source/              your ROM files; the original syxg50.dll (part of the repository, the templates are made from it)
+templates/           plugin templates, one per model, without ROM data (made by the Autobuild workflow)
 output/              generated tables, wave files, patched DLLs and inis (created on the first run)
 utility/             the converter modules (decoders, table converters, table writer, sample conversion, DLL patcher)
 utility/bitmaps/     panel pictures for the patched DLLs
@@ -197,7 +213,7 @@ utility/dev/         development tools, not needed for a conversion and not in t
 .github/workflows/   autobuild release
 ```
 
-**Autobuild:** every push to `main` that changes `main.py` or `utility` (except `utility/dev`) creates a pre-release `autobuild-rN` with `sxg_create_nf_autobuild_rN.zip`. It contains `main.py`, `README.md`, `LICENSE`, `source/place_roms_here.txt` and the `utility` modules and bitmaps. Older autobuilds are deleted. The workflow can also be started by hand (Actions, "Run workflow").
+**Autobuild:** every push to `main` that changes `main.py`, the patcher, `utility` (except `utility/dev`), `source/syxg50.dll` or `templates` makes the [templates](#plugin-templates) again (and commits them when they changed), then creates a pre-release `autobuild-rN` with the patchers for Windows, Linux and macOS, built from that commit. Older autobuilds are deleted. The workflow can also be started by hand (Actions, "Run workflow").
 
 ---
 
@@ -206,8 +222,8 @@ utility/dev/         development tools, not needed for a conversion and not in t
 | Parameter | Meaning |
 |---|---|
 | `<ROM files>` | Optional. Program ROM(s) and wave ROMs of one or more models, in any order (see [Supported models](#supported-models-and-rom-sets)), in addition to the `source` folder. Wildcards are allowed. |
-| `<dll>` | Optional. A `syxg50.dll`, under any file name (`syxg50.dll`, `mu800.dll`, ...). It is recognised by its content, not its name. A DLL in the `source` folder is used if none is given on the command line. See [DLL patching](#dll-patching). |
-| `--embed` | **New.** Puts table and wave file into the patched DLL as resources instead of writing them as files (see [Embedded tables](#embedded-tables---embed)). Needs a DLL. |
+| `<dll>` | Optional. A `syxg50.dll`, under any file name (`syxg50.dll`, `mu800.dll`, ...). It is recognised by its content, not its name. A DLL in the `source` folder is used if none is given on the command line. See [DLL patching](#dll-patching). Without one, the plugin is made from the model's [template](#plugin-templates). |
+| `--embed` | **New.** Puts table and wave file into the patched DLL as resources instead of writing them as files (see [Embedded tables](#embedded-tables---embed)). Needs a DLL or the model's template. |
 
 The table layout and the DLL patch level are chosen automatically from the detected model. `--out-dir` and `--dll-name` exist as well, but only for the per-model runs that `main.py` starts itself in a multi-model conversion.
 
@@ -700,7 +716,7 @@ Modules used by the conversion (in `utility`): decoders `decBase.py` (incl. tabl
 - **Soundshock** – original [SXG-Create](https://github.com/Soundshock/SXG-Create)
 - **tarboh** – [S-MU2000](https://github.com/tarboh/S-MU2000), the reference for the sound comparisons
 - **TaleTN** – [MUTable](https://github.com/TaleTN/MUTable), MU series data table documentation (MU50 ext drum voice table, MU2000 scaling tables)
-- **VEG** – [S-YXG50](https://veg.by/en/projects/syxg50/) (`syxg50.dll`)
+- **VEG** (Evgeny Vrublevsky) – [S-YXG50](https://veg.by/en/projects/syxg50/) (`syxg50.dll`, included in this repository with the author's permission)
 - **Yamaha** – MU series tone generators and the S-YXG50 sound engine
 
 DPCM delta table, DPCM limits table, and delta format decoding code based on MAME, copyright (c) MAME contributors, and related contributions by TaleTN, tarboh, and hockinsk under the BSD-3 license.

@@ -1,2 +1,3 @@
-Place your MU ROM files and the original syxg50.dll (626,688 bytes) here.
-Subfolders are searched as well. See README.md for the supported ROM sets.
+Place your MU ROM files here (subfolders are searched as well). See README.md for the supported ROM sets.
+syxg50.dll (S-YXG50, 626,688 bytes) is part of the repository, with the permission of its author, Evgeny Vrublevsky:
+the plugin templates (templates/) are made from it.
