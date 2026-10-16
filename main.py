@@ -57,6 +57,39 @@ def take_option(args : list[str], option : str) -> tuple[str | None, list[str]] 
             return args[i + 1], args[:i] + args[i + 2:]
     return None, args
 
+PER_JOB_MEMORY = 1 << 30        # a conversion needs up to 0.6 GB (MU1000); room for a safety margin
+
+def Available_Memory() -> int | None :
+    # free physical memory in bytes, None if unknown
+    try :
+        if sys.platform == 'win32' :
+            import ctypes
+            class MEM(ctypes.Structure) :
+                _fields_ = [('len', ctypes.c_ulong), ('load', ctypes.c_ulong), ('total', ctypes.c_ulonglong),
+                            ('avail', ctypes.c_ulonglong), ('tpf', ctypes.c_ulonglong), ('apf', ctypes.c_ulonglong),
+                            ('tv', ctypes.c_ulonglong), ('av', ctypes.c_ulonglong), ('ave', ctypes.c_ulonglong)]
+            m = MEM(); m.len = ctypes.sizeof(MEM)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+            return m.avail
+        if sys.platform == 'darwin' :
+            import subprocess
+            return int(subprocess.run(['sysctl', '-n', 'hw.memsize'], capture_output=True, text=True, timeout=5).stdout) // 2
+        for line in open('/proc/meminfo') :
+            if line.startswith('MemAvailable:') : return int(line.split()[1]) * 1024
+    except Exception : pass
+    return None
+
+def Jobs(requested : str | None, models : int) -> int :
+    # number of models converted at the same time: --jobs N, else the CPU cores, limited by free memory
+    if requested is not None :
+        try : return max(1, min(int(requested), models))
+        except ValueError : print(f'note: --jobs {requested} is not a number, ignored')
+    import os
+    n = os.cpu_count() or 1
+    mem = Available_Memory()
+    if mem is not None : n = min(n, max(1, mem // PER_JOB_MEMORY))
+    return max(1, min(n, models))
+
 def main() :
 
     files : list[Path] = []
@@ -72,6 +105,8 @@ def main() :
     out_dir, args = take_option(args, '--out-dir')
     buildtarget.DLL_NAME, args = take_option(args, '--dll-name')
     single_run = out_dir is not None
+    # --jobs N: models converted at the same time (default: automatic, 1 = one after another)
+    jobs_arg, args = take_option(args, '--jobs')
 
     # wildcards (*.bin): the Windows command line passes them unexpanded, so they are expanded here;
     # a pattern without matches is skipped (the ROMs may all be in the source folder)
@@ -194,22 +229,43 @@ def main() :
         Friendly_error('End of Code', 0)
 
     # * several models: each one is converted in a run of its own (a separate process, the converter keeps
-    # per-model state in module globals); the DLLs and inis are named after the model (syxg80.dll ...)
+    # per-model state in module globals); the DLLs and inis are named after the model (syxg80.dll ...).
+    # The runs go in parallel on multi-core CPUs (--jobs N, default: as many as cores and memory allow);
+    # the log of each model is printed in one piece when it is done.
     import subprocess, os
     print(f'{len(decodable)} models detected: {", ".join(t.name for t in decodable)}')
-    results = []
-    for table_type in decodable :
+    out_folder = output_folder([])
+    # the patcher (patcher.py, frozen into one executable) runs this script with '--cli'
+    me = [sys.executable, '--cli'] if getattr(sys, 'frozen', False) else [sys.executable, str(Path(__file__).resolve())]
+    def command(table_type : TableIn) -> list[str] :
         paths_program, paths_waves = table_type.Order_Pathlists(crcs_paths)
-        model = table_type.source.name
-        # the patcher (patcher.py, frozen into one executable) runs this script with '--cli'
-        me = [sys.executable, '--cli'] if getattr(sys, 'frozen', False) else [sys.executable, str(Path(__file__).resolve())]
         cmd = me + [str(p) for p in paths_program + paths_waves]
-        if dll : cmd += [str(dll), '--dll-name', dllpatch.Model_Dll_Name(model)]
-        cmd += ['--out-dir', output_folder(paths_program)]
+        if dll : cmd += [str(dll), '--dll-name', dllpatch.Model_Dll_Name(table_type.source.name)]
+        cmd += ['--out-dir', out_folder]
         if buildtarget.EMBED : cmd.append('--embed')
-        print(f'\n==== {table_type.name} ' + '=' * max(0, 60 - len(table_type.name)), flush=True)
-        r = subprocess.run(cmd, env=dict(os.environ, SXG_NO_PAUSE='1'), stdin=subprocess.DEVNULL)
-        results.append((table_type.name, r.returncode == 0))
+        return cmd
+    env = dict(os.environ, SXG_NO_PAUSE='1', PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
+    def header(table_type : TableIn) -> str :
+        return f'\n==== {table_type.name} ' + '=' * max(0, 60 - len(table_type.name))
+    jobs = Jobs(jobs_arg, len(decodable))
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    if jobs > 1 : print(f'converting {jobs} models at a time ({os.cpu_count()} CPU cores)')
+    lock = threading.Lock()
+    def run(table_type : TableIn) -> tuple[str, bool] :
+        with lock : print(f'---- {table_type.name}: started', flush=True)
+        r = subprocess.run(command(table_type), env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
+        with lock : print(header(table_type) + '\n' + r.stdout, flush=True)
+        return table_type.name, r.returncode == 0
+    # the biggest ROM sets first, so the longest run does not start last
+    def size(t : TableIn) -> int :
+        pr, wv = t.Order_Pathlists(crcs_paths)
+        return sum(p.stat().st_size for p in pr + wv)
+    order = sorted(decodable, key=size, reverse=True)
+    with ThreadPoolExecutor(max_workers=jobs) as pool :
+        done = dict(zip([t.name for t in order], pool.map(run, order)))
+    results = [done[t.name] for t in decodable]
     print('\n==== summary')
     for name, ok in results :
         print(f'  {name}: ' + ('done' if ok else 'FAILED'))
