@@ -16,7 +16,7 @@
 ; (1 / 2 PRG down / up, 3 / 4 CHN, 5 / 6 MSB, 7 / 8 LSB), 0x10056E44 engine, 0x10056E48 / 0x10056E4C SetTimer /
 ; KillTimer, 0x10056E50 wheel remainder, 0x10056F00 channel (0-15).
 ; Preview note (issue #43): holding the left mouse button in the POLYPHONY field (x 245-298, y 57-103) plays a
-; note on the selected channel (velocity 100), the mouse wheel over the field changes the pitch (C1-G9, default
+; note on the selected channel (velocity 100, engine A only, issue #46), the mouse wheel over the field changes the pitch (C1-G9, default
 ; C4 = 60; a held note is retriggered). .data: 0x10056F04 note XOR 0x3C (zeroed .data = 60), 0x10056F05 note
 ; sounding + 1 (0 = none, audio thread), 0x10056F06 mouse button held, 0x10056F07 channel of the sounding note.
 
@@ -95,8 +95,7 @@ pv_cmp:
     or eax, 0x400080
     movzx ecx, byte ptr [ebp + 0x10056f07]
     or eax, ecx
-    push eax
-    call both_short
+    call pv_send
 pv_on:
     mov byte ptr [ebp + 0x10056f05], bl
     test ebx, ebx
@@ -107,10 +106,18 @@ pv_on:
     shl eax, 8
     or eax, 0x640090
     or eax, edi
-    push eax
-    call both_short
+    call pv_send
 pv_ret:
     popal
+    ret
+; pv_send: eax = message, to engine A only (short-message entry, vtable +8). Engine B renders only while the
+; dispatcher has given it notes, so a note sent to it here would keep a voice and count in POLYPHONY (issue #46)
+pv_send:
+    mov ecx, dword ptr [ebp + 0x10056e44]
+    push eax
+    push ecx
+    mov edx, dword ptr [ecx]
+    call dword ptr [edx + 8]
     ret
 ; pp_bank: eax = current value, ebx = step, ecx = controller (0 / 32), edi = channel, esi = part
 pp_bank:
