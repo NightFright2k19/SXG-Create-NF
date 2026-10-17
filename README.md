@@ -204,6 +204,7 @@ This writes `syxgmu50.dll`, `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.
 ```
 main.py              the converter (run this)
 README.md, LICENSE
+CLAUDE.md            project rules and a short code map for Claude (Claude Code)
 source/              your ROM files; the original syxg50.dll (part of the repository, the templates are made from it)
 templates/           plugin templates, one per model, without ROM data (made by the Autobuild workflow)
 output/              generated tables, wave files, patched DLLs and inis (created on the first run)
