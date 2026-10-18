@@ -104,13 +104,13 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **MT-32 button**: Send Reset also has **MT-32**, which sends Falcosoft's GS MT-32 sequence once (GS reset, MT-32 bank and programs per part), so MT-32 titles without custom sounds play on the GS banks; the S-YXG2006LE has MT-32 as the lowest Send Reset step.
 - **Send Reset instead of Reset Mode** (issue #37): four buttons GM / GS / XG / GM2 send their reset once; nothing is sent at load or saved, and resets from MIDI files always pass unchanged (the earlier replace / drop rules are gone). The S-YXG2006LE has a Send Reset parameter (GM / GS / XGLite / GM2).
 - **GM2 for MU50 / MU80 / MU90 / MU100** (issue #34): bank select MSB 121 (GM2 capital and variation tones, LSB 0-9) works like in the original S-YXG50, after a GM2 or an XG reset; GM2 drum programs (MSB 120) select the kits like GS. Before, GM2 files stayed silent on all melodic channels (see [Conversion details](#bank-maps-gm2)).
-- **Autobuild releases:** every change to `main.py`, the patcher or `utility` on `main` creates a versioned release (`autobuild-rN`) with the patchers.
+- **Autobuild releases:** every change to `main.py`, the patcher or `utility` on `main` creates a versioned release (`autobuild-rN`) with the patchers; older autobuilds stay available for regression tests.
 
 ---
 
 ## Patcher
 
-The easiest way: download the patcher for your system from the latest **Autobuild** release. It is a single program file; nothing is installed.
+The easiest way: download the patcher for your system from the newest **Autobuild** release (the pre-release on top of the Releases page; older autobuilds are kept for comparison). It is a single program file; nothing is installed.
 
 | System | File | Start |
 |---|---|---|
@@ -214,7 +214,7 @@ utility/dev/         development tools, not needed for a conversion and not in t
 .github/workflows/   autobuild release
 ```
 
-**Autobuild:** every push to `main` that changes `main.py`, the patcher, `utility` (except `utility/dev`), `source/syxg50.dll` or `templates` makes the [templates](#plugin-templates) again (and commits them when they changed), then creates a pre-release `autobuild-rN` with the patchers for Windows, Linux and macOS, built from that commit. Older autobuilds are deleted. The workflow can also be started by hand (Actions, "Run workflow").
+**Autobuild:** every push to `main` that changes `main.py`, the patcher, `utility` (except `utility/dev`), `source/syxg50.dll` or `templates` makes the [templates](#plugin-templates) again (and commits them when they changed), then creates a pre-release `autobuild-rN` with the patchers for Windows, Linux and macOS, built from that commit. Older autobuilds are kept (for regression tests) and lose the pre-release label, so only the newest one, listed on top, is marked as pre-release. The workflow can also be started by hand (Actions, "Run workflow"). Autobuilds r14-r27 (the first ones with patchers) were deleted by the earlier workflow; the hand-started workflow `restore-autobuilds.yml` creates them again from the patchers that the Actions runs still hold.
 
 ---
 

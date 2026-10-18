@@ -1,0 +1,65 @@
+name: Restore deleted Autobuild releases
+
+# Started by hand. The Autobuild workflow used to delete older Autobuild releases; their patchers are still
+# kept as artifacts of the Actions runs (90 days). This workflow creates the missing releases again from
+# those artifacts, on the commit each run built, as regular releases (only the newest Autobuild is a
+# pre-release). Releases that exist are left alone. Without "create", it only lists what it would do.
+
+on:
+  workflow_dispatch:
+    inputs:
+      create:
+        description: 'Create the releases (otherwise only list them)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: sxg-create-nf-autobuild
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: Restore releases
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CREATE: ${{ inputs.create }}
+    steps:
+      - name: Restore from Autobuild runs
+        run: |
+          set -euo pipefail
+          existing=$(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+          gh run list --workflow build.yml --status success --limit 1000 --json databaseId,headSha,createdAt \
+            --jq 'sort_by(.createdAt) | .[] | "\(.databaseId) \(.headSha) \(.createdAt)"' |
+          while read -r run sha created; do
+            names=$(gh api "repos/$GH_REPO/actions/runs/$run/artifacts" \
+              --jq '[.artifacts[] | select(.expired | not) | .name | select(startswith("patcher-"))] | join(" ")')
+            [ -n "$names" ] || continue
+            dir="assets/$run"
+            mkdir -p "$dir"
+            for name in $names; do gh run download "$run" --name "$name" --dir "$dir"; done
+            revision=$(ls "$dir" | sed -n 's/^SXG-Create-NF-Patcher-r\([0-9]*\)-.*/\1/p' | sort -u)
+            if [ "$(echo "$revision" | wc -l)" -ne 1 ] || [ -z "$revision" ]; then
+              echo "::warning::run $run: no single revision in $(ls "$dir" | tr '\n' ' ')"; continue
+            fi
+            tag="autobuild-r$revision"
+            if echo "$existing" | grep -qx "$tag"; then
+              echo "$tag exists, skipped (run $run)"; continue
+            fi
+            echo "$tag: run $run, commit ${sha:0:7}, built ${created%T*}, assets: $(ls "$dir" | tr '\n' ' ')"
+            [ "$CREATE" = "true" ] || continue
+            {
+              echo "Autobuild r$revision of the **SXG-Create-NF Patcher**, built on ${created%T*} from commit $sha."
+              echo
+              echo "Restored from the artifacts of [Actions run $run]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run) after the Autobuild workflow had deleted it; kept for regression tests. The patchers are unchanged."
+              echo
+              echo "For the instructions that apply to this version, see [README.md at this commit]($GITHUB_SERVER_URL/$GH_REPO/blob/$sha/README.md#patcher). The newest version is the pre-release on top of the Releases page."
+            } > notes.md
+            gh release create "$tag" "$dir"/* --target "$sha" --title "Autobuild r$revision" \
+              --notes-file notes.md --latest=false
+          done
