@@ -149,17 +149,18 @@ def make_screen() :
     im = canvas(288, 47, SCREEN); d = ImageDraw.Draw(im)
     d.rectangle(box(226, 0, 233, 47), fill = (40, 46, 53)); d.rectangle(box(227, 0, 229, 47), fill = (62, 70, 79))
     d.rounded_rectangle(box(234, 1, 287, 46), 2 * SS, fill = (10, 15, 19), outline = (28, 34, 40), width = SS // 2)
-    text(im, (260.5, 40.5), 'POLYPHONY', 6.2, LABEL, 'SemiBold', 'mm', 0.88, track = 0.3)
     out = down(im)
     for i in range(18) :
         x = 8 + 11 * i if i < 16 else (194, 205)[i - 16]
         pixel_text(out, x + 6, 38, str(i + 1) if i < 16 else 'LR'[i - 16])
+    pixel_text(out, 261, 38, 'POLYPHONY')
     return out
 
 # 3 x 5 pixel font for the part numbers under the meters (sharp at 1:1, unlike a scaled font)
 PIX = {'0' : '111101101101111', '1' : '010110010010111', '2' : '111001111100111', '3' : '111001111001111',
        '4' : '101101111001001', '5' : '111100111001111', '6' : '111100111101111', '7' : '111001010010010',
-       '8' : '111101111101111', '9' : '111101111001111', 'L' : '100100100100111', 'R' : '110101110101101'}
+       '8' : '111101111101111', '9' : '111101111001111', 'L' : '100100100100111', 'R' : '110101110101101',
+       'P' : '111101111100100', 'O' : '111101101101111', 'Y' : '101101010010010', 'H' : '101101111101101', 'N' : '110101101101101'}
 
 def pixel_text(im, cx, y, s) :
     # centred on column cx (the right one of the two middle pixels)
