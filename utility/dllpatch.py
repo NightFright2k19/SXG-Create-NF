@@ -885,8 +885,29 @@ def insert_section_before_rsrc(data : bytearray, name : bytes, va : int, body : 
             else : struct.pack_into('<I', data, base + ptr, struct.unpack_from('<I', data, base + ptr)[0] + vsize)
     walk(0)
 
+# Base relocations inside patched code that must not be applied any more: 0x325AE is the address of LoadBitmapA in
+# "mov edi, [0x10040188]" (0x325AC), now "call skin_ldr" (issue #52). When the DLL is not loaded at 0x10000000 (a
+# second plugin DLL in the same host process), the loader would add the delta to the call's displacement.
+SYXG50_DROP_RELOCS = [0x325AE]
+
+def drop_relocs(data : bytearray, rvas : list[int]) :
+    # turns the HIGHLOW entries of these RVAs into IMAGE_REL_BASED_ABSOLUTE (padding, skipped by the loader); an
+    # entry already dropped (a DLL patched before) is no error
+    pe = struct.unpack_from('<I', data, 0x3C)[0]; opt = pe + 24
+    rva, size = struct.unpack_from('<II', data, opt + 96 + 40)
+    off = rva_to_offset(data, rva); end = off + size; left = set(rvas)
+    while off < end :
+        page, sz = struct.unpack_from('<II', data, off)
+        if sz < 8 : break
+        for i in range((sz - 8) // 2) :
+            e = struct.unpack_from('<H', data, off + 8 + 2 * i)[0]
+            if e >> 12 == 3 and page + (e & 0xFFF) in left :
+                left.discard(page + (e & 0xFFF)); struct.pack_into('<H', data, off + 8 + 2 * i, 0)
+        off += sz
+
 def apply_poly(data : bytearray, model : str | None = None) :
     apply(data, SYXG50_POLY, 'polyphony 256: second engine (process wrappers, dispatcher)')
+    drop_relocs(data, SYXG50_DROP_RELOCS)
     apply(data, SYXG50_POLY_RANGE, 'polyphony 256: Settings page range 8-256')
     data_virtual_size(data, POLY_DATA_END)
     code = bytearray(POLY_CODE)
