@@ -1,4 +1,4 @@
-# mkskin.py: second panel skin "Modern" (issue #52), drawn after the mockup of the issue (pip: pillow). Run in
+# mkskin.py: second panel skin "Modern" (issue #52), drawn after the mockup of the issue (pip: pillow numpy). Run in
 # utility/dev/gui:   python3 mkskin.py [--preview]
 # Every picture keeps the size and position of its original counterpart (the drawing code of the DLL is unchanged):
 #   101 panel 400 x 114 (+ model name 100 x 23 at x 300), 102 meter screen 288 x 47 at (11, 57),
@@ -237,12 +237,42 @@ def lamp_logo(im, k, on) :
         face = Image.merge('RGB', [lum.point(lambda v, c = c : int(c * (0.45 + v / 400))) for c in (150, 160, 172)])
     im.paste(face, (0, 0), m)
 
+# Logos drawn by hand (skin52/src/, 1 pixel = 1 lamp pixel unless noted): logos_off_mockup.png = both unlit logos
+# (XG at x 0, GS at x 42, rows 6 ... 37 of the lamp, background (51, 53, 63)); gs_lit_fixed.png = the lit GS with the
+# corrected lower edge, 3 x enlarged, lamp pixels x 1 ... 35, y 9 ... 37. They are laid over the panel as a difference to their own
+# background, so the panel's gradient shows through.
+def mockup_overlay(lamp, path, box, size = None, bg = None) :
+    # lamp: 40 x 39 RGB image, box = (x, y) of the mockup's top left corner in the lamp, size = target size (the
+    # mockup is shrunk to it), bg = flat background colour of the mockup (default: its first column, row by row)
+    import numpy as np
+    m = Image.open(HERE / 'skin52' / 'src' / path).convert('RGB')
+    if size : m = m.resize(size, Image.LANCZOS)
+    a = np.asarray(m).astype(float); b = np.asarray(lamp).astype(float)
+    ref = np.array(bg, float)[None, None, :] if bg else a[:, :1, :]
+    x0, y0 = box; h, w = a.shape[:2]
+    reg = b[y0 : y0 + h, x0 : x0 + w]; h, w = reg.shape[:2]
+    reg += (a - ref)[:h, :w]
+    return Image.fromarray(np.clip(b, 0, 255).astype('uint8'))
+
 def make_lamps(panel) :
-    out = Image.new('RGB', (160, 39))
+    out = Image.new('RGB', (160, 39)); off = Image.open(HERE / 'skin52' / 'src' / 'logos_off_mockup.png').convert('RGB')
     for k, x in enumerate((308, 308, 350, 350)) :
         im = canvas(40, 39); im.paste(panel.crop((x, LAMP_Y, x + 40, LAMP_Y + 39)).resize((40 * SS, 39 * SS), Image.LANCZOS))
-        lamp_logo(im, k // 2, k % 2); out.paste(down(im), (40 * k, 0))
+        if k == 1 : lamp_logo(im, 0, 1)                                         # lit XG: drawn from the original lamp
+        lamp = down(im)
+        if k == 0 : lamp = lamp_off(lamp, off, 0)
+        elif k == 2 : lamp = lamp_off(lamp, off, 42)
+        elif k == 3 : lamp = mockup_overlay(lamp, 'gs_lit_fixed.png', (1, 9), (35, 28))
+        out.paste(lamp, (40 * k, 0))
     return out
+
+def lamp_off(lamp, off, mx0) :
+    # unlit logo from the mockup: its columns mx0 ... mx0 + 39, difference to its background (51, 53, 63)
+    import numpy as np
+    a = np.asarray(off).astype(float)[:, mx0 : mx0 + 40]
+    if a.shape[1] < 40 : a = np.concatenate([a, np.full((32, 40 - a.shape[1], 3), 1.0) * np.array([51, 53, 63.])], 1)
+    b = np.asarray(lamp).astype(float); b[6 : 38] += a - np.array([51, 53, 63.])
+    return Image.fromarray(np.clip(b, 0, 255).astype('uint8'))
 
 def make_setup(panel) :
     out = Image.new('RGB', (80 * 2, 16))
