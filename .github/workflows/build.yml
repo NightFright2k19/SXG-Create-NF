@@ -214,7 +214,7 @@ jobs:
 
             **SUPPORTED MODELS**
             - MU50, MU80, MU90 / MU90B, MU100 / MU100B, MU128, MU1000 (MU2000: uses the MU1000 set)
-            - S-YXG2006LE (Yamaha's own engine and tables, not converted: `SGP2.OLD` or `SGP2.DLL`, `sxgbnw6l.tbl`, `sxgdat6l.tbl`)
+            - S-YXG2006LE (Yamaha's own engine and tables, not converted: `SGP2.OLD` or `SGP2.DLL`, also one patched by SGP2VSTi 1.0.2.22 such as `S-YXG2006LE.DLL`; `sxgbnw6l.tbl`, `sxgdat6l.tbl`)
 
             **DOWNLOAD**
             - Windows: `...-windows.exe`

@@ -2,6 +2,8 @@
 # instead of converting its tables to the S-YXG50 engine. The DLL loads sxgbnw6l.tbl / sxgdat6l.tbl from its own folder.
 # Patches:
 #  - host lock off: the plugin only starts in a host whose vendor string is "YAMAHA" (0x2AAE je -> jmp)
+#  - SGP2VSTi 1.0.2.22 copies (issue #54) also changed the debugger check at 0x4BFFB; that change is undone, so
+#    every accepted DLL gives the same plugin
 #  - VST parameters in a new section .sxg (source: utility/dev/sgp2/params.asm, built with mksgp2.py), in the order
 #    of the S-YXG50 plugins: Polyphony 8-256 (default 256, up to 8 engines of 32 voices), Reverb (CC 91) / Chorus
 #    (CC 93) On / Off, Master Volume -12 ... +12 dB, Master Tune, Transpose, Reset Mode GM / GS / XGLite (default
@@ -15,6 +17,9 @@ B = 0x10000000
 SECTION_VA = 0xE6000
 CRC_OLD = 'A62F256A'        # SGP2.OLD (original)
 CRC_UNLOCKED = '68FD2825'   # SGP2.DLL: SGP2.OLD with the host lock removed (0x2AAE 74 -> EB)
+CRC_SGP2VSTI = 'F5037F5F'   # SGP2.DLL made by SGP2VSTi 1.0.2.22: host lock removed, 0x4BFFB 74 14 8B -> 90 90 FF
+DLL_CRCS = (CRC_OLD, CRC_UNLOCKED, CRC_SGP2VSTI)
+DEBUG_CHECK = 0x4BFFB       # detect_debugger: je 0x1004C011 / mov eax, [esi + 8] (SGP2VSTi: nop / nop / inc [esi + 8])
 CRC_BANK = '692C7D6A'       # sxgbnw6l.tbl
 CRC_WAVES = '3CB08464'      # sxgdat6l.tbl
 DLL_NAME = 'syxg2006le.dll'
@@ -24,14 +29,14 @@ LOADERS = (0x4C780, 0x4C7D0)  # table loaders (file size, read file): mov eax, [
 from sgp2code import SECTION_CODE, SECTION_RELOCS, MAIN_HOOK, FS_HOOK, FR_HOOK
 
 def Find(crcs_paths : dict[str, Path]) -> tuple[Path, Path, Path] | None :
-    dll = crcs_paths.get(CRC_OLD) or crcs_paths.get(CRC_UNLOCKED)
+    dll = next((crcs_paths[c] for c in DLL_CRCS if c in crcs_paths), None)
     if dll and CRC_BANK in crcs_paths and CRC_WAVES in crcs_paths :
         return dll, crcs_paths[CRC_BANK], crcs_paths[CRC_WAVES]
     return None
 
 def Parts(crcs_paths : dict[str, Path]) -> list[Path] :
     # any of the three S-YXG2006LE files (to keep them out of the MU conversion when the set is incomplete)
-    return [crcs_paths[c] for c in (CRC_OLD, CRC_UNLOCKED, CRC_BANK, CRC_WAVES) if c in crcs_paths]
+    return [crcs_paths[c] for c in DLL_CRCS + (CRC_BANK, CRC_WAVES) if c in crcs_paths]
 
 def jmp(d : bytearray, at : int, to : int, n : int) -> None :
     d[at : at + n] = b'\xE9' + struct.pack('<i', to - (at + 5)) + b'\x90' * (n - 5)
@@ -71,6 +76,8 @@ def add_relocs(d : bytearray, rvas : list[int]) -> None :
 def Patch(data : bytes, embed : list[tuple[str, bytes]] = ()) -> bytes :
     d = bytearray(data)
     if d[0x2AAE] == 0x74 : d[0x2AAE] = 0xEB
+    if d[DEBUG_CHECK : DEBUG_CHECK + 3] == bytes.fromhex('9090ff') : d[DEBUG_CHECK : DEBUG_CHECK + 3] = bytes.fromhex('74148b')
+    assert d[DEBUG_CHECK : DEBUG_CHECK + 3] == bytes.fromhex('74148b')
     assert d[0x2AAE] == 0xEB and d[HOOK : HOOK + 7] == bytes.fromhex('8d46208b4c2404')
     for a in LOADERS : assert d[a : a + 6] == bytes.fromhex('8b4424045356')
     add_relocs(d, SECTION_RELOCS)
