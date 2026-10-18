@@ -157,7 +157,7 @@ def make_screen() :
         x = 8 + 11 * i if i < 16 else (194, 205)[i - 16]
         pixel_text(out, x + 6, 38, str(i + 1) if i < 16 else 'LR'[i - 16])
     pixel_text(out, 261, 38, 'POLYPHONY')
-    return out
+    return glass(out)
 
 # 3 x 5 pixel font for the part numbers under the meters (sharp at 1:1, unlike a scaled font)
 PIX = {'0' : '111101101101111', '1' : '010110010010111', '2' : '111001111100111', '3' : '111001111001111',
@@ -173,15 +173,26 @@ def pixel_text(im, cx, y, s) :
             if bit == '1' : im.putpixel((x0 + 4 * k + j % 3, y + j // 3), LABEL)
 
 def segments(lit) :
-    # one meter frame 11 x 28: floor dash (always) + lit segments of 2 pixels, 3 pixels apart, cyan with a glow
+    # one meter frame 11 x 28: dim floor dash (always, 2 pixels, rows 26-27), one empty row, then the lit segments of
+    # 2 pixels, 3 pixels apart (the eighth ends in row 1), cyan with a glow
+    FLOOR = (54, 160, 176)
     im = canvas(11, 28, SCREEN); d = ImageDraw.Draw(im); glow = Image.new('L', im.size, 0); g = ImageDraw.Draw(glow)
-    for j in range(lit + 1) :
-        y = 25 - 3 * j; c = CYAN if j else (54, 160, 176)
-        d.rectangle(box(1, y, 10, y + 2), fill = c); g.rectangle(box(1, y, 10, y + 2), fill = 120 if j else 50)
+    rows = [(26, FLOOR, 50)] + [(22 - 3 * (j - 1), CYAN, 120) for j in range(1, lit + 1)]
+    for y, c, gv in rows : d.rectangle(box(1, y, 10, y + 1), fill = c); g.rectangle(box(1, y, 10, y + 1), fill = gv)
     halo = glow.filter(ImageFilter.GaussianBlur(1.3 * SS))
     im = Image.composite(Image.new('RGB', im.size, CYAN), im, halo.point(lambda v : v // 3))
-    for j in range(lit + 1) : ImageDraw.Draw(im).rectangle(box(1, 25 - 3 * j, 10, 27 - 3 * j), fill = CYAN if j else (54, 160, 176))
+    for y, c, gv in rows : ImageDraw.Draw(im).rectangle(box(1, y, 10, y + 1), fill = c)
     return down(im)
+
+def glass(scr) :
+    # glass strips like the original's: 4 rows at the top (grey, light edge) and at the bottom (dark, cyan tinted) of the
+    # meter screen and of the POLYPHONY field (columns 234-287); the column 225-233 divider stays free
+    d = ImageDraw.Draw(scr)
+    for i, c in enumerate([(92, 102, 112), (60, 68, 77), (34, 40, 47), (16, 20, 25)]) :
+        for x0, x1 in ((1, 224), (236, 286)) : d.line([(x0, i), (x1, i)], fill = c)
+    for i, c in enumerate([(14, 32, 42), (24, 58, 72), (18, 44, 56), (10, 24, 31)]) :
+        for x0, x1 in ((1, 224), (236, 286)) : d.line([(x0, 43 + i), (x1, 43 + i)], fill = c)
+    return scr
 
 def make_meters() :
     out = Image.new('RGB', (99, 28))
