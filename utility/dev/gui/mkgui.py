@@ -18,9 +18,11 @@ g0 = gui_src.replace('BOTH_SYSEX', hex(B + POLY_VA)).replace('BOTH_SHORT', hex(B
 sp = lab(g0, B + CAVES[0][0], 'send_pending')
 poly = poly_src.replace('SEND_PENDING', hex(sp))
 P = {n : lab(poly, B + POLY_VA, n) for n in ('poly_procR', 'poly_procA', 'both_sysex', 'both_short', 'poly_disp', 'poly_count', 'panel_prog',
-                                           'lbd_hook', 'lbu_hook', 'paint_hook', 'idle_hook', 'def_hook', 'ini_int', 'ini_str')}
+                                           'lbd_hook', 'lbu_hook', 'paint_hook', 'idle_hook', 'def_hook', 'ini_int', 'ini_str',
+                                           'skin_get', 'skin_set', 'skin_ldr')}
 gui = gui_src.replace('BOTH_SYSEX', hex(P['both_sysex'])).replace('BOTH_SHORT', hex(P['both_short'])).replace('PANEL_PROG', hex(P['panel_prog']))
 assert lab(gui, B + CAVES[0][0], 'send_pending') == sp
+set_src = set_src.replace('SKIN_GET', hex(P['skin_get'])).replace('SKIN_SET', hex(P['skin_set']))
 srcs = [gui, set_src]
 codes = []
 for src, (cave, limit) in zip(srcs, CAVES) :
@@ -43,6 +45,9 @@ print(']'); print(f'GUI_CHUNK_GET = 0x{label("chunk_get", 1):08X}'); print(f'GUI
 pc = asm(poly, B + POLY_VA)
 psites = [site(0x010C0, P['poly_procR'], 7), site(0x010A0, P['poly_procA'], 7), site(0x01000, P['poly_disp'], 8),
           site(0x330FC, P['ini_int'], 5), site(0x3311C, P['ini_str'], 5)]
+# panel skin (issue #52): the bitmap loader takes LoadBitmapA from skin_ldr (call, edi = skin_load)
+c = asm(f'call {P["skin_ldr"]:#x}', B + 0x325AC); assert len(c) == 5 and d[0x325AC:0x325B2] == bytes.fromhex('8b3d88010410')
+psites.append((0x325AC, d[0x325AC:0x325B2], c + b'\x90'))
 # panel POLYPHONY readout: Get(op 4) through poly_count, which adds the voices of engine B
 c = asm(f'lea edx, [esp + 0x3c]\npush edx\npush 4\npush dword ptr [ebp + 8]\ncall {P["poly_count"]:#x}', B + 0x320A0)
 assert len(c) <= 16
