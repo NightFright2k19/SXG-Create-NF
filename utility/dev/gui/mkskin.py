@@ -264,11 +264,18 @@ def make_lamps(panel) :
         im = canvas(40, 39); im.paste(panel.crop((x, LAMP_Y, x + 40, LAMP_Y + 39)).resize((40 * SS, 39 * SS), Image.LANCZOS))
         if k == 1 : lamp_logo(im, 0, 1)                                         # lit XG: drawn from the original lamp
         lamp = down(im)
+        if k == 1 : lamp = lit_xg_template(lamp)
         if k == 0 : lamp = lamp_off(lamp, off, 0)
         elif k == 2 : lamp = lamp_off(lamp, off, 42)
         elif k == 3 : lamp = mockup_overlay(lamp, 'gs_lit_fixed.png', (1, 9), (35, 28))
         out.paste(lamp, (40 * k, 0))
     return out
+
+def lit_xg_template(lamp) :
+    # the lit XG logo: skin52/src/xg_lit_after.png (42 x 26 pixels, glow included) is the template; it replaces the
+    # region at (1, 9) of the lamp (its last column falls outside the 40 pixel wide lamp)
+    m = Image.open(HERE / 'skin52' / 'src' / 'xg_lit_after.png').convert('RGB'); w = min(m.width, 40 - 1)
+    lamp = lamp.copy(); lamp.paste(m.crop((0, 0, w, m.height)), (1, 9)); return lamp
 
 def lamp_off(lamp, off, mx0) :
     # unlit logo from the mockup: its columns mx0 ... mx0 + 39, difference to its background (51, 53, 63)
