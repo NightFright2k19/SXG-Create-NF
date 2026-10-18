@@ -32,6 +32,18 @@ jobs:
       GH_REPO: ${{ github.repository }}
       CREATE: ${{ inputs.create }}
     steps:
+      - name: Sanitize GH_TOKEN
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          # remove CR/LF and surrounding quotes if present
+          GH_TOKEN=$(printf '%s' "$GH_TOKEN" | tr -d '\r\n' | sed -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//')
+          export GH_TOKEN
+          # print length only (helps confirm trimming without exposing token)
+          printf 'Sanitized GH_TOKEN length: %d\n' "$(printf '%s' "$GH_TOKEN" | wc -c)"
+
       - name: Restore from Autobuild runs
         run: |
           set -euo pipefail
@@ -58,9 +70,9 @@ jobs:
             {
               echo "Autobuild r$revision of the **SXG-Create-NF Patcher**, built on ${created%T*} from commit $sha."
               echo
-              echo "Restored from the artifacts of [Actions run $run]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run) after the Autobuild workflow had deleted it; kept for regression tests. The patcher is useful for testing releases and regression checks."
+              echo "Restored from the artifacts of [Actions run $run]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run) after the Autobuild workflow had deleted it; kept for regression tests. The pat[...]"
               echo
-              echo "For the instructions that apply to this version, see [README.md at this commit]($GITHUB_SERVER_URL/$GH_REPO/blob/$sha/README.md#patcher). The newest version is the pre-release at the tip of the default branch."
+              echo "For the instructions that apply to this version, see [README.md at this commit]($GITHUB_SERVER_URL/$GH_REPO/blob/$sha/README.md#patcher). The newest version is the pre-release [...]"
             } > notes.md
             gh release create "$tag" "$dir"/* --target "$sha" --title "Autobuild r$revision" \
               --notes-file notes.md --latest=false
