@@ -42,10 +42,13 @@ def bevel(im, x0, y0, x1, y1, r = 2, raised = True, fill = None, top = PANEL_T, 
         ImageDraw.Draw(m).rounded_rectangle([0, 0, g.width - 1, g.height - 1], max(0, r * SS - SS // 2), 255)
         im.paste(g, (w0, h0), m)
 
-def text(im, xy, s, size, color, weight = 'Bold', anchor = 'lm', squeeze = 1.0, glow = None) :
-    # text at panel coordinates; squeeze < 1 narrows it (condensed look); glow = colour of a soft halo
-    f = font(size, weight); l, t, r, b = f.getbbox(s); w, h = r - l + 8 * SS, b - t + 8 * SS
-    layer = Image.new('L', (w, h), 0); ImageDraw.Draw(layer).text((4 * SS - l, 4 * SS - t), s, font = f, fill = 255)
+def text(im, xy, s, size, color, weight = 'Bold', anchor = 'lm', squeeze = 1.0, glow = None, track = 0.0) :
+    # text at panel coordinates; squeeze < 1 narrows it (condensed look); track = extra letter spacing in pixels;
+    # glow = colour of a soft halo
+    f = font(size, weight); l, t, r, b = f.getbbox(s); tr = track * SS
+    w, h = int(f.getlength(s) + tr * (len(s) - 1)) + 8 * SS, b - t + 8 * SS
+    layer = Image.new('L', (w, h), 0); dl = ImageDraw.Draw(layer); x = 4 * SS - l
+    for ch in s : dl.text((x, 4 * SS - t), ch, font = f, fill = 255); x += f.getlength(ch) + tr
     if squeeze != 1.0 : layer = layer.resize((int(w * squeeze), h), Image.LANCZOS)
     x, y = xy[0] * SS, xy[1] * SS; tw, th = layer.width - 8 * SS, h - 8 * SS
     x -= {'l' : 0, 'm' : tw // 2, 'r' : tw}[anchor[0]]; y -= {'t' : 0, 'm' : th // 2, 'b' : th}[anchor[1]]
@@ -84,7 +87,6 @@ def logo(panel_rgb) :
                 blue = (44, 86, 214) if r < 6 else (34, 66, 180)
                 c = tuple(int(blue[i] + (WHITE[i] - blue[i]) * ink) for i in range(3))
                 out.putpixel((x, y), c + (int(255 * disc),))
-            elif sx >= 26 : out.putpixel((x, y), WHITE + (int(255 * ink),))
     return out
 
 def make_panel() :
@@ -97,22 +99,36 @@ def make_panel() :
     for x, s in LABELS : text(im, (x, 38.6), s, 9.5, LABEL, 'SemiBold', 'lm', 0.92)
     bevel(im, SCREEN_XY[0] - 2, SCREEN_XY[1] - 2, SCREEN_XY[0] + 290, SCREEN_XY[1] + 49, 3, False, SCREEN)
     bevel(im, 305, 85, 393, 107, 3, False, (10, 13, 16))      # SETUP well
+    text(im, (29, 12.6), 'YAMAHA', 13.5, WHITE, 'ExtraBold', 'lm', 0.96, track = 0.6)
     p = down(im); p.paste(logo(p), (8, 2), logo(p)); return p
 
 def make_name(model) :
     im = canvas(100, 23); bevel(im, -5, 2, 98, 23, 3)
-    text(im, (93, 12.4), 'S-YXG' + {'MU50' : '50'}.get(model, model[2:]), 13, GREY, 'Bold', 'rm', 0.9)
+    text(im, (93, 12.4), 'S-YXG' + {'MU50' : '50'}.get(model, model[2:]), 12, GREY, 'SemiBold', 'rm', 1.0, track = 0.7)
     return down(im).crop((0, 0, 100, 23))
 
 def make_screen() :
     im = canvas(288, 47, SCREEN); d = ImageDraw.Draw(im)
     d.rectangle(box(226, 0, 233, 47), fill = (40, 46, 53)); d.rectangle(box(227, 0, 229, 47), fill = (62, 70, 79))
     d.rounded_rectangle(box(234, 1, 287, 46), 2 * SS, fill = (10, 15, 19), outline = (28, 34, 40), width = SS // 2)
+    text(im, (260.5, 40.5), 'POLYPHONY', 6.2, LABEL, 'SemiBold', 'mm', 0.88, track = 0.3)
+    out = down(im)
     for i in range(18) :
         x = 8 + 11 * i if i < 16 else (194, 205)[i - 16]
-        text(im, (x + 5.5, 40.5), str(i + 1) if i < 16 else 'LR'[i - 16], 6.6 if i < 9 or i > 15 else 6.2, LABEL, 'SemiBold', 'mm', 0.9 if i < 9 or i > 15 else 0.7)
-    text(im, (260.5, 40.5), 'POLYPHONY', 6.2, LABEL, 'SemiBold', 'mm', 0.88)
-    return down(im)
+        pixel_text(out, x + 6, 38, str(i + 1) if i < 16 else 'LR'[i - 16])
+    return out
+
+# 3 x 5 pixel font for the part numbers under the meters (sharp at 1:1, unlike a scaled font)
+PIX = {'0' : '111101101101111', '1' : '010110010010111', '2' : '111001111100111', '3' : '111001111001111',
+       '4' : '101101111001001', '5' : '111100111001111', '6' : '111100111101111', '7' : '111001010010010',
+       '8' : '111101111101111', '9' : '111101111001111', 'L' : '100100100100111', 'R' : '110101110101101'}
+
+def pixel_text(im, cx, y, s) :
+    # centred on column cx (the right one of the two middle pixels)
+    x0 = cx - (4 * len(s) - 1 + 1) // 2
+    for k, ch in enumerate(s) :
+        for j, bit in enumerate(PIX[ch]) :
+            if bit == '1' : im.putpixel((x0 + 4 * k + j % 3, y + j // 3), LABEL)
 
 def segments(lit) :
     # one meter frame 11 x 28: floor dash (always) + lit segments of 2 pixels, 3 pixels apart, cyan with a glow
@@ -152,19 +168,41 @@ def make_digits() :
     for k in range(11) : out.paste(digit(DIG[k]), (10 * k, 0))
     return out
 
-def xg_logo(im, cx, cy, on) :
-    c = CYAN if on else (78, 86, 94)
-    text(im, (cx, cy), 'XG', 21, c, 'Black', 'mm', 1.0, glow = (30, 150, 170) if on else None)
+# stylised XG / GS logos after the original lamps (bitmap 103): an X merging into a square G; a slanted square G
+# interlocked with an S. Polygons in lamp coordinates (40 x 39), sheared to the right.
+G_BOX = lambda x0, y0, x1, y1, t : [[(x0, y0), (x1, y0), (x1, y0 + t), (x0, y0 + t)], [(x0, y0), (x0 + t, y0), (x0 + t, y1), (x0, y1)],
+    [(x0, y1 - t), (x1, y1 - t), (x1, y1), (x0, y1)], [(x1 - t, (y0 + y1) / 2), (x1, (y0 + y1) / 2), (x1, y1), (x1 - t, y1)],
+    [((x0 + x1) / 2 + 1, (y0 + y1) / 2), (x1, (y0 + y1) / 2), (x1, (y0 + y1) / 2 + t - 1), ((x0 + x1) / 2 + 1, (y0 + y1) / 2 + t - 1)]]
+S_BOX = lambda x0, y0, x1, y1, t : [[(x0, y0), (x1, y0), (x1, y0 + t), (x0, y0 + t)], [(x0, y0), (x0 + t, y0), (x0 + t, (y0 + y1 + t) / 2), (x0, (y0 + y1 + t) / 2)],
+    [(x0, (y0 + y1 - t) / 2), (x1, (y0 + y1 - t) / 2), (x1, (y0 + y1 + t) / 2), (x0, (y0 + y1 + t) / 2)],
+    [(x1 - t, (y0 + y1 - t) / 2), (x1, (y0 + y1 - t) / 2), (x1, y1), (x1 - t, y1)], [(x0, y1 - t), (x1, y1 - t), (x1, y1), (x0, y1)]]
+LOGOS = {
+    0 : [[(4, 11), (10.5, 11), (21, 29), (14.5, 29)], [(14.5, 11), (21, 11), (10.5, 29), (4, 29)]] + G_BOX(20, 11, 36, 29, 4),
+    1 : G_BOX(4, 9, 22, 27, 4) + S_BOX(20, 15, 35, 31, 3.4),
+}
 
-def gs_logo(im, cx, cy, on) :
-    c = (255, 196, 40) if on else (78, 86, 94)
-    text(im, (cx, cy), 'GS', 19, c, 'Black', 'mm', 1.0, glow = (170, 110, 10) if on else None)
+def lamp_logo(im, k, on) :
+    m = Image.new('L', im.size, 0); d = ImageDraw.Draw(m); sh = 0.28 if k else 0.18
+    for poly in LOGOS[k] : d.polygon([((x + sh * (20 - y)) * SS, y * SS) for x, y in poly], fill = 255)
+    if k :                                                    # gap between G and S
+        for poly in S_BOX(20, 15, 35, 31, 3.4) :
+            g = [((x + sh * (20 - y)) * SS, y * SS) for x, y in poly]
+            d.line(g + g[:1], fill = 0, width = int(1.2 * SS))
+        for poly in S_BOX(20, 15, 35, 31, 3.4) : d.polygon([((x + sh * (20 - y)) * SS, y * SS) for x, y in poly], fill = 255)
+    if on :
+        halo = m.filter(ImageFilter.GaussianBlur(2.6 * SS)).point(lambda v : int(v * 0.8))
+        im.paste(Image.new('RGB', im.size, (30, 160, 185)), (0, 0), halo)
+        face = Image.new('RGB', im.size, CYAN); hl = Image.new('RGB', im.size, (190, 248, 255))
+    else : face = Image.new('RGB', im.size, (74, 82, 91)); hl = Image.new('RGB', im.size, (104, 113, 122))
+    im.paste(face, (0, 0), m)
+    top = ImageChops.subtract(m, ImageChops.offset(m, 0, SS)).point(lambda v : v // 2)   # light top edges
+    im.paste(hl, (0, 0), top)
 
 def make_lamps(panel) :
     out = Image.new('RGB', (160, 39))
-    for k, (x, draw, on) in enumerate([(308, xg_logo, 0), (308, xg_logo, 1), (350, gs_logo, 0), (350, gs_logo, 1)]) :
+    for k, x in enumerate((308, 308, 350, 350)) :
         im = canvas(40, 39); im.paste(panel.crop((x, LAMP_Y, x + 40, LAMP_Y + 39)).resize((40 * SS, 39 * SS), Image.LANCZOS))
-        draw(im, 20, 19.5, on); out.paste(down(im), (40 * k, 0))
+        lamp_logo(im, k // 2, k % 2); out.paste(down(im), (40 * k, 0))
     return out
 
 def make_setup(panel) :
@@ -172,7 +210,7 @@ def make_setup(panel) :
     for k, pressed in enumerate((True, False)) :
         im = canvas(80, 16); im.paste(panel.crop((309, 88, 389, 104)).resize((80 * SS, 16 * SS), Image.LANCZOS))
         bevel(im, 0, 0, 80, 16, 2, not pressed, top = (30, 35, 41) if pressed else (60, 68, 77), bot = (20, 24, 28) if pressed else (32, 37, 43))
-        text(im, (40 + (0.5 if pressed else 0), 8.4 + (0.5 if pressed else 0)), 'SETUP', 9.5, (200, 208, 214) if pressed else WHITE, 'SemiBold', 'mm', 0.95)
+        text(im, (40 + (0.5 if pressed else 0), 8.4 + (0.5 if pressed else 0)), 'SETUP', 8.5, (200, 208, 214) if pressed else WHITE, 'Medium', 'mm', 1.0, track = 1.2)
         out.paste(down(im), (80 * k, 0))
     return out
 
