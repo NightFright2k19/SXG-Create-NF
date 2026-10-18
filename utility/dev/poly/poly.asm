@@ -10,6 +10,7 @@
 ;   0x10056EBC  unused (was the slot being processed; shared state broke parallel processing)
 ;   0x10056EC0  4 slots x 16 bytes: +0 plugin object A, +4 AEffect of instance B, +8 samples B stays awake,
 ;               +0xC event lists (16 KB: list A at +0, list B at +0x2008)
+;   0x10056F08  4 panel records x 16 bytes (panel.asm, issue #55), freed at effClose
 ; Instance B is created (VSTPluginMain 0x10003610, own audioMaster stub) in the first block of the plugin and
 ; then gets all events, so it always knows the song's state; notes go to it only with extra voices. Every block: B gets the settings of A (Set 0x10030770 on B's settings object; effect switches,
 ; Output Level, polyphony = extra), the host's events are split: a Note On goes to A while A has two voices
@@ -508,7 +509,7 @@ bs_one:
     call dword ptr [edx + 8]
     ret
 
-; --- dispatcher (0x10001000): effClose (1) of a plugin with an instance B closes B first
+; --- dispatcher (0x10001000): effClose (1) of a plugin with an instance B closes B first and frees its panel record
 poly_disp:
     cmp dword ptr [esp + 8], 1
     jne pd_go
@@ -540,6 +541,20 @@ pd_next:
     add ebx, 16
     dec edi
     jne pd_find
+    mov eax, dword ptr [esi + 0xb0]          ; the panel record of A's engine (panel.asm) is free again
+    lea ebx, [ebp + 0x10056f08]
+    mov edi, 4
+pd_rec:
+    cmp dword ptr [ebx], eax
+    jne pd_rnext
+    mov dword ptr [ebx + 4], 0
+    mov dword ptr [ebx + 8], 0
+    mov dword ptr [ebx + 0xc], 0
+    mov dword ptr [ebx], 0
+pd_rnext:
+    add ebx, 16
+    dec edi
+    jne pd_rec
     popal
 pd_go:
     mov eax, dword ptr [esp + 4]

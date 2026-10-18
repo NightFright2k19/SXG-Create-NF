@@ -11,98 +11,110 @@
 ; order of channels 10, 1-9, 11-16, records of 0x11C bytes from +0x248: +0 bank MSB, +1 bank LSB, +2 program).
 ; A PRG step sends a program change, an MSB / LSB step a bank select (CC 0 / CC 32) followed by the program change
 ; of the current program, so the new bank sounds at once (audio thread, panel_prog, called by send_pending; to
-; both engines).
-; .data: 0x10056E42 / 0x10056F01 / 0x10056F02 pending PRG / MSB / LSB step (signed), 0x10056E43 held button
-; (1 / 2 PRG down / up, 3 / 4 CHN, 5 / 6 MSB, 7 / 8 LSB), 0x10056E44 engine, 0x10056E48 / 0x10056E4C SetTimer /
-; KillTimer, 0x10056E50 wheel remainder, 0x10056F00 channel (0-15).
+; engine A and the B of its slot).
+; Per instance (issue #55): hosts such as VST Midi Driver run several instances in one process, so nothing the
+; panel shows or sends may sit in a process-wide variable. The panel object keeps its engine at [panel +8]
+; (= plugin +0xB0); the panel state lives in a panel record of that engine, 4 records x 16 bytes at 0x10056F08:
+; +0 engine (claimed with lock cmpxchg by the panel, freed at effClose), +4 / +5 / +6 pending PRG / MSB / LSB
+; step (signed), +7 channel (0-15), +8 note XOR 0x3C (zeroed = 60), +9 note sounding + 1 (0 = none, audio
+; thread), +0xA mouse button held in the POLYPHONY field, +0xB channel of the sounding note, +0xC 1 once the
+; audio thread has processed that engine (the readouts stay blank until then).
+; .data (UI thread only): 0x10056E43 held button (1 / 2 PRG down / up, 3 / 4 CHN, 5 / 6 MSB, 7 / 8 LSB),
+; 0x10056E48 / 0x10056E4C SetTimer / KillTimer, 0x10056E50 wheel remainder.
 ; Preview note (issue #43): holding the left mouse button in the POLYPHONY field (x 245-298, y 57-103) plays a
-; note on the selected channel (velocity 100, engine A only, issue #46), the mouse wheel over the field changes the pitch (C1-G9, default
-; C4 = 60; a held note is retriggered). .data: 0x10056F04 note XOR 0x3C (zeroed .data = 60), 0x10056F05 note
-; sounding + 1 (0 = none, audio thread), 0x10056F06 mouse button held, 0x10056F07 channel of the sounding note.
+; note on the selected channel (velocity 100, engine A only, issue #46), the mouse wheel over the field changes the
+; pitch (C1-G9, default C4 = 60; a held note is retriggered).
 
-; --- panel_prog (audio thread, from send_pending): pending steps -> program change / bank select
+; --- panel_prog (audio thread, from send_pending, esi = plugin A): pending steps -> program change / bank select
 panel_prog:
     pushal
     call pp_base
 pp_base:
     pop ebp
     sub ebp, pp_base
-    mov ecx, dword ptr [ebp + 0x10056e44]
-    test ecx, ecx
+    mov eax, dword ptr [esi + 0xb0]
+    call rec_find
+    test eax, eax
     je pp_ret
-    movzx edi, byte ptr [ebp + 0x10056f00]
+    mov ebx, eax                             ; ebx = panel record of this plugin's engine
+    mov byte ptr [ebx + 0xc], 1
+    movzx edi, byte ptr [ebx + 7]
     and edi, 15
     call pp_prev
     mov eax, edi
+    mov ecx, dword ptr [ebx]
     call part_ptr
     mov esi, eax
     xor eax, eax
-    xchg byte ptr [ebp + 0x10056e42], al
+    xchg byte ptr [ebx + 4], al
     test al, al
     je pp_m
-    movsx ebx, al
-    movzx eax, byte ptr [esi + 2]
-    add eax, ebx
+    movsx eax, al
+    movzx ecx, byte ptr [esi + 2]
+    add eax, ecx
     and eax, 0x7f
     call pp_pc
 pp_m:
     xor eax, eax
-    xchg byte ptr [ebp + 0x10056f01], al
+    xchg byte ptr [ebx + 5], al
     test al, al
     je pp_l
-    movsx ebx, al
     mov edx, 1
-    mov ecx, dword ptr [ebp + 0x10056e44]
+    mov ecx, dword ptr [ebx]
     call bank_ignored
     jne pp_l
-    movzx eax, byte ptr [esi]
+    movsx eax, al
+    movzx ecx, byte ptr [esi]
+    add eax, ecx
     xor ecx, ecx
     call pp_bank
 pp_l:
     xor eax, eax
-    xchg byte ptr [ebp + 0x10056f02], al
+    xchg byte ptr [ebx + 6], al
     test al, al
     je pp_ret
-    movsx ebx, al
     mov edx, 2
-    mov ecx, dword ptr [ebp + 0x10056e44]
+    mov ecx, dword ptr [ebx]
     call bank_ignored
     jne pp_ret
-    movzx eax, byte ptr [esi + 1]
+    movsx eax, al
+    movzx ecx, byte ptr [esi + 1]
+    add eax, ecx
     mov ecx, 32
     call pp_bank
 pp_ret:
     popal
     ret
 ; pp_prev: the preview note follows the mouse button (held -> note on, released or changed -> note off first);
-; edi = channel, keeps all registers
+; ebx = panel record, edi = channel, keeps all registers
 pp_prev:
     pushal
-    xor ebx, ebx
-    cmp byte ptr [ebp + 0x10056f06], 0
+    xor esi, esi
+    cmp byte ptr [ebx + 0xa], 0
     je pv_cmp
-    movzx ebx, byte ptr [ebp + 0x10056f04]
-    xor ebx, 0x3c
-    inc ebx
+    movzx esi, byte ptr [ebx + 8]
+    xor esi, 0x3c
+    inc esi
 pv_cmp:
-    movzx eax, byte ptr [ebp + 0x10056f05]
-    cmp eax, ebx
+    movzx eax, byte ptr [ebx + 9]
+    cmp eax, esi
     je pv_ret
     test eax, eax
     je pv_on
     dec eax
     shl eax, 8
     or eax, 0x400080
-    movzx ecx, byte ptr [ebp + 0x10056f07]
+    movzx ecx, byte ptr [ebx + 0xb]
     or eax, ecx
     call pv_send
 pv_on:
-    mov byte ptr [ebp + 0x10056f05], bl
-    test ebx, ebx
+    mov eax, esi
+    mov byte ptr [ebx + 9], al
+    test esi, esi
     je pv_ret
     mov eax, edi
-    mov byte ptr [ebp + 0x10056f07], al
-    lea eax, [ebx - 1]
+    mov byte ptr [ebx + 0xb], al
+    lea eax, [esi - 1]
     shl eax, 8
     or eax, 0x640090
     or eax, edi
@@ -110,26 +122,25 @@ pv_on:
 pv_ret:
     popal
     ret
-; pv_send: eax = message, to engine A only (short-message entry, vtable +8). Engine B renders only while the
-; dispatcher has given it notes, so a note sent to it here would keep a voice and count in POLYPHONY (issue #46)
+; pv_send: eax = message, ebx = panel record; to engine A only (short-message entry, vtable +8). Engine B renders
+; only while the dispatcher has given it notes, so a note sent to it here would keep a voice and count in
+; POLYPHONY (issue #46)
 pv_send:
-    mov ecx, dword ptr [ebp + 0x10056e44]
+    mov ecx, dword ptr [ebx]
     push eax
     push ecx
     mov edx, dword ptr [ecx]
     call dword ptr [edx + 8]
     ret
-; pp_bank: eax = current value, ebx = step, ecx = controller (0 / 32), edi = channel, esi = part
+; pp_bank: eax = new value, ecx = controller (0 / 32), ebx = panel record, edi = channel, esi = part
 pp_bank:
-    add eax, ebx
     and eax, 0x7f
     shl eax, 16
     shl ecx, 8
     or eax, ecx
     or eax, 0xb0
     or eax, edi
-    push eax
-    call both_short
+    call rec_short
     movzx eax, byte ptr [esi + 2]
     call pp_pc
     ret
@@ -172,14 +183,91 @@ pt_rec:
     lea eax, [eax + edx + 0x248]
     pop edx
     ret
-; pp_pc: program eax on channel edi
+; pp_pc: program eax on channel edi, ebx = panel record
 pp_pc:
     shl eax, 8
     or eax, 0xc0
     or eax, edi
-    push eax
-    call both_short
+    call rec_short
     ret
+; rec_short: eax = message to the engine of panel record ebx and to the B of its slot; keeps all registers
+rec_short:
+    pushal
+    mov edi, dword ptr [ebx]
+    push eax
+    push eax
+    push edi
+    mov edx, dword ptr [edi]
+    call dword ptr [edx + 8]
+    call slot_of_engine
+    pop eax
+    test ebx, ebx
+    je rs_ret
+    mov ecx, dword ptr [ebx + 4]
+    mov ecx, dword ptr [ecx + 0x40]
+    mov ecx, dword ptr [ecx + 0xb0]
+    push eax
+    push ecx
+    mov edx, dword ptr [ecx]
+    call dword ptr [edx + 8]
+rs_ret:
+    popal
+    ret
+
+; rec_find: eax = engine -> eax = its panel record (0 if none); rec_claim: the same, claims a free record for an
+; engine that has none (lock cmpxchg; 0 if all four are in use). Both keep the other registers and find their
+; own load delta, so the window hooks can call them with ebp = anything.
+rec_find:
+    push ebx
+    xor ebx, ebx
+    jmp rc_go
+rec_claim:
+    push ebx
+    mov ebx, 1
+rc_go:
+    push ecx
+    push edx
+    push ebp
+    call rc_base
+rc_base:
+    pop ebp
+    sub ebp, rc_base
+    mov edx, eax
+    xor eax, eax
+    test edx, edx
+    je rc_ret
+    lea eax, [ebp + 0x10056f08]
+    mov ecx, 4
+rc_find:
+    cmp dword ptr [eax], edx
+    je rc_ret
+    add eax, 16
+    loop rc_find
+    xor eax, eax
+    test ebx, ebx
+    je rc_ret
+    lea ebx, [ebp + 0x10056f08]
+    mov ecx, 4
+rc_claim:
+    xor eax, eax
+    lock cmpxchg dword ptr [ebx], edx
+    je rc_got
+    add ebx, 16
+    loop rc_claim
+    xor eax, eax
+    jmp rc_ret
+rc_got:
+    mov eax, ebx
+rc_ret:
+    pop ebp
+    pop edx
+    pop ecx
+    pop ebx
+    ret
+; ui_rec: eax = panel object -> eax = panel record of its engine ([panel +8]), claimed if needed
+ui_rec:
+    mov eax, dword ptr [eax + 8]
+    jmp rec_claim
 
 ; button table: held code, x (row 31, 15 x 15); odd codes step down, even up
 btn_table:
@@ -205,12 +293,16 @@ lbd_base:
     pop ebp
     sub ebp, lbd_base
     mov ebx, dword ptr [esp + 0x78]
+    mov eax, dword ptr [esp + 0x74]
+    call ui_rec
+    mov esi, eax
     mov byte ptr [ebp + 0x10056e43], dl
     call do_step
     push ebx
     call dword ptr [ebp + 0x100401a4]
     push ebx
     call draw_buttons
+    push esi
     push ebx
     call redraw_values
     call get_timers
@@ -255,7 +347,12 @@ lbd_prev:
 lbp_base:
     pop ebp
     sub ebp, lbp_base
-    mov byte ptr [ebp + 0x10056f06], 1
+    mov eax, dword ptr [esp + 0x74]
+    call ui_rec
+    test eax, eax
+    je lbp_cap
+    mov byte ptr [eax + 0xa], 1
+lbp_cap:
     push dword ptr [esp + 0x78]
     call dword ptr [ebp + 0x100401a4]
     popal
@@ -290,8 +387,11 @@ ht_ret:
     pop ebp
     ret
 
-; do_step: edx = button code: the channel steps at once, PRG / MSB / LSB steps go to the audio thread
+; do_step: edx = button code, esi = panel record (0: nothing): the channel steps at once, PRG / MSB / LSB steps
+; go to the audio thread
 do_step:
+    test esi, esi
+    je ds_ret
     mov al, 1
     test dl, 1
     je ds_up
@@ -303,18 +403,19 @@ ds_up:
     jb ds_chn
     cmp dl, 7
     jb ds_msb
-    lock add byte ptr [ebp + 0x10056f02], al
+    lock add byte ptr [esi + 6], al
     ret
 ds_msb:
-    lock add byte ptr [ebp + 0x10056f01], al
+    lock add byte ptr [esi + 5], al
     ret
 ds_pre:
-    lock add byte ptr [ebp + 0x10056e42], al
+    lock add byte ptr [esi + 4], al
     ret
 ds_chn:
-    add al, byte ptr [ebp + 0x10056f00]
+    add al, byte ptr [esi + 7]
     and al, 15
-    mov byte ptr [ebp + 0x10056f00], al
+    mov byte ptr [esi + 7], al
+ds_ret:
     ret
 
 lbu_hook:
@@ -323,9 +424,13 @@ lbu_hook:
 lbu_base:
     pop ebp
     sub ebp, lbu_base
-    cmp byte ptr [ebp + 0x10056f06], 0
+    mov eax, dword ptr [esp + 0x74]
+    call ui_rec
+    test eax, eax
     je lbu_btn
-    mov byte ptr [ebp + 0x10056f06], 0
+    cmp byte ptr [eax + 0xa], 0
+    je lbu_btn
+    mov byte ptr [eax + 0xa], 0
     call dword ptr [ebp + 0x100401a0]
     popal
     jmp 0x100324b3
@@ -372,7 +477,11 @@ dt_base:
     movzx edx, byte ptr [ebp + 0x10056e43]
     test edx, edx
     je dt_kill
+    mov eax, dword ptr [esp + 0x74]
+    call ui_rec
+    mov esi, eax
     call do_step
+    push esi
     push ebx
     call redraw_values
     push 0
@@ -440,6 +549,11 @@ dw_ctl:
     cmp ecx, 396
     jge dw_out
 dw_area:
+    mov eax, dword ptr [esp + 0x74]
+    call ui_rec
+    mov esi, eax
+    test esi, esi
+    je dw_out
     movsx eax, word ptr [esp + 0x82]
     add eax, dword ptr [ebp + 0x10056e50]
     cdq
@@ -454,17 +568,17 @@ dw_area:
     je dw_pre
     cmp edi, 6
     je dw_msb
-    lock add byte ptr [ebp + 0x10056f02], al
+    lock add byte ptr [esi + 6], al
     jmp dw_draw
 dw_msb:
-    lock add byte ptr [ebp + 0x10056f01], al
+    lock add byte ptr [esi + 5], al
     jmp dw_draw
 dw_pre:
-    lock add byte ptr [ebp + 0x10056e42], al
+    lock add byte ptr [esi + 4], al
     jmp dw_draw
 dw_note:
     movsx eax, al
-    movzx edx, byte ptr [ebp + 0x10056f04]
+    movzx edx, byte ptr [esi + 8]
     xor edx, 0x3c
     add edx, eax
     cmp edx, 24
@@ -476,14 +590,15 @@ dw_n1:
     mov edx, 127
 dw_n2:
     xor edx, 0x3c
-    mov byte ptr [ebp + 0x10056f04], dl
+    mov byte ptr [esi + 8], dl
     jmp dw_draw
 dw_chn:
-    add al, byte ptr [ebp + 0x10056f00]
+    add al, byte ptr [esi + 7]
     and al, 15
-    mov byte ptr [ebp + 0x10056f00], al
+    mov byte ptr [esi + 7], al
 dw_draw:
-    push dword ptr [esp + 0x78]
+    push esi
+    push dword ptr [esp + 0x7c]
     call redraw_values
     popal
     jmp 0x100324b3
@@ -517,7 +632,10 @@ gt_ret:
 
 ; --- WM_PAINT (0x1003233D, PAINTSTRUCT at [esp+0x10]) and the idle redraw (0x100320EE, window DC in edi)
 paint_hook:
-    push dword ptr [esp + 0x10]
+    mov eax, dword ptr [esp + 0x54]
+    call ui_rec
+    push eax
+    push dword ptr [esp + 0x14]
     call draw_prog
     lea ecx, [esp + 0x10]
     push ecx
@@ -526,12 +644,15 @@ idle_hook:
     pop ebx
     push ebp
     call skin_idle
+    mov eax, ebp
+    call ui_rec
+    push eax
     push edi
     call draw_prog
     mov ecx, dword ptr [ebp + 0x88]
     jmp 0x100320f5
 
-; redraw_values(hwnd): readouts through the window DC
+; redraw_values(hwnd, record): readouts through the window DC
 redraw_values:
     pushal
     call rv_base
@@ -543,6 +664,7 @@ rv_base:
     test eax, eax
     je rv_end
     mov esi, eax
+    push dword ptr [esp + 0x28]
     push esi
     call draw_prog
     push esi
@@ -550,7 +672,7 @@ rv_base:
     call dword ptr [ebp + 0x100401ac]
 rv_end:
     popal
-    ret 4
+    ret 8
 
 ; draw_buttons(hwnd): the eight buttons, pressed (bitmap 106) or normal (bitmap 101)
 draw_buttons:
@@ -628,8 +750,9 @@ db_blit:
     call dword ptr [ebp + 0x10040018]
     ret
 
-; draw_prog(hdc): channel (2 digits) and program (PRG) / bank MSB / bank LSB (3 digits each) of that channel; blank until
-; the audio thread has seen the engine, "---" for a bank value the engine ignores
+; draw_prog(hdc, record): channel (2 digits) and program (PRG) / bank MSB / bank LSB (3 digits each) of that channel;
+; blank until the audio thread has processed the record's engine (or without a record), "---" for a bank value the
+; engine ignores
 draw_prog:
     pushal
     call dp_base
@@ -645,8 +768,13 @@ dp_base:
     push dword ptr [ebp + 0x1005533c]
     push edi
     call dword ptr [ebp + 0x10040020]
-    movzx ebx, byte ptr [ebp + 0x10056f00]
+    mov eax, dword ptr [esp + 0x28]           ; panel record
+    xor ebx, ebx
+    test eax, eax
+    je dp_chn
+    movzx ebx, byte ptr [eax + 7]
     and ebx, 15
+dp_chn:
     inc ebx
     mov eax, ebx
     xor edx, edx
@@ -658,9 +786,12 @@ dp_base:
     pop eax
     mov ecx, 56
     call dp_digit
-    mov ecx, dword ptr [ebp + 0x10056e44]
+    mov ecx, dword ptr [esp + 0x28]
     test ecx, ecx
+    je dp_blank
+    cmp byte ptr [ecx + 0xc], 0
     jne dp_values
+dp_blank:
     mov ebx, -1
     mov ecx, 137
     call dp_three
@@ -670,8 +801,9 @@ dp_base:
     call dp_three
     jmp dp_rel
 dp_values:
-    movzx eax, byte ptr [ebp + 0x10056f00]
+    movzx eax, byte ptr [ecx + 7]
     and eax, 15
+    mov ecx, dword ptr [ecx]
     call part_ptr
     mov edx, eax                             ; edx = part (MSB, LSB, program)
     push edx
@@ -684,7 +816,8 @@ dp_values:
     movzx ebx, byte ptr [edx]
     push edx
     mov edx, 1
-    mov ecx, dword ptr [ebp + 0x10056e44]
+    mov ecx, dword ptr [esp + 0x30]
+    mov ecx, dword ptr [ecx]
     call bank_ignored
     pop edx
     je dp_msb
@@ -695,7 +828,8 @@ dp_msb:
     pop edx
     movzx ebx, byte ptr [edx + 1]
     mov edx, 2
-    mov ecx, dword ptr [ebp + 0x10056e44]
+    mov ecx, dword ptr [esp + 0x28]
+    mov ecx, dword ptr [ecx]
     call bank_ignored
     je dp_lsb
     mov ebx, -2
@@ -707,7 +841,7 @@ dp_rel:
     call dword ptr [ebp + 0x10040024]
 dp_end:
     popal
-    ret 4
+    ret 8
 ; dp_three: ebx = value (-1 blank, -2 dashes), ecx = x of the first digit
 dp_three:
     cmp ebx, -2
@@ -798,8 +932,8 @@ dp_go:
 
 ; --- skins (issue #52). The six panel bitmaps (101-106) have a second set with the ids + 100 (201-206, "Modern",
 ; made by dev/gui/mkskin.py, same sizes and positions). The bitmap handles of the original DLL are process-wide
-; (.data 0x10055320 ...), so the skin is too. .data 0x10056F08: skin (0 = not known yet, 1 = original,
-; 2 = Modern), 0x10056F09: reload pending (set by setChunk, done by the next editor idle in the window's thread).
+; (.data 0x10055320 ...), so the skin is too. .data 0x10056F48: skin (0 = not known yet, 1 = original,
+; 2 = Modern), 0x10056F49: reload pending (set by setChunk, done by the next editor idle in the window's thread).
 ; The choice is kept in the ini ([<plugin id>] Skin=0/1, read through ini_int like the other keys) and in the
 ; plugin state (byte 2 of the 'R','P' appendix: 0 = none, 1 / 2 = skin; a project's skin wins over the ini).
 
@@ -810,7 +944,7 @@ skin_get:
 sg_base:
     pop ebp
     sub ebp, sg_base
-    movzx eax, byte ptr [ebp + 0x10056f08]
+    movzx eax, byte ptr [ebp + 0x10056f48]
     test eax, eax
     jne sg_ret
     push 0
@@ -823,8 +957,8 @@ sg_base:
     movzx edx, al
     inc edx
     xor eax, eax
-    lock cmpxchg byte ptr [ebp + 0x10056f08], dl
-    movzx eax, byte ptr [ebp + 0x10056f08]
+    lock cmpxchg byte ptr [ebp + 0x10056f48], dl
+    movzx eax, byte ptr [ebp + 0x10056f48]
 sg_ret:
     mov dword ptr [esp + 0x1c], eax
     popal
@@ -841,12 +975,12 @@ skset_base:
     jb skset_ret
     cmp al, 2
     ja skset_ret
-    xchg byte ptr [ebp + 0x10056f08], al
-    cmp al, byte ptr [ebp + 0x10056f08]
+    xchg byte ptr [ebp + 0x10056f48], al
+    cmp al, byte ptr [ebp + 0x10056f48]
     je skset_ret
     cmp dword ptr [ebp + 0x1005532c], 0
     je skset_ret
-    mov byte ptr [ebp + 0x10056f09], 1
+    mov byte ptr [ebp + 0x10056f49], 1
 skset_ret:
     popal
     ret
@@ -868,7 +1002,7 @@ skin_load:
 sk_base:
     pop ebp
     sub ebp, sk_base
-    cmp byte ptr [ebp + 0x10056f08], 2
+    cmp byte ptr [ebp + 0x10056f48], 2
     jne sk_go
     mov eax, dword ptr [esp + 0xc]
     sub eax, 101
@@ -894,7 +1028,7 @@ sr_loop:
     mov eax, dword ptr [ebx]
     test eax, eax
     je sr_ret
-    cmp byte ptr [ebp + 0x10056f08], 2
+    cmp byte ptr [ebp + 0x10056f48], 2
     jne sr_id
     add eax, 100
 sr_id:
@@ -924,8 +1058,8 @@ st_base:
     sub ebp, st_base
     call skin_get
     xor eax, 3
-    mov byte ptr [ebp + 0x10056f08], al
-    mov byte ptr [ebp + 0x10056f09], 0
+    mov byte ptr [ebp + 0x10056f48], al
+    mov byte ptr [ebp + 0x10056f49], 0
     push dword ptr [esp + 0x78]
     call skin_reload
     call skin_save
@@ -940,7 +1074,7 @@ si_base:
     pop ebp
     sub ebp, si_base
     xor eax, eax
-    xchg byte ptr [ebp + 0x10056f09], al
+    xchg byte ptr [ebp + 0x10056f49], al
     test eax, eax
     je si_ret
     mov esi, dword ptr [esp + 0x24]
@@ -981,7 +1115,7 @@ skin_save:
     lea ecx, [ebp + 0x10056b98]
     push ecx
     lea ecx, [ebp + txt_one]
-    cmp byte ptr [ebp + 0x10056f08], 2
+    cmp byte ptr [ebp + 0x10056f48], 2
     je sv_val
     lea ecx, [ebp + txt_zero]
 sv_val:
