@@ -141,7 +141,7 @@ def make_panel() :
     bevel(im, SCREEN_XY[0] - 2, SCREEN_XY[1] - 2, SCREEN_XY[0] + 290, SCREEN_XY[1] + 49, 3, False, SCREEN)
     bevel(im, 305, 85, 393, 107, 3, False, (10, 13, 16))      # SETUP well
     stroke_text(im, 32, 11.3, 'YAMAHA', 11, WHITE, 2.0, 0.42, 0.78)
-    p = down(im); p.paste(logo(p), (11, 2), logo(p)); return p
+    p = down(im); p.paste(logo(p), (8, 2), logo(p)); return p
 
 def make_name(model) :
     im = canvas(100, 23); bevel(im, -5, 2, 98, 23, 3)
