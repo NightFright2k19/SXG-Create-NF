@@ -2,8 +2,7 @@ name: Restore deleted Autobuild releases
 
 # Started by hand. The Autobuild workflow used to delete older Autobuild releases; their patchers are still
 # kept as artifacts of the Actions runs (90 days). This workflow creates the missing releases again from
-# those artifacts, on the commit each run built, as regular releases (only the newest Autobuild is a
-# pre-release). Releases that exist are left alone. Without "create", it only lists what it would do.
+# those artifacts, on the commit each run built, as regular releases (only the newest Autobuild is marked Latest). Releases that exist are left alone. Without "create", it only lists what it would do.
 
 on:
   workflow_dispatch:
@@ -70,10 +69,39 @@ jobs:
             {
               echo "Autobuild r$revision of the **SXG-Create-NF Patcher**, built on ${created%T*} from commit $sha."
               echo
-              echo "Restored from the artifacts of [Actions run $run]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run) after the Autobuild workflow had deleted it; kept for regression tests. The pat[...]"
+              echo "Restored from the artifacts of [Actions run $run]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run) after the Autobuild workflow had deleted it; kept for regression tests. The patchers are unchanged."
               echo
-              echo "For the instructions that apply to this version, see [README.md at this commit]($GITHUB_SERVER_URL/$GH_REPO/blob/$sha/README.md#patcher). The newest version is the pre-release [...]"
+              echo "For the instructions that apply to this version, see [README.md at this commit]($GITHUB_SERVER_URL/$GH_REPO/blob/$sha/README.md#patcher). The newest version is the one marked Latest on the Releases page."
             } > notes.md
             gh release create "$tag" "$dir"/* --target "$sha" --title "Autobuild r$revision" \
               --notes-file notes.md --latest=false
+          done
+
+      - name: Check labels and notes
+        run: |
+          set -euo pipefail
+          # Only the newest Autobuild is Latest, no Autobuild is a pre-release; notes cut short by an earlier
+          # edit ("[...]") are rewritten. Idempotent: releases that are right are not touched.
+          tags=$(gh release list --limit 1000 --json tagName --jq '.[].tagName | select(test("^autobuild-r[0-9]+$"))' | sort -t r -k3 -n)
+          newest=$(echo "$tags" | tail -n 1)
+          for tag in $tags; do
+            read -r id pre body_cut < <(gh api "repos/$GH_REPO/releases/tags/$tag" \
+              --jq '[.id, .prerelease, (.body // "" | contains("[...]"))] | @tsv')
+            args=()
+            if [ "$pre" = "true" ]; then args+=(-F prerelease=false); fi
+            if [ "$tag" = "$newest" ]; then args+=(-f make_latest=true); fi
+            if [ "$body_cut" = "true" ]; then
+              revision=${tag#autobuild-r}
+              sha=$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq .target_commitish)
+              {
+                echo "Autobuild r$revision of the **SXG-Create-NF Patcher**, restored after the Autobuild workflow had deleted it; kept for regression tests. The patchers are unchanged."
+                echo
+                echo "For the instructions that apply to this version, see [README.md at this commit]($GITHUB_SERVER_URL/$GH_REPO/blob/$sha/README.md#patcher). The newest version is the one marked Latest on the Releases page."
+              } > fixed-notes.md
+              args+=(-f "body=$(cat fixed-notes.md)")
+            fi
+            [ "${#args[@]}" -gt 0 ] || continue
+            if [ "$CREATE" != "true" ]; then echo "::notice::$tag: would update (${args[*]})"; continue; fi
+            echo "$tag: updating"
+            gh api -X PATCH "repos/$GH_REPO/releases/$id" "${args[@]}" > /dev/null
           done

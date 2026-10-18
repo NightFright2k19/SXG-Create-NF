@@ -110,7 +110,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 
 ## Patcher
 
-The easiest way: download the patcher for your system from the newest **Autobuild** release (the pre-release on top of the Releases page; older autobuilds are kept for comparison). It is a single program file; nothing is installed.
+The easiest way: download the patcher for your system from the newest **Autobuild** release (marked Latest, on top of the Releases page; older autobuilds are kept for comparison). It is a single program file; nothing is installed.
 
 | System | File | Start |
 |---|---|---|
@@ -214,7 +214,7 @@ utility/dev/         development tools, not needed for a conversion and not in t
 .github/workflows/   autobuild release
 ```
 
-**Autobuild:** every push to `main` that changes `main.py`, the patcher, `utility` (except `utility/dev`), `source/syxg50.dll` or `templates` makes the [templates](#plugin-templates) again (and commits them when they changed), then creates a pre-release `autobuild-rN` with the patchers for Windows, Linux and macOS, built from that commit. Older autobuilds are kept (for regression tests) and lose the pre-release label, so only the newest one, listed on top, is marked as pre-release. The workflow can also be started by hand (Actions, "Run workflow"). Autobuilds r14-r27 (the first ones with patchers) were deleted by the earlier workflow; the hand-started workflow `restore-autobuilds.yml` creates them again from the patchers that the Actions runs still hold.
+**Autobuild:** every push to `main` that changes `main.py`, the patcher, `utility` (except `utility/dev`), `source/syxg50.dll` or `templates` makes the [templates](#plugin-templates) again (and commits them when they changed), then creates a release `autobuild-rN` (marked Latest) with the patchers for Windows, Linux and macOS, built from that commit. Older autobuilds are kept (for regression tests) and carry no label, so only the newest one, listed on top, is marked Latest. The workflow can also be started by hand (Actions, "Run workflow"). Autobuilds r14-r27 (the first ones with patchers) were deleted by the earlier workflow; the hand-started workflow `restore-autobuilds.yml` creates them again from the patchers that the Actions runs still hold.
 
 ---
 
