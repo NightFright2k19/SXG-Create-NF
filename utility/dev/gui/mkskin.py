@@ -177,15 +177,26 @@ def original_lamps() :
     return Image.open(io.BytesIO(b'BM' + struct.pack('<IHHI', 14 + len(dib), 0, 0, 54) + dib)).convert('RGB')
 
 def lamp_logo(im, k, on) :
-    # the original lamp picture on the dark panel: its difference to the grey background is the logo (with its
-    # glow when on), its brightness the relief; off = dark metal, on = light blue
+    # the original lamp picture as a stamped-in logo: a recess in the panel (dark inner shadow along the top / left
+    # edges, light edge along the bottom / right), contrast raised; off = dark grey metal, on = bright light blue
     src = original_lamps().crop((80 * k + 40 * on, 0, 80 * k + 40 * on + 40, 39))
     bg = Image.new('RGB', src.size, src.getpixel((0, 0)))
-    m = ImageChops.difference(src, bg).convert('L').point(lambda v : min(255, v * 4))
-    lum = src.convert('L')
-    if on : face = Image.merge('RGB', [lum.point(lambda v, c = c : min(255, int(c * v / 200))) for c in CYAN])
-    else : face = Image.merge('RGB', [lum.point(lambda v, c = c : int(c * v / 255)) for c in (205, 214, 224)])
-    m = m.resize(im.size, Image.BICUBIC); face = face.resize(im.size, Image.BICUBIC)
+    m = ImageChops.difference(src, bg).convert('L').point(lambda v : min(255, v * 4) if v > 6 else 0)
+    lum = src.convert('L'); lo = lum.getextrema()[0]
+    lum = lum.point(lambda v : max(0, min(255, int((v - (60 if on else lo)) * (1.9 if on else 1.5)))))      # contrast stretch
+    W, H = im.size; m = m.resize((W, H), Image.BICUBIC); lum = lum.resize((W, H), Image.BICUBIC)
+    solid = m.point(lambda v : 255 if v > 90 else 0).filter(ImageFilter.GaussianBlur(0.5 * SS))
+    lit = ImageChops.subtract(solid, ImageChops.offset(solid, SS, SS))                  # edges facing down / right
+    dark = ImageChops.subtract(ImageChops.offset(solid, SS, SS), solid)                 # shadow top / left
+    rim = Image.new('RGB', im.size, (96, 108, 120)); sh = Image.new('RGB', im.size, (2, 4, 6))
+    im.paste(rim, (SS, SS), solid.filter(ImageFilter.MaxFilter(SS * 2 + 1)).point(lambda v : v // 3))   # light edge below
+    im.paste(sh, (0, 0), ImageChops.subtract(ImageChops.offset(solid, -SS, -SS), solid).point(lambda v : int(v * 0.9)))
+    if on :
+        halo = m.filter(ImageFilter.GaussianBlur(2.4 * SS)).point(lambda v : int(v * 0.6))
+        im.paste(Image.new('RGB', im.size, (30, 170, 200)), (0, 0), halo)
+        face = Image.merge('RGB', [lum.point(lambda v, c = c : min(255, int(c * (0.62 + v / 330)))) for c in (110, 232, 255)])
+    else :
+        face = Image.merge('RGB', [lum.point(lambda v, c = c : int(c * (0.45 + v / 400))) for c in (150, 160, 172)])
     im.paste(face, (0, 0), m)
 
 def make_lamps(panel) :
