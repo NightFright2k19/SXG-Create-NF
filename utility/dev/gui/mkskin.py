@@ -4,7 +4,7 @@
 #   101 panel 400 x 114 (+ model name 100 x 23 at x 300), 102 meter screen 288 x 47 at (11, 57),
 #   103 XG / GS lamps 4 x 40 x 39 at (308, 48) / (350, 48), 104 level meter 9 x 11 x 28 at (19 + 11 * part, 62),
 #   105 digits 11 x 10 x 13, 106 SETUP 2 x 80 x 16 at (309, 88) + pressed left / right button 15 x 15 + dash.
-# --preview writes skin52/preview.png (both skins with sample values, 1:1 and enlarged) for the approval.
+# Writes utility/bitmaps/Modern_*.bmp; --preview also writes skin52/preview.png (both skins with sample values) for the approval.
 import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops
@@ -320,13 +320,14 @@ def compose(panel, name, screen, lamps, meters, digits, setup, btn, levels, poly
     return p
 
 if __name__ == '__main__' :
-    OUT.mkdir(exist_ok = True)
+    if '--preview' in sys.argv : OUT.mkdir(exist_ok = True)
     panel = make_panel(); screen = make_screen(); meters = make_meters(); digits = make_digits()
     lamps = make_lamps(panel); setup = make_setup(panel); btn = make_buttons(panel)
+    panel.paste(setup.crop((80, 0, 160, 16)), SETUP_XY)    # the DLL draws SETUP only while it is pressed / released
     files = {'Panel101.bmp' : panel, 'Bitmap102.bmp' : screen, 'Bitmap103.bmp' : lamps, 'Bitmap104.bmp' : meters,
              'Bitmap105.bmp' : digits, 'Bitmap106.bmp' : setup, 'PanelButtons.bmp' : btn}
     for m in ('MU50', 'MU80', 'MU90', 'MU100', 'MU128', 'MU1000') : files[f'Name_{m}.bmp'] = make_name(m)
-    for n, im in files.items() : im.save(OUT / n)
+    for n, im in files.items() : im.save(B / ('Modern_' + n))
     if '--preview' in sys.argv :
         levels = [0, 6, 0, 0, 0, 6, 0, 0, 0, 7, 0, 4, 0, 0, 0, 0, 8, 8]
         new = compose(panel, files['Name_MU90.bmp'], screen, lamps, meters, digits, setup, btn, levels, 18, ['01', '049', '000', '000'])
@@ -340,4 +341,4 @@ if __name__ == '__main__' :
         y += 26 + 114 * Z + 20; d.text((20, y), 'Actual size:', font = f, fill = (40, 40, 40))
         sheet.paste(old, (150, y)); sheet.paste(new, (150 + 410, y))
         sheet.crop((0, 0, sheet.width, y + 124)).save(OUT / 'preview.png'); new.save(OUT / 'preview_modern_1x.png')
-    print('written to', OUT)
+    print('written to', B)
