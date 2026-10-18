@@ -4,7 +4,7 @@
 # for that model (code, bitmaps, Setup pages, names, version info), and the table and wave file as embedded
 # RT_RCDATA resources (as with --embed) whose contents are zeroes. The patcher only converts the ROMs and
 # writes the table and wave file into those two placeholders; it no longer needs syxg50.dll.
-#   templates/<plugin name>.tpl   syxgmu50.tpl, syxg80.tpl, syxg90.tpl, syxg100.tpl, syxg128.tpl, syxg1000.tpl
+#   templates/<plugin name>.tpl   syxgmu50.tpl, syxg80.tpl, syxg90.tpl, syxg100.tpl, syxg128.tpl, syxg1000.tpl, syxg2000.tpl
 #   templates/templates.json      sizes of the placeholders per model (measured from converted plugins)
 # Templates are made from source/syxg50.dll (python utility/template.py --make, also run by the Autobuild
 # workflow whenever their sources change). The version info carries the date of the last commit that changed
@@ -34,6 +34,7 @@ MODEL_FILES = {
     'MU100'  : ('SXG MU100',  'SXGMU100X.TBL', 'SXGMU100X.UPCM', True),
     'MU128'  : ('SXG MU128',  'SXGMU128X.TBL', 'SXGMU128X.UPCM', True),
     'MU1000' : ('SXG MU1000', 'SXGMU1KX.TBL',  'SXGMU1KX.UPCM',  True),
+    'MU2000' : ('SXG MU2000', 'SXGMU2KX.TBL',  'SXGMU2KX.UPCM',  True),    # only built without the MU1000 set (#53)
 }
 
 # what the templates are made of: a commit that changes one of these gets new templates

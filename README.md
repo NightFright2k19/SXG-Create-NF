@@ -1,6 +1,6 @@
 # SXG-Create
 
-Converts the ROM sets of Yamaha MU-series tone generators (MU50 to MU1000) into tables and wave data for the **S-YXG50** soft synthesizer (`syxg50.dll`), and patches the DLL so that it can play them as close to the original module as the S-YXG50 engine allows.
+Converts the ROM sets of Yamaha MU-series tone generators (MU50 to MU1000, and the MU2000) into tables and wave data for the **S-YXG50** soft synthesizer (`syxg50.dll`), and patches the DLL so that it can play them as close to the original module as the S-YXG50 engine allows.
 
 <img width="518" height="421" alt="patcher_preview" src="https://github.com/user-attachments/assets/fc3e7949-08da-456e-86e0-29f60c1ef1b1" />
 
@@ -39,7 +39,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **MU90 / MU90B** completed (was work in progress): word-interleaved wave ROMs (two 16-bit halves of a 32-bit bus), all four sample formats (16 bit, 12 bit, 8 bit, ADPCM), 42-byte drum voices, the bank map order XG (LSB) / SFX (MSB) / GS, and the MU90B program ROM.
 - **MU100** (new): three 32-bit wave ROM pairs in one address space, three wavedata tables with their own offset tables, 32-bit voice program maps, MU100 Native and MU Basic voice maps.
 - **MU128 and MU1000** (new): program flash from high/low 16-bit halves, 84-byte elements (mapped almost 1:1, verified on 2,317 elements shared with the MU100), 42-byte drum voices with byte 0 moved to `+23`, voice maps MU Native / MU Basic, GS, MSB 48 and GM2.
-- **MU2000** detected, but not converted: it has the same sound data as the MU1000, so the MU1000 set is used instead (see [Supported models](#supported-models-and-rom-sets)).
+- **MU2000** (issue #53): converted to `syxg2000.dll` (S-YXG2000) when no MU1000 set is there, from the MAME-style h/l pair or from the `mu2000_flash.bin` of tarboh's S-MU2000 ROM folder. It has the same sound data as the MU1000, so both plugins sound the same; with both sets present only the MU1000 is converted (see [Supported models](#supported-models-and-rom-sets)).
 - **S-YXG2006LE** (new): Yamaha's own engine (`SGP2.OLD` / `SGP2.DLL`) is patched and its tables are used unconverted, see [S-YXG2006LE](#s-yxg2006le).
 - **MU Basic voice map** for MU100 / MU128 / MU1000: the MU90-compatible map is built into the same table as the native one and can be switched in the Setup dialog (MU Native is the default). The earlier `--mu-basic` switch was removed.
 
@@ -93,7 +93,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **`--embed`:** table and wave data are stored inside the patched DLL (old `SXGBIN41.TBL` / `SXGWAVE4.TBL` removed), no ini needed.
 - **`source` folder:** ROMs and the original `syxg50.dll` are read from `source` next to `main.py`, including subfolders. `syxg50.dll` is part of the repository (with the permission of its author, Evgeny Vrublevsky).
 - **Plugin templates** (issue #40): the patcher no longer needs `syxg50.dll`. It carries one ready-patched plugin per model without any ROM data (`templates/*.tpl`) and only writes the converted table and wave file into it (see [Plugin templates](#plugin-templates)). The S-YXG2006LE is patched from the user's `SGP2.OLD` / `SGP2.DLL` as before.
-- **Several models in one run:** all complete ROM sets found are converted (in parallel, one process per model, as many at a time as there are CPU cores and enough free memory, about 1 GB each; `--jobs N` sets the number, `--jobs 1` converts one after another), DLLs/inis named `syxg80.dll` ... `syxg1000.dll` (MU50: `syxgmu50.dll`); MU2000 is skipped when the MU1000 set is there.
+- **Several models in one run:** all complete ROM sets found are converted (in parallel, one process per model, as many at a time as there are CPU cores and enough free memory, about 1 GB each; `--jobs N` sets the number, `--jobs 1` converts one after another), DLLs/inis named `syxg80.dll` ... `syxg1000.dll` (MU50: `syxgmu50.dll`, MU2000: `syxg2000.dll`); MU2000 is skipped when the MU1000 set is there.
 - **Wildcards** (`*.bin`) are expanded by the script; `SXG_NO_PAUSE=1` skips the final key press.
 - **`output` folder:** all generated files are written to `output` next to `main.py`.
 - **Folder layout:** only `main.py` stays in the root; all modules are in `utility`, development tools in `utility/dev` (see [Folder layout](#folder-layout)). The table converters are merged into `tableconvert.py`, the table creation into `decBase.py`, the MU80 investigation tools into `utility/dev/analyze_mu80.py`.
@@ -123,7 +123,7 @@ The easiest way: download the patcher for your system from the newest **Autobuil
 
 1. Put the patcher in a folder together with your MU ROM files, and/or the three files of Yamaha's **S-YXG2006LE** (`SGP2.OLD` or `SGP2.DLL`, also one patched by SGP2VSTi 1.0.2.22 such as `S-YXG2006LE.DLL`; `sxgbnw6l.tbl`, `sxgdat6l.tbl`). Subfolders are fine, e.g. one per model; file names don't matter (detection by CRC32). **`syxg50.dll` is no longer needed:** the patcher carries ready-patched plugin templates (see [Plugin templates](#plugin-templates)).
 2. Start the patcher. It lists every complete ROM set it found and the S-YXG2006LE (one line, when all three files are there). If it finds no ROMs, it asks for the folder; **Choose folder…** points it to another place at any time.
-3. Click **Patch**. All listed models are converted, several at the same time on a multi-core CPU, and the S-YXG2006LE is patched in the same run. The plugins end up in the folder **`Plugins`** next to the patcher: one DLL per model (`syxgmu50.dll`, `syxg80.dll` ... `syxg1000.dll`) with the tables inside (`--embed`), no ini or table files needed, and `syxg2006le.dll` with its two tables inside (see [S-YXG2006LE](#s-yxg2006le) for its parameters). **Open folder** shows them.
+3. Click **Patch**. All listed models are converted, several at the same time on a multi-core CPU, and the S-YXG2006LE is patched in the same run. The plugins end up in the folder **`Plugins`** next to the patcher: one DLL per model (`syxgmu50.dll`, `syxg80.dll` ... `syxg1000.dll`, `syxg2000.dll`) with the tables inside (`--embed`), no ini or table files needed, and `syxg2006le.dll` with its two tables inside (see [S-YXG2006LE](#s-yxg2006le) for its parameters). **Open folder** shows them.
 
 - **Language:** the system language if available, else English; the menu at the top right switches between 29 languages, each shown in its own name and sorted alphabetically by the Latin spelling of that name: العربية, Bahasa Indonesia, বাংলা, Čeština, Dansk, Deutsch, Ελληνικά, English, Español, فارسی, Français, 한국어, हिन्दी, Italiano, עברית, Magyar, Nederlands, 日本語, Polski, Português, Română, Русский, Српски, Svenska, ไทย, Tiếng Việt, Türkçe, Українська, 中文.
 - **Show details** shows the converter's log (the same text the Python script prints).
@@ -139,7 +139,7 @@ The easiest way: download the patcher for your system from the newest **Autobuil
 
 A template is the finished plugin of one model without ROM data: `syxg50.dll` with every patch of [DLL patching](#dll-patching) for that model (code, panel bitmaps, Setup page, names, version info), plus the table and wave file as embedded resources, exactly as `--embed` stores them, but filled with zeroes. On its own a template is useless. The patcher converts your ROMs and writes the table and wave file into the two placeholders; the result is the same plugin a run with `syxg50.dll` and `--embed` gives (byte for byte, apart from the date in the version info, see below).
 
-- **Files:** `templates/syxgmu50.tpl`, `syxg80.tpl`, `syxg90.tpl`, `syxg100.tpl`, `syxg128.tpl`, `syxg1000.tpl`, named after the plugins. `templates/templates.json` holds the sizes of the two placeholders per model.
+- **Files:** `templates/syxgmu50.tpl`, `syxg80.tpl`, `syxg90.tpl`, `syxg100.tpl`, `syxg128.tpl`, `syxg1000.tpl`, `syxg2000.tpl`, named after the plugins. `templates/templates.json` holds the sizes of the two placeholders per model.
 - **No ROM data:** the placeholders contain only zeroes; `python utility/template.py --check` (and `patcher --selftest`) verifies that.
 - **Made by the workflow:** `utility/template.py --make` builds them from `source/syxg50.dll`. The Autobuild workflow runs it on every push to `main` that touches the converter, commits the templates to `templates/` when they changed and builds the patchers from that commit, so every Autobuild release carries templates that match its code. In the patcher they are one 7z archive (LZMA2, Ultra, largest dictionary; mostly zeroes, so it is small), read with Python's own `lzma`, so nothing has to be installed.
 - **Version date:** the version info of a plugin shows the date of the last commit that changed the templates' sources (`syxg50.dll`, `dllpatch.py`, `template.py`, the bitmaps, `templates.json`), no longer the day of the conversion. The same commit always gives the same templates.
@@ -246,11 +246,11 @@ The script waits for a key press at the end (so a drag & drop window stays open)
 | MU100 (xu50720 v1.11) | `xu50720.ic11` | `xs518b0.ic34`, `xs743b0.ic35`, `xt445a0-828.ic36`, `xt461a0-829.ic37`, `xt462a0.ic39`, `xt463a0.ic38` | big |
 | MU128 (v2.00) | `mu128-v2.00-h.bin`, `mu128-v2.00-l.bin` | `xv364a0.ic53`, `xv365a0.ic54`, `xv366a0.ic57`, `xv376a0.ic58` | big |
 | MU1000 (v2.01) | `mu1000-v2.01-h.bin`, `mu1000-v2.01-l.bin` | `xv364a0.ic49`, `xv365a0.ic50`, `xw848a0.ic53`, `xw849a0.ic54` | big |
-| MU2000 (v2.01) | detected, but not converted | | |
+| MU2000 (v2.01) | `mu2000-v2.01-h.bin`, `mu2000-v2.01-l.bin`, or `mu2000_flash.bin` (S-MU2000 ROM folder) | `xv364a0.ic49`, `xv365a0.ic50`, `xw848a0.ic53`, `xw849a0.ic54` (the MU1000's; in the S-MU2000 folder under `dump/`) | big |
 
 File names are only examples; the files are recognised by their CRC32.
 
-> **MU2000:** it has the same voice data as the MU1000 (1,635 voices, 1,027 drum voices, 2,901 samples, the same wave ROMs). Only the element filter/level scaling is stored differently: instead of 4 break points, each element holds an index into 1,377 tables of 128 notes, which lie in the upper half of the 4 MB firmware image (at `0x23CED0`, location from TaleTN's MUTable). An earlier version of this README said this table was missing from the ROM dump; that was wrong. The tables are the MU1000's break points interpolated per note, so they convert back to break points (1,376 of 1,377 exactly, one within 1 step on one note). A test conversion of the MU2000 set rendered bit-identically to the MU1000 conversion (464 voices, 6,496 notes) with a byte-identical wave file. Since the result is the same, SXG-Create uses the MU1000 set (the MU2000 set is skipped when both are present, otherwise a message asks for the MU1000 set).
+> **MU2000** (issue #53): it has the same voice data as the MU1000 (1,635 voices, 1,027 drum voices, 2,901 samples, the same wave ROMs); every table the converter reads is byte-identical, only at other addresses. Only the element filter/level scaling is stored differently: instead of 4 break points, each element holds an index into 1,377 tables of 128 notes, which lie in the upper half of the 4 MB firmware image (at `0x23CED0`, location from TaleTN's MUTable). The tables are the MU1000's break points interpolated per note (the formula reproduces all 5,306 scalings), and the converter turns them back into break points (`utility/scaling.py`): 1,376 tables give exactly the same 128 notes; one (an element of MuteGtr#, whose MU1000 break points cross) differs on 3 notes by up to 3 steps of the cutoff scaling. The break points are not always the MU1000's own (points on a straight part of the curve are free), so the voice level trims are keyed on the scaling written out per note and apply to both. With only the MU2000 set the result is `syxg2000.dll` (S-YXG2000, table `SXGMU2KX.TBL`, wave `SXGMU2KX.UPCM`); with both sets, only the MU1000 is converted, as the plugins would sound the same. The MU2000's own extras (sampling, plug-in boards, A/D input) have no counterpart in the S-YXG50.
 
 | S-YXG2006LE | `SGP2.OLD` or `SGP2.DLL` (CRC32 `A62F256A`, `68FD2825` or `F5037F5F`), `sxgbnw6l.tbl` | `sxgdat6l.tbl` | original, not converted |
 
@@ -268,6 +268,7 @@ The S-YXG50's own tables and `Vampire.dll` are recognised as well, but they are 
 | MU100 | big | "Full" | `SXGMU100X.TBL` | `SXGMU100X.UPCM` | 51.8 MB |
 | MU128 | big | "Full" | `SXGMU128X.TBL` | `SXGMU128X.UPCM` | 70.8 MB |
 | MU1000 | big | "Full" | `SXGMU1KX.TBL` | `SXGMU1KX.UPCM` | 87.3 MB |
+| MU2000 | big | "Full" | `SXGMU2KX.TBL` | `SXGMU2KX.UPCM` | 87.3 MB |
 
 The MU100, MU128 and MU1000 tables contain both voice maps (native and MU Basic); the wave file is the same as for the native map alone. Earlier versions wrote a separate `...BX` set with the old `--mu-basic` switch; these files are no longer needed, and `--mu-basic` is ignored with a note.
 
@@ -392,7 +393,7 @@ Any input file that starts with `MZ` is taken as the DLL and identified by its c
 **Resources**
 
 - **Bitmaps:** bitmap 101 (the panel picture, 400 x 114 since issue #42) is built from `utility/bitmaps/Panel101.bmp` (the same for every model, with the control row) and the model name `utility/bitmaps/Name_<model>.bmp` pasted at (300, 0) (MU50 / original: S-YXG50); bitmap 106 gets `PanelButtons.bmp` (pressed buttons, dash) appended; bitmap 105 becomes `utility/bitmaps/Bitmap105.bmp`. Keep the `bitmaps` folder in `utility`. All are made by `utility/dev/gui/mkpanel.py` from the template and mockup of issue #42 (`utility/dev/gui/panel42/`). Bitmap 105 must keep the original size (110x13); any uncompressed 8-, 24- or 32-bit BMP works. The Modern skin (issue #52) adds bitmaps 201-206 (= 101-106 of the skin, put together the same way from `utility/bitmaps/Modern_*.bmp`, made by `utility/dev/gui/mkskin.py`); `.rsrc` is rebuilt for them (about 220 KB more).
-- **Names** (MU80 ... MU1000; MU50 keeps the S-YXG50 names, only its default table name is set): the About dialog and string table say S-YXG<n> instead of S-YXG50 (e.g. S-YXG1000), the internal name `xg50` becomes `mu<n>`, the default table name in the string table becomes the table just built, and the version info reads "Yamaha S-YXG<n> VSTi", "S-YXG<n>", "S-YXG<n>.DLL" and "Yamaha S-YXG<n> Portable VSTi". Hosts may list the plugin under its new name after a rescan.
+- **Names** (MU80 ... MU2000; MU50 keeps the S-YXG50 names, only its default table name is set): the About dialog and string table say S-YXG<n> instead of S-YXG50 (e.g. S-YXG1000), the internal name `xg50` becomes `mu<n>`, the default table name in the string table becomes the table just built, and the version info reads "Yamaha S-YXG<n> VSTi", "S-YXG<n>", "S-YXG<n>.DLL" and "Yamaha S-YXG<n> Portable VSTi". Hosts may list the plugin under its new name after a rescan.
 - **Version info** (all models): the file version `2016,4,25,18` becomes the conversion date (`YYYY,MM,DD,0`), the FileVersion string `2016.04.25.0018` becomes `YYYY.MM.DD`, and the copyright reads "... 2016 VEG, 2026 Soundshock/NightFright".
 
 The resource section grows by a few KB for this. The PE checksum is recalculated after patching.
@@ -401,7 +402,7 @@ The S-YXG50 sound engine itself, including its MMX/SSE paths, is not changed bey
 
 ### File names
 
-- **`syxg50.dll` is never overwritten:** a DLL supplied as `syxg50.dll` (or `syxg50.orig.dll`) is written under the model's name: `syxgmu50.dll` (MU50, because `syxg50.dll` is the original's name), `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.dll` or `syxg1000.dll`, in single and multi-model runs, with and without `--embed`. The supplied `syxg50.dll` stays unchanged.
+- **`syxg50.dll` is never overwritten:** a DLL supplied as `syxg50.dll` (or `syxg50.orig.dll`) is written under the model's name: `syxgmu50.dll` (MU50, because `syxg50.dll` is the original's name), `syxg80.dll`, `syxg90.dll`, `syxg100.dll`, `syxg128.dll`, `syxg1000.dll` or `syxg2000.dll`, in single and multi-model runs, with and without `--embed`. The supplied `syxg50.dll` stays unchanged.
 - **Other names are kept:** e.g. `mu800.dll` gives a patched `mu800.dll`. A name without an extension gets `.dll` added.
 - **ini:** it gets the same name with `.ini` (`mu800.ini`). The DLL looks for the ini under its own name, so if you rename the DLL later, rename the ini as well.
 - **DLL with another name already in the `output` folder:** it is replaced by the patched version, and the original is kept once as `<name>.orig.dll`. Later runs patch from that backup, so switching between models (Enhanced <-> Full) always starts from the original.
@@ -420,7 +421,7 @@ DebugPanel=0
 DisableGUI=0
 ```
 
-The section is the plugin's own name in capitals, the DLL name without `.dll`: `[SYXGMU50]`, `[SYXG80]`, `[SYXG90]`, `[SYXG100]`, `[SYXG128]`, `[SYXG1000]`. Two other sections are read as well, so older and original ini files keep working (issue #36):
+The section is the plugin's own name in capitals, the DLL name without `.dll`: `[SYXGMU50]`, `[SYXG80]`, `[SYXG90]`, `[SYXG100]`, `[SYXG128]`, `[SYXG1000]`, `[SYXG2000]`. Two other sections are read as well, so older and original ini files keep working (issue #36):
 
 - `[Config]` with `SoftSynth=` (written by SXG-Create before; still read and checked first),
 - `[SYXG50]`, the section of the original S-YXG50. Falcosoft's MIDI Player and VST MIDI Driver write `DebugPanel` there when you switch the debug view with their UI button; it is read before the plugin's own section, so that switch works with these plugins as well.

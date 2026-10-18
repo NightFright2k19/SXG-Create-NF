@@ -22,10 +22,13 @@ from decMU90 import MU90, MU90_Waverom, Make_Reversed, Apply_Drum_HPF, Apply_Ele
 # - voice maps: MU Basic, MU Native (both converted, MU Basic as the second map in the same table), GS, MSB 48, GM2 (basic/native)
 #   MU Basic = the MU90-compatible voice set (unrevoiced names like "GrandPno"), MU Native = "GrandP #" etc.
 #
-# The MU2000 has the same voice data, but its program ROM stores the filter/level scaling of
+# The MU2000 (issue #53) has the same voice data, but its program ROM stores the filter/level scaling of
 # every element (+36..+43, +58..+65) as an index into 1,377 tables of 128 notes (firmware 0x23CED0,
-# see TaleTN's MUTable), the MU1000's break points interpolated per note. Not converted: the result
-# would be the same as the MU1000 conversion (checked with a test build).
+# see TaleTN's MUTable and scaling.py), the MU1000's break points interpolated per note. MU2000_Scaling
+# turns them back into break points, then the MU1000 decoder runs on the MU2000 layout. Compared with
+# the MU1000 (2026-10-18): every other table the converter reads is byte-identical, the scalings give
+# the same 128 notes (all but one: MuteGtr# element 1 cutoff scaling, 3 notes by up to 3 steps; its
+# MU1000 break points cross, 40 / 52 / 50 / 79, which ascending break points cannot express).
 
 def MU1000_Program(high : bytes, low : bytes) -> bytes :
     # 32-bit bus: word n = high[2n:2n+2] + low[2n:2n+2], then byte swapped like the other MU ROMs
@@ -55,6 +58,19 @@ _LAYOUTS = {
         DRUMPRG    = 0x1D62B8,                 # 0 XG basic, 1 XG native, 2 SFX, 3 GS, 4/5 GS (other maps), 6/7 GM2 voice LSB rows (basic/native)
         NATIVE_XG_BASE = 0x5B, SILENT = 0x4C,
         WAVESPAN   = 0x2000000),
+    'MU2000' : dict(                           # v2.01: same contents as the MU1000, other addresses
+        WAVEDATA   = (0x1F55A0, 0x200AF0),
+        WDOFFS     = (0x200AF0, 0x200AF0 + 503*2),
+        VOICES     = (0x200EE0, 0x23CECE),
+        PRGMAP     = (0x267F50, 0x283950),
+        BANKROWS   = 0x283950,
+        EXTOFFS    = (0x283B50, 0x283B50 + 97*4),
+        GSROW      = 0x283D50,
+        DRUMVOICES = (0x283DD0, 0x28E64E),
+        KEYMAPS    = (0x28E64E, 0x29224E),
+        DRUMPRG    = 0x292340,
+        NATIVE_XG_BASE = 0x5B, SILENT = 0x4C,
+        WAVESPAN   = 0x2000000),
     'MU128' : dict(
         WAVEDATA   = (0x0FDB0C, 0x1084BC),
         WDOFFS     = (0x1084BC, 0x108856),     # 461 entries
@@ -71,6 +87,42 @@ _LAYOUTS = {
 }
 
 ELEMENT_LENGTH = 84
+
+MU2000_SCALING_TABLES = 0x23CED0       # 128 signed notes per table
+
+def MU2000_Flash_Split(flash : bytes) -> tuple[bytes, bytes] :
+    # the 4 MB flash image of S-MU2000 (mu2000_flash.bin, as seen by the CPU: per 32-bit word the byte
+    # swapped high half, then the byte swapped low half, see tarboh's ydl_extract.py) -> the h / l pair
+    high, low = bytearray(), bytearray()
+    for i in range(0, len(flash), 4) :
+        high += flash[i : i+2][::-1]
+        low += flash[i+2 : i+4][::-1]
+    return bytes(high), bytes(low)
+
+def MU2000_Scaling(image : bytes | bytearray) -> bytearray :
+    # dejumbled MU2000 image -> the same with break points + offsets in every element scaling (MU1000 format)
+    import scaling
+    data = bytearray(image)
+    start, end = _LAYOUTS['MU2000']['VOICES']
+    cache = {}
+    approx = 0
+    p = start
+    while p < end :
+        cnt = bin(data[p] & 0x0F).count('1')
+        for k in range(cnt) :
+            e = p + 14 + ELEMENT_LENGTH * k
+            for f in (36, 58) :
+                if data[e + f] != 0xFF : continue
+                idx = (data[e + f + 6] << 8) | data[e + f + 7]
+                if idx not in cache : 
+                    t = [((x + 128) & 0xFF) - 128 for x in data[MU2000_SCALING_TABLES + 128 * idx : MU2000_SCALING_TABLES + 128 * (idx + 1)]]
+                    cache[idx] = scaling.Inverse(t)
+                bp, of, err = cache[idx]
+                approx += err > 0
+                data[e + f : e + f + 8] = bytes(bp + [x + 64 for x in of])
+        p += 14 + ELEMENT_LENGTH * cnt
+    print(f'MU2000 scaling: {len(cache)} tables converted to break points' + (f', {approx} approximated' if approx else ''))
+    return data
 
 
 DRUM_LEVEL_GAIN_DB = 0.82

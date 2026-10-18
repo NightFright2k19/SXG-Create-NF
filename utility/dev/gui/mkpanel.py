@@ -26,6 +26,20 @@ for x, n in DIGITS :
 panel.save(B / 'Panel101.bmp')
 for model, src in [('MU50', P / 'Bitmap101_MU50_original.png')] + [(m, P / f'Bitmap101_{m}.bmp') for m in ('MU80', 'MU90', 'MU100', 'MU128', 'MU1000')] :
     Image.open(src).convert('RGB').crop(NAME_BOX).save(B / f'Name_{model}.bmp')
+# MU2000 (#53): no earlier bitmap; the "1" of the MU1000 name replaced by the "2" of the MU128 name (9 pixels
+# from x 74, alpha taken against each picture's own background, drawn 1 pixel left of the "1" so it keeps the
+# digit spacing and does not touch the "0")
+a = Image.open(B / 'Name_MU1000.bmp').convert('RGB'); b = Image.open(B / 'Name_MU128.bmp').convert('RGB')
+pa, pb = a.load(), b.load(); n2000 = a.copy(); po = n2000.load()
+for x in range(57, 67) :
+    for y in range(5, 19) : po[x, y] = pa[x, 4]
+for dx in range(9) :
+    for y in range(5, 19) :
+        bga, bgb, v = pa[57 + dx, 4], pb[74 + dx, 4], pb[74 + dx, y]
+        al = max(0, min(1, (sum(v) - sum(bgb)) / max(1, 765 - sum(bgb))))
+        c = tuple(round(bga[i] + (255 - bga[i]) * al) for i in range(3))
+        po[57 + dx, y] = max(c, po[57 + dx, y], key = sum)
+n2000.save(B / 'Name_MU2000.bmp')
 old = Image.open(P / 'PresetButtons_old.bmp').convert('RGB')
 strip = Image.new('RGB', (40, 15)); strip.paste(old.crop((0, 0, 30, 15)), (0, 0))
 dash = blank.copy(); fg = max(dig.getdata(), key = sum)
