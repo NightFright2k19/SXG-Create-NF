@@ -4,8 +4,8 @@
 ; (call/pop, ebp = load delta). State in .data:
 ;   0x10056E40  pending reset (0 = none, 1 = GM, 2 = GS, 3 = XG, 4 = GM2, 5 = MT-32), set by a Send Reset button, taken by
 ;               the audio thread
-;   0x10056E42  pending program step (signed), added by the panel buttons / mouse wheel, taken by the audio thread
-;   0x10056E43  panel button held, 0x10056E44 engine (plugin +0xB0, stored by the audio thread)
+;   0x10056E42  unused (was the pending program step; the panel state is per instance since #55, see panel.asm)
+;   0x10056E43  panel button held, 0x10056E44 engine (plugin +0xB0, stored by the audio thread; not used by the panel)
 ;   0x10056E48  SetTimer, 0x10056E4C KillTimer (user32, looked up on the first button press)
 ;   0x10056E50  mouse wheel remainder (WHEEL_DELTA = 120 per step)
 ;   0x10056E54  samples left until host events may pass again after a reset (4800 = 100 ms at 48 kHz)
