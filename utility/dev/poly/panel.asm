@@ -1099,16 +1099,29 @@ skin_paint:
 sp_ret:
     ret
 
-; skin_save: Skin=0 / 1 into [<plugin id>] of the ini (WritePrivateProfileStringA; a write-protected ini is no error)
+; skin_save: Skin=0 / 1 into [<plugin id>] of the ini (WritePrivateProfileStringA; a write-protected ini is no error);
+; only an existing ini is written, none is made (GetFileAttributesA)
 skin_save:
     lea eax, [ebp + txt_kernel32]
     push eax
     call dword ptr [ebp + 0x10040104]
     test eax, eax
     je sv_ret
+    mov esi, eax
+    lea ecx, [ebp + txt_attributes]
+    push ecx
+    push esi
+    call dword ptr [ebp + 0x10040030]
+    test eax, eax
+    je sv_ret
+    lea ecx, [ebp + 0x10056b98]
+    push ecx
+    call eax
+    cmp eax, -1                              ; no ini (e.g. a plugin with embedded tables): only the plugin state keeps it
+    je sv_ret
     lea ecx, [ebp + txt_writeprofile]
     push ecx
-    push eax
+    push esi
     call dword ptr [ebp + 0x10040030]
     test eax, eax
     je sv_ret
@@ -1161,6 +1174,9 @@ txt_zero:
     .byte 0
 txt_kernel32:
     .ascii "KERNEL32.dll"
+    .byte 0
+txt_attributes:
+    .ascii "GetFileAttributesA"
     .byte 0
 txt_writeprofile:
     .ascii "WritePrivateProfileStringA"
