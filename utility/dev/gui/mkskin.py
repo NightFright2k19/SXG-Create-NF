@@ -58,6 +58,44 @@ def text(im, xy, s, size, color, weight = 'Bold', anchor = 'lm', squeeze = 1.0, 
         im.paste(Image.new('RGB', layer.size, glow), pos, halo)
     im.paste(Image.new('RGB', layer.size, color), pos, layer)
 
+# techno stroke font (grid 4 x 6, chamfered corners) for the YAMAHA name, the model name and SETUP
+GLYPHS = {
+    'A' : [[(0, 6), (0, 1.5), (1.5, 0), (2.5, 0), (4, 1.5), (4, 6)], [(0, 3.6), (4, 3.6)]],
+    'Y' : [[(0, 0), (0, 1.2), (2, 3.4), (4, 1.2), (4, 0)], [(2, 3.4), (2, 6)]],
+    'M' : [[(0, 6), (0, 0), (2, 2.8), (4, 0), (4, 6)]],
+    'H' : [[(0, 0), (0, 6)], [(4, 0), (4, 6)], [(0, 3), (4, 3)]],
+    'S' : [[(4, 0), (1, 0), (0, 1), (0, 2), (1, 3), (3, 3), (4, 4), (4, 5), (3, 6), (0, 6)]],
+    'E' : [[(4, 0), (0, 0), (0, 6), (4, 6)], [(0, 3), (3, 3)]],
+    'T' : [[(0, 0), (4, 0)], [(2, 0), (2, 6)]],
+    'U' : [[(0, 0), (0, 5), (1, 6), (3, 6), (4, 5), (4, 0)]],
+    'P' : [[(0, 6), (0, 0), (3, 0), (4, 1), (4, 2), (3, 3), (0, 3)]],
+    'G' : [[(4, 1), (3, 0), (1, 0), (0, 1), (0, 5), (1, 6), (3, 6), (4, 5), (4, 3), (2, 3)]],
+    'X' : [[(0, 0), (4, 6)], [(4, 0), (0, 6)]],
+    '-' : [[(0.5, 3), (3.5, 3)]],
+    '0' : [[(1, 0), (3, 0), (4, 1), (4, 5), (3, 6), (1, 6), (0, 5), (0, 1), (1, 0)]],
+    '1' : [[(0.5, 1.2), (2, 0), (2, 6)]],
+    '2' : [[(0, 1), (1, 0), (3, 0), (4, 1), (4, 2), (0, 6), (4, 6)]],
+    '5' : [[(4, 0), (0, 0), (0, 3), (3, 3), (4, 4), (4, 5), (3, 6), (0, 6)]],
+    '8' : [[(1, 0), (3, 0), (4, 1), (4, 2), (3, 3), (1, 3), (0, 2), (0, 1), (1, 0)], [(1, 3), (0, 4), (0, 5), (1, 6), (3, 6), (4, 5), (4, 4), (3, 3)]],
+    '9' : [[(4, 3), (1, 3), (0, 2), (0, 1), (1, 0), (3, 0), (4, 1), (4, 5), (3, 6), (0, 6)]],
+}
+
+def stroke_text(im, x, cy, s, h, color, weight = 1.6, gap = 0.55, aspect = 0.72, anchor = 'l', glow = None) :
+    # s drawn with GLYPHS: cap height h pixels, glyph width h * aspect, gap = fraction of the glyph width
+    gw = h * aspect; adv = gw * (1 + gap); total = adv * (len(s) - 1) + gw
+    x0 = x - {'l' : 0, 'm' : total / 2, 'r' : total}[anchor]
+    def draw(target, col, w) :
+        d = ImageDraw.Draw(target)
+        for i, ch in enumerate(s) :
+            for line in GLYPHS[ch] :
+                pts = [((x0 + adv * i + px / 4 * gw) * SS, (cy - h / 2 + py / 6 * h) * SS) for px, py in line]
+                d.line(pts, fill = col, width = int(w * SS), joint = 'curve')
+                for q in (pts[0], pts[-1]) : d.ellipse([q[0] - w * SS / 2, q[1] - w * SS / 2, q[0] + w * SS / 2, q[1] + w * SS / 2], fill = col)
+    if glow :
+        g = Image.new('L', im.size, 0); draw(g, 255, weight); g = g.filter(ImageFilter.GaussianBlur(1.6 * SS)).point(lambda v : int(v * 0.6))
+        im.paste(Image.new('RGB', im.size, glow), (0, 0), g)
+    draw(im, color, weight)
+
 # ------------------------------------------------------------------ geometry of the original panel (do not move)
 BUTTONS = [25, 73, 116, 174, 221, 279, 323, 381]             # 15 x 15, row 31
 CELLS = [(46, 2), (137, 3), (242, 3), (344, 3)]              # digits 10 x 13 in row 32
@@ -99,12 +137,12 @@ def make_panel() :
     for x, s in LABELS : text(im, (x, 38.6), s, 9.5, LABEL, 'SemiBold', 'lm', 0.92)
     bevel(im, SCREEN_XY[0] - 2, SCREEN_XY[1] - 2, SCREEN_XY[0] + 290, SCREEN_XY[1] + 49, 3, False, SCREEN)
     bevel(im, 305, 85, 393, 107, 3, False, (10, 13, 16))      # SETUP well
-    text(im, (29, 12.6), 'YAMAHA', 13.5, WHITE, 'ExtraBold', 'lm', 0.96, track = 0.6)
+    stroke_text(im, 29, 11.3, 'YAMAHA', 11, WHITE, 2.0, 0.42, 0.78)
     p = down(im); p.paste(logo(p), (8, 2), logo(p)); return p
 
 def make_name(model) :
     im = canvas(100, 23); bevel(im, -5, 2, 98, 23, 3)
-    text(im, (93, 12.4), 'S-YXG' + {'MU50' : '50'}.get(model, model[2:]), 12, GREY, 'SemiBold', 'rm', 1.0, track = 0.7)
+    stroke_text(im, 93, 11.6, 'S-YXG' + model[2:], 9, GREY, 1.5, 0.5, 0.7, 'r')
     return down(im).crop((0, 0, 100, 23))
 
 def make_screen() :
@@ -168,36 +206,43 @@ def make_digits() :
     for k in range(11) : out.paste(digit(DIG[k]), (10 * k, 0))
     return out
 
-def original_lamps() :
-    # bitmap 103 of syxg50.dll (XG off / on, GS off / on, 40 x 39 each)
-    import io, struct
-    sys.path.insert(0, str(HERE.parent.parent.parent)); from utility import dllpatch as dp
-    data = (HERE.parent.parent.parent / 'source' / 'syxg50.dll').read_bytes()
-    dib = dp.resource_data(data, dp.resource_entries(data, dp.RT_BITMAP)[103])
-    return Image.open(io.BytesIO(b'BM' + struct.pack('<IHHI', 14 + len(dib), 0, 0, 54) + dib)).convert('RGB')
+# XG / GS logos: the shapes of the original lamps (bitmap 103 of syxg50.dll, 40 x 39), traced as polygons in lamp
+# coordinates (the originals are too small for an automatic cut-out). BODY = the solid shape, ENGRAVE = the lines
+# cut into it (the G of the XG box, the spiral of the GS), drawn darker.
+BODY = {
+    0 : [[(6.2, 14.2), (11.2, 14.2), (19.6, 29.8), (14.2, 29.8)],                               # X, stroke top-left -> bottom-right
+         [(17.2, 14.2), (21.8, 14.2), (11.4, 29.8), (6.6, 29.8), (5.4, 28.2)],                   # X, stroke top-right -> bottom-left
+         [(19, 14.2), (34.8, 14.2), (34.8, 29.8), (19, 29.8)]],                                  # box
+    1 : [[(11.2, 13.8), (29.5, 13.8), (31.6, 15.3), (32.6, 17), (32.6, 23.6), (31, 25.3), (27.8, 28.6), (26, 30.9), (24, 33.8),
+          (18.2, 33.8), (17.2, 31), (14, 29.8), (10.5, 26.2), (8, 23.5), (5.2, 21.2), (5.5, 19.8)]],
+}
+ENGRAVE = {
+    0 : [[(22.2, 17), (32.5, 17)], [(21, 17), (21, 27)], [(21, 27), (32.5, 27)], [(31.3, 22.4), (31.3, 27)], [(27, 22.4), (31.3, 22.4)]],
+    1 : [[(27.2, 26), (27.2, 19.2), (13.6, 19.2), (13.6, 25.6), (22, 25.6), (22, 22.4), (18, 22.4)]],
+}
 
 def lamp_logo(im, k, on) :
-    # the original lamp picture as a stamped-in logo: a recess in the panel (dark inner shadow along the top / left
-    # edges, light edge along the bottom / right), contrast raised; off = dark grey metal, on = bright light blue
-    src = original_lamps().crop((80 * k + 40 * on, 0, 80 * k + 40 * on + 40, 39))
-    bg = Image.new('RGB', src.size, src.getpixel((0, 0)))
-    m = ImageChops.difference(src, bg).convert('L').point(lambda v : min(255, v * 4) if v > 6 else 0)
-    lum = src.convert('L'); lo = lum.getextrema()[0]
-    lum = lum.point(lambda v : max(0, min(255, int((v - (60 if on else lo)) * (1.9 if on else 1.5)))))      # contrast stretch
-    W, H = im.size; m = m.resize((W, H), Image.BICUBIC); lum = lum.resize((W, H), Image.BICUBIC)
-    solid = m.point(lambda v : 255 if v > 90 else 0).filter(ImageFilter.GaussianBlur(0.5 * SS))
-    lit = ImageChops.subtract(solid, ImageChops.offset(solid, SS, SS))                  # edges facing down / right
-    dark = ImageChops.subtract(ImageChops.offset(solid, SS, SS), solid)                 # shadow top / left
-    rim = Image.new('RGB', im.size, (96, 108, 120)); sh = Image.new('RGB', im.size, (2, 4, 6))
-    im.paste(rim, (SS, SS), solid.filter(ImageFilter.MaxFilter(SS * 2 + 1)).point(lambda v : v // 3))   # light edge below
-    im.paste(sh, (0, 0), ImageChops.subtract(ImageChops.offset(solid, -SS, -SS), solid).point(lambda v : int(v * 0.9)))
+    # the logo as a stamped-in recess (the panel's own bevel look): shape from BODY, engraving darker, an inner
+    # shadow along the top / left edges and a light edge along the bottom / right; off = dark metal, on = bright
+    # light blue with a glow
+    W, H = im.size
+    def poly_mask(polys, lines = None, w = 1.7) :
+        mk = Image.new('L', (W, H), 0); d = ImageDraw.Draw(mk)
+        for pg in polys : d.polygon([(x * SS, y * SS) for x, y in pg], fill = 255)
+        for ln in lines or [] : d.line([(x * SS, y * SS) for x, y in ln], fill = 255, width = int(w * SS), joint = 'curve')
+        return mk
+    solid = poly_mask(BODY[k]); engr = ImageChops.multiply(poly_mask([], ENGRAVE[k]), solid)
+    d = SS
     if on :
-        halo = m.filter(ImageFilter.GaussianBlur(2.4 * SS)).point(lambda v : int(v * 0.6))
+        halo = solid.filter(ImageFilter.GaussianBlur(2.6 * SS)).point(lambda v : int(v * 0.6))
         im.paste(Image.new('RGB', im.size, (30, 170, 200)), (0, 0), halo)
-        face = Image.merge('RGB', [lum.point(lambda v, c = c : min(255, int(c * (0.62 + v / 330)))) for c in (110, 232, 255)])
-    else :
-        face = Image.merge('RGB', [lum.point(lambda v, c = c : int(c * (0.45 + v / 400))) for c in (150, 160, 172)])
-    im.paste(face, (0, 0), m)
+    im.paste(Image.new('RGB', im.size, (104, 116, 128)), (0, 0), ImageChops.subtract(ImageChops.offset(solid, d, d), solid))     # light edge below / right
+    top, bot = ((190, 250, 255), (70, 205, 238)) if on else ((124, 134, 146), (86, 95, 106))
+    grad = Image.new('RGB', (1, H)); grad.putdata([tuple(int(top[i] + (bot[i] - top[i]) * y / (H - 1)) for i in range(3)) for y in range(H)])
+    im.paste(grad.resize((W, H)), (0, 0), solid)
+    im.paste(Image.new('RGB', im.size, (14, 112, 142) if on else (46, 53, 61)), (0, 0), engr)
+    shadow = ImageChops.subtract(solid, ImageChops.offset(solid, d, d)).filter(ImageFilter.GaussianBlur(0.3 * SS))               # inner shadow top / left
+    im.paste(Image.new('RGB', im.size, (3, 6, 9)), (0, 0), shadow.point(lambda v : int(v * 0.9)))
 
 def make_lamps(panel) :
     out = Image.new('RGB', (160, 39))
@@ -211,7 +256,7 @@ def make_setup(panel) :
     for k, pressed in enumerate((True, False)) :
         im = canvas(80, 16); im.paste(panel.crop((309, 88, 389, 104)).resize((80 * SS, 16 * SS), Image.LANCZOS))
         bevel(im, 0, 0, 80, 16, 2, not pressed, top = (30, 35, 41) if pressed else (60, 68, 77), bot = (20, 24, 28) if pressed else (32, 37, 43))
-        text(im, (40 + (0.5 if pressed else 0), 8.4 + (0.5 if pressed else 0)), 'SETUP', 8.5, (200, 208, 214) if pressed else WHITE, 'Medium', 'mm', 1.0, track = 1.2)
+        stroke_text(im, 40 + (0.5 if pressed else 0), 8.2 + (0.5 if pressed else 0), 'SETUP', 7, (200, 208, 214) if pressed else WHITE, 1.3, 0.62, 0.72, 'm')
         out.paste(down(im), (80 * k, 0))
     return out
 
