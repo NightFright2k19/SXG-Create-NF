@@ -45,8 +45,13 @@ s1: add eax, dword ptr [edi]
     call 0x100330fc
     test eax, eax
     setne al
-    mov byte ptr [ebp+0x10056dc0], al
     mov byte ptr [ebp+0x10056dc2], al
+    mov ah, 1
+    xchg ah, byte ptr [ebp+0x10056dc3]
+    test ah, ah
+    jne i_keep
+    mov byte ptr [ebp+0x10056dc0], al
+i_keep:
     call @vm_apply@
 i_out:
     popad
@@ -62,22 +67,22 @@ d2: pop ebp
     cmp byte ptr [ebp+0x10056dc0], 0
     je a_nat
     mov esi, dword ptr [ebp+0x10056dc4]
-    lea eax, [esi+0x8]
-    mov dword ptr [ebp+0x100552d0], eax
-    lea eax, [esi+0x88]
-    mov dword ptr [ebp+0x100552cc], eax
-    lea eax, [esi+0x108]
-    mov dword ptr [ebp+0x100552f8], eax
-    lea eax, [esi+0x188]
-    mov dword ptr [ebp+0x100552e8], eax
-    lea eax, [esi+0x208]
-    mov dword ptr [ebp+0x100552d8], eax
-    lea eax, [esi+0x288]
-    mov dword ptr [ebp+0x100552d4], eax
-    lea eax, [esi+0x308]
-    mov dword ptr [ebp+0x100552e4], eax
-    lea eax, [esi+0x388]
-    mov dword ptr [ebp+0x100552e0], eax
+    add esi, 0x8
+    mov dword ptr [ebp+0x100552d0], esi
+    sub esi, -0x80
+    mov dword ptr [ebp+0x100552cc], esi
+    sub esi, -0x80
+    mov dword ptr [ebp+0x100552f8], esi
+    sub esi, -0x80
+    mov dword ptr [ebp+0x100552e8], esi
+    sub esi, -0x80
+    mov dword ptr [ebp+0x100552d8], esi
+    sub esi, -0x80
+    mov dword ptr [ebp+0x100552d4], esi
+    sub esi, -0x80
+    mov dword ptr [ebp+0x100552e4], esi
+    sub esi, -0x80
+    mov dword ptr [ebp+0x100552e0], esi
     jmp a_out
 a_nat:
     mov eax, dword ptr [ebp+0x10056dc8]
@@ -217,8 +222,6 @@ set_hook:
     call d7
 d7: pop ebp
     sub ebp, d7
-    cmp byte ptr [ebp+0x10056dc1], 1
-    jne r_out
     mov eax, dword ptr [esp+0x28]
     cmp eax, 8
     je r_chk
@@ -232,6 +235,7 @@ r_chk:
     mov al, byte ptr [esi+eax-1]
     and al, 1
     mov byte ptr [ebp+0x10056dc0], al
+    mov byte ptr [ebp+0x10056dc3], 1
     call @vm_apply@
 r_out:
     popad
