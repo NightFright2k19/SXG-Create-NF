@@ -26,7 +26,9 @@ jobs:
     name: Restore releases
     runs-on: ubuntu-24.04
     env:
-      GH_TOKEN: ${{ github.token }}
+      # Prefer a PAT secret when available so release creation still works when repo/org
+      # policy blocks the default github.token from creating GitHub Releases.
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
       GH_REPO: ${{ github.repository }}
       CREATE: ${{ inputs.create }}
     steps:
@@ -56,9 +58,9 @@ jobs:
             {
               echo "Autobuild r$revision of the **SXG-Create-NF Patcher**, built on ${created%T*} from commit $sha."
               echo
-              echo "Restored from the artifacts of [Actions run $run]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run) after the Autobuild workflow had deleted it; kept for regression tests. The patchers are unchanged."
+              echo "Restored from the artifacts of [Actions run $run]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run) after the Autobuild workflow had deleted it; kept for regression tests. The patcher is useful for testing releases and regression checks."
               echo
-              echo "For the instructions that apply to this version, see [README.md at this commit]($GITHUB_SERVER_URL/$GH_REPO/blob/$sha/README.md#patcher). The newest version is the pre-release on top of the Releases page."
+              echo "For the instructions that apply to this version, see [README.md at this commit]($GITHUB_SERVER_URL/$GH_REPO/blob/$sha/README.md#patcher). The newest version is the pre-release at the tip of the default branch."
             } > notes.md
             gh release create "$tag" "$dir"/* --target "$sha" --title "Autobuild r$revision" \
               --notes-file notes.md --latest=false
