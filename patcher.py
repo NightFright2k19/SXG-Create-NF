@@ -70,11 +70,12 @@ def scan(folder : Path, log) :
     for t in found :
         programs, waves = t.Order_Pathlists(crcs)
         models.append((t.name, programs, waves))
+    models.sort(key = lambda m : not m[0].startswith('MU50 '))     # MU50 first, the rest in ROMLIST order
     # S-YXG2006LE: its own engine (SGP2.OLD / SGP2.DLL) and tables, patched in addition to the MU plugins
     import sgp2patch
     sizes = {937984, 716608, 11723868}
     sgp2 = sgp2patch.Find({calccrc32(p) : p for p in files if p.stat().st_size in sizes})
-    if sgp2 : models.append((SGP2_NAME, list(sgp2), []))
+    if sgp2 : models.insert(0, (SGP2_NAME, list(sgp2), []))     # listed first
     return models
 
 SGP2_NAME = 'S-YXG2006LE'
