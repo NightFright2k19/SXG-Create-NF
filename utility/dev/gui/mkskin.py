@@ -206,43 +206,36 @@ def make_digits() :
     for k in range(11) : out.paste(digit(DIG[k]), (10 * k, 0))
     return out
 
-# XG / GS logos: the shapes of the original lamps (bitmap 103 of syxg50.dll, 40 x 39), traced as polygons in lamp
-# coordinates (the originals are too small for an automatic cut-out). BODY = the solid shape, ENGRAVE = the lines
-# cut into it (the G of the XG box, the spiral of the GS), drawn darker.
-BODY = {
-    0 : [[(6.2, 14.2), (11.2, 14.2), (19.6, 29.8), (14.2, 29.8)],                               # X, stroke top-left -> bottom-right
-         [(17.2, 14.2), (21.8, 14.2), (11.4, 29.8), (6.6, 29.8), (5.4, 28.2)],                   # X, stroke top-right -> bottom-left
-         [(19, 14.2), (34.8, 14.2), (34.8, 29.8), (19, 29.8)]],                                  # box
-    1 : [[(11.2, 13.8), (29.5, 13.8), (31.6, 15.3), (32.6, 17), (32.6, 23.6), (31, 25.3), (27.8, 28.6), (26, 30.9), (24, 33.8),
-          (18.2, 33.8), (17.2, 31), (14, 29.8), (10.5, 26.2), (8, 23.5), (5.2, 21.2), (5.5, 19.8)]],
-}
-ENGRAVE = {
-    0 : [[(22.2, 17), (32.5, 17)], [(21, 17), (21, 27)], [(21, 27), (32.5, 27)], [(31.3, 22.4), (31.3, 27)], [(27, 22.4), (31.3, 22.4)]],
-    1 : [[(27.2, 26), (27.2, 19.2), (13.6, 19.2), (13.6, 25.6), (22, 25.6), (22, 22.4), (18, 22.4)]],
-}
+def original_lamps() :
+    # bitmap 103 of syxg50.dll (XG off / on, GS off / on, 40 x 39 each)
+    import io, struct
+    sys.path.insert(0, str(HERE.parent.parent.parent)); from utility import dllpatch as dp
+    data = (HERE.parent.parent.parent / 'source' / 'syxg50.dll').read_bytes()
+    dib = dp.resource_data(data, dp.resource_entries(data, dp.RT_BITMAP)[103])
+    return Image.open(io.BytesIO(b'BM' + struct.pack('<IHHI', 14 + len(dib), 0, 0, 54) + dib)).convert('RGB')
 
 def lamp_logo(im, k, on) :
-    # the logo as a stamped-in recess (the panel's own bevel look): shape from BODY, engraving darker, an inner
-    # shadow along the top / left edges and a light edge along the bottom / right; off = dark metal, on = bright
-    # light blue with a glow
-    W, H = im.size
-    def poly_mask(polys, lines = None, w = 1.7) :
-        mk = Image.new('L', (W, H), 0); d = ImageDraw.Draw(mk)
-        for pg in polys : d.polygon([(x * SS, y * SS) for x, y in pg], fill = 255)
-        for ln in lines or [] : d.line([(x * SS, y * SS) for x, y in ln], fill = 255, width = int(w * SS), joint = 'curve')
-        return mk
-    solid = poly_mask(BODY[k]); engr = ImageChops.multiply(poly_mask([], ENGRAVE[k]), solid)
-    d = SS
+    # the original lamp picture as a stamped-in logo: a recess in the panel (dark inner shadow along the top / left
+    # edges, light edge along the bottom / right), contrast raised; off = dark grey metal, on = bright light blue
+    src = original_lamps().crop((80 * k + 40 * on, 0, 80 * k + 40 * on + 40, 39))
+    bg = Image.new('RGB', src.size, src.getpixel((0, 0)))
+    m = ImageChops.difference(src, bg).convert('L').point(lambda v : min(255, v * 4) if v > 6 else 0)
+    lum = src.convert('L'); lo = lum.getextrema()[0]
+    lum = lum.point(lambda v : max(0, min(255, int((v - (60 if on else lo)) * (1.9 if on else 1.5)))))      # contrast stretch
+    W, H = im.size; m = m.resize((W, H), Image.BICUBIC); lum = lum.resize((W, H), Image.BICUBIC)
+    solid = m.point(lambda v : 255 if v > 90 else 0).filter(ImageFilter.GaussianBlur(0.5 * SS))
+    lit = ImageChops.subtract(solid, ImageChops.offset(solid, SS, SS))                  # edges facing down / right
+    dark = ImageChops.subtract(ImageChops.offset(solid, SS, SS), solid)                 # shadow top / left
+    rim = Image.new('RGB', im.size, (96, 108, 120)); sh = Image.new('RGB', im.size, (2, 4, 6))
+    im.paste(rim, (SS, SS), solid.filter(ImageFilter.MaxFilter(SS * 2 + 1)).point(lambda v : v // 3))   # light edge below
+    im.paste(sh, (0, 0), ImageChops.subtract(ImageChops.offset(solid, -SS, -SS), solid).point(lambda v : int(v * 0.9)))
     if on :
-        halo = solid.filter(ImageFilter.GaussianBlur(2.6 * SS)).point(lambda v : int(v * 0.6))
+        halo = m.filter(ImageFilter.GaussianBlur(2.4 * SS)).point(lambda v : int(v * 0.6))
         im.paste(Image.new('RGB', im.size, (30, 170, 200)), (0, 0), halo)
-    im.paste(Image.new('RGB', im.size, (104, 116, 128)), (0, 0), ImageChops.subtract(ImageChops.offset(solid, d, d), solid))     # light edge below / right
-    top, bot = ((190, 250, 255), (70, 205, 238)) if on else ((124, 134, 146), (86, 95, 106))
-    grad = Image.new('RGB', (1, H)); grad.putdata([tuple(int(top[i] + (bot[i] - top[i]) * y / (H - 1)) for i in range(3)) for y in range(H)])
-    im.paste(grad.resize((W, H)), (0, 0), solid)
-    im.paste(Image.new('RGB', im.size, (14, 112, 142) if on else (46, 53, 61)), (0, 0), engr)
-    shadow = ImageChops.subtract(solid, ImageChops.offset(solid, d, d)).filter(ImageFilter.GaussianBlur(0.3 * SS))               # inner shadow top / left
-    im.paste(Image.new('RGB', im.size, (3, 6, 9)), (0, 0), shadow.point(lambda v : int(v * 0.9)))
+        face = Image.merge('RGB', [lum.point(lambda v, c = c : min(255, int(c * (0.62 + v / 330)))) for c in (110, 232, 255)])
+    else :
+        face = Image.merge('RGB', [lum.point(lambda v, c = c : int(c * (0.45 + v / 400))) for c in (150, 160, 172)])
+    im.paste(face, (0, 0), m)
 
 def make_lamps(panel) :
     out = Image.new('RGB', (160, 39))
