@@ -6,7 +6,7 @@ name: SXG-Create-NF Autobuild
 # Plugin templates (issue #40, utility/template.py): the first job makes them again from source/syxg50.dll
 # and commits them to templates/ when they changed; the patchers are built from that commit and carry the
 # templates in one 7z archive (LZMA2, Ultra, largest dictionary), so users no longer need syxg50.dll.
-# Older Autobuild releases are kept for regression tests; only the newest one is marked as pre-release.
+# Older Autobuild releases are kept for regression tests; only the newest one is marked as Latest.
 
 on:
   push:
@@ -205,7 +205,8 @@ jobs:
           tag: ${{ needs.version.outputs.tag }}
           commit: ${{ needs.templates.outputs.sha }}
           name: Autobuild r${{ needs.version.outputs.revision }}
-          prerelease: true
+          prerelease: false
+          makeLatest: true
           artifacts: assets/*
           artifactErrorsFailBuild: true
           body: |
@@ -228,16 +229,17 @@ jobs:
             - The files are not signed: Windows SmartScreen and macOS Gatekeeper warn on the first start. See README.md ("Patcher") for how to start it anyway.
 
             **OLDER VERSIONS**
-            - Only the newest Autobuild is marked as pre-release. Older Autobuilds stay available under Releases, e.g. for regression tests.
+            - Only the newest Autobuild is marked as Latest. Older Autobuilds stay available under Releases, e.g. for regression tests.
 
-      - name: Keep previous Autobuild releases as regular releases
+      - name: Keep previous Autobuild releases without a label
         uses: actions/github-script@v8
         env:
           CURRENT_TAG: ${{ needs.version.outputs.tag }}
         with:
           script: |
-            // Older Autobuilds stay available for regression tests; only the newest one keeps the
-            // pre-release label. GitHub lists releases by the date of their commit, so the newest is on top.
+            // Older Autobuilds stay available for regression tests; only the newest one is marked
+            // Latest (set when it is created). Pre-release labels left from earlier workflow versions are removed.
+            // GitHub lists releases by the date of their commit, so the newest is on top.
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const currentTag = process.env.CURRENT_TAG;
