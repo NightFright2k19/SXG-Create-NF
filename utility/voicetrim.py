@@ -16,86 +16,97 @@
 # are already normalized gain nothing. Left out for that reason: 5partStr (-7 dB), AfrcnWnd, Starship,
 # WindChim (-1.4..-2.4 dB), where neither level nor sample gain changed the output.
 #
-# key: CRC32 of the source voice (14 header bytes + 84 bytes per element), value: trim in 0.1 dB.
+# key: Voice_Key of the source voice (CRC32 of the 14 header bytes + 84 bytes per element, each element
+# scaling written out as its 128 notes, so MU1000 and MU2000 voice data give the same key, issue #53),
+# value: trim in 0.1 dB.
 #
 # syxg50.dll plays the element level on a 40 log10 curve (measured: level 90 -> 64 = -5.9 dB,
 # 90 -> 127 = +6.2 dB), so all element levels are scaled by 10 ** (-trim / 40), capped at 127.
 
 import math, zlib
+import scaling
+
+def Voice_Key(raw : bytes | bytearray) -> int :
+    out = bytearray(raw[:14])
+    for k in range((len(raw) - 14) // 84) :
+        e = raw[14 + 84 * k : 98 + 84 * k]
+        notes = lambda b : bytes(x & 0xFF for x in scaling.Table_From_Bytes(b))
+        out += e[:36] + notes(e[36:44]) + e[44:58] + notes(e[58:66]) + e[66:]
+    return zlib.crc32(out)
 
 TRIM_DB10 = {
-    0xa439c96b :  -22,   # AnaBrss2
-    0x0b36e580 :  -20,   # Bacteria
-    0x0ed5956a :  -11,   # Bombay S
-    0x87370816 :  -11,   # BrssStab
-    0x76d60118 :  -13,   # BrthTnSx
-    0x2046254b :  -11,   # Burst
-    0xccf9066f :  -13,   # Cubit +
-    0x3c07c7fd :  -11,   # FakeAltD
-    0xfe9cb13a :  -10,   # GtFeedbk
-    0xc98f0522 :  -27,   # Hermit
-    0xa183fc1e :  -79,   # Insects
-    0x91d497c6 :  -14,   # Memory
-    0x73a1dc94 :  -15,   # Raga Syn
-    0x3b008ca3 :  -17,   # Rev Cym2
-    0xd1c98b3b :  -17,   # RevCym3
-    0xcfaa105e :  -13,   # Shower
-    0xd6a51a84 :  -14,   # Siren
-    0x1d6a764c :  -11,   # StarDust
-    0x155f3de1 :  -53,   # Sweepy
-    0x8dbb9f7a :  -10,   # SwpStOct
-    0xcc558df6 :  -13,   # SyPadPno
-    0x1f2a176e :  -21,   # Trcrtps
-    0x94753af5 :  -12,   # TurnTabl
-    0xe3de9e01 :  -19,   # VlnHrpDt
-    0xdcba7598 :   45,   # Aah Mix
-    0x9b4533f8 :   12,   # Alps
-    0x24f586a5 :   13,   # Ana Tom
-    0x01431509 :   17,   # AnVelBr2
-    0xf934428b :   25,   # Balafon
-    0xe05eb3bf :   15,   # Balimba
-    0x82f0af8c :   21,   # Big Lead
-    0xa34ef155 :   11,   # Brook St
-    0xffadbb47 :   35,   # Brt Trem
-    0x21555869 :   28,   # ChoEP K
-    0xa97b7320 :   44,   # DstCutNz
-    0x3e9570b1 :   13,   # Echoes 2
-    0x1814ce34 :   36,   # El Banjo
-    0xbb46d001 :   18,   # Fanfare
-    0xa729ec76 :   21,   # FM Koto
-    0x64c394eb :   26,   # GblnTalk
-    0xcfcdedc5 :   18,   # HeinzUni
-    0x940d94ab :   12,   # Marimba
-    0x70ef4706 :   14,   # MutePkBa
-    0xa44571d7 :   33,   # MuteStlG
-    0xe349ad3c :   28,   # NylnGtDt
-    0xffd6568c :   30,   # Ooh Aah
-    0xa02ae1af :    8,   # Pan Pad
-    0xd62363d9 :   19,   # Pi Pa
-    0x3bd49424 :   32,   # Popcorn
-    0xd581310f :   10,   # Real Tom
-    0xb037e0ea :   11,   # Seq Bass
-    0xb678de36 :   16,   # Shepherd
-    0x758aae35 :   38,   # SineMrmb
-    0x60c9492f :   11,   # SlapBa1#
-    0xabfc9615 :   16,   # Soft Brs
-    0x398d631c :   49,   # SolidStr
-    0x73276887 :   15,   # SprCyphr
-    0x612e94d8 :   35,   # StBrtPno
-    0xf72653c5 :   30,   # Str+Brss
-    0x9e832190 :    6,   # Syn Str4
-    0x6396293d :   26,   # SynDrCmp
-    0x99d39b03 :   13,   # SynFretl
-    0x6237fe03 :    7,   # TaikoDrm
-    0x51363f61 :   15,   # TechnoBa
-    0x02037fb2 :   34,   # Tin
-    0xdd1d21f8 :   30,   # Woodblok
+    0xb9293da6 :  -22,   # AnaBrss2
+    0xdf4b84ed :  -20,   # Bacteria
+    0xbf9fd8df :  -11,   # Bombay S
+    0xa55c46e6 :  -11,   # BrssStab
+    0x136877b0 :  -13,   # BrthTnSx
+    0x299e4e0e :  -11,   # Burst
+    0x0c41c065 :  -13,   # Cubit +
+    0x529d0ac5 :  -11,   # FakeAltD
+    0x1616a73e :  -10,   # GtFeedbk
+    0xff7d075a :  -27,   # Hermit
+    0x34e20653 :  -79,   # Insects
+    0xef71bc66 :  -14,   # Memory
+    0x646aba5c :  -15,   # Raga Syn
+    0x479a6de2 :  -17,   # Rev Cym2
+    0x0b0a3d91 :  -17,   # RevCym3
+    0x42ca50ff :  -13,   # Shower
+    0x226d3a40 :  -14,   # Siren
+    0x53f40951 :  -11,   # StarDust
+    0x71d8ff13 :  -53,   # Sweepy
+    0xdf758790 :  -10,   # SwpStOct
+    0xae991585 :  -13,   # SyPadPno
+    0x4402ea76 :  -21,   # Trcrtps
+    0xae81bd0f :  -12,   # TurnTabl
+    0xd1c51648 :  -19,   # VlnHrpDt
+    0x43b31d76 :   45,   # Aah Mix
+    0x55e6ab6a :   12,   # Alps
+    0x909e5334 :   13,   # Ana Tom
+    0x56d43f73 :   17,   # AnVelBr2
+    0x445e9f7d :   25,   # Balafon
+    0x3500fd0c :   15,   # Balimba
+    0x2464e7fc :   21,   # Big Lead
+    0xe803ed79 :   11,   # Brook St
+    0xe4953e62 :   35,   # Brt Trem
+    0x098c002a :   28,   # ChoEP K
+    0x378d340a :   44,   # DstCutNz
+    0xe9c8f9ac :   13,   # Echoes 2
+    0xcf00bd84 :   36,   # El Banjo
+    0x24386751 :   18,   # Fanfare
+    0x1e49dd4f :   21,   # FM Koto
+    0x2a6e14e1 :   26,   # GblnTalk
+    0x67005b08 :   18,   # HeinzUni
+    0xbc1d86df :   12,   # Marimba
+    0xd6d1a7da :   14,   # MutePkBa
+    0x5f9ab9ab :   33,   # MuteStlG
+    0xdbe65fbc :   28,   # NylnGtDt
+    0xaab23b56 :   30,   # Ooh Aah
+    0xe01ed9d0 :    8,   # Pan Pad
+    0xd2c40123 :   19,   # Pi Pa
+    0x04dbf036 :   32,   # Popcorn
+    0x02c7c5a2 :   10,   # Real Tom
+    0xcc6389f6 :   11,   # Seq Bass
+    0xabfaabdc :   16,   # Shepherd
+    0x5688f343 :   38,   # SineMrmb
+    0x1297626d :   11,   # SlapBa1#
+    0x30396843 :   16,   # Soft Brs
+    0x19b55d86 :   49,   # SolidStr
+    0x93f1dc29 :   15,   # SprCyphr
+    0xeda1f664 :   35,   # StBrtPno
+    0xd306e311 :   30,   # Str+Brss
+    0xdc8064ff :    6,   # Syn Str4
+    0x03948d32 :   26,   # SynDrCmp
+    0x5d9f5f84 :   13,   # SynFretl
+    0x0ea45dae :    7,   # TaikoDrm
+    0x1652aa4c :   15,   # TechnoBa
+    0x8b87e01f :   34,   # Tin
+    0x0cf2ea72 :   30,   # Woodblok
 }
 
 
 def Trim_Levels(raw : bytes | bytearray, levels : list[int]) -> tuple[list[int], float] :
     # -> (element levels, gain in dB still missing at level 127: goes into louder sample copies)
-    trim = TRIM_DB10.get(zlib.crc32(raw), 0) / 10
+    trim = TRIM_DB10.get(Voice_Key(raw), 0) / 10
     if not trim or not any(levels) : 
         return levels, 0.0
     f = 10 ** (-trim / 40)
@@ -116,22 +127,22 @@ def Trim_Levels(raw : bytes | bytearray, levels : list[int]) -> tuple[list[int],
 # key as above, value: deviation in 0.1 dB at KEY_TRIM_KEYS (S-YXG minus S-MU2000)
 KEY_TRIM_KEYS = (30, 54, 78, 102)
 KEY_TRIM_DB10 = {
-    0x6594c392 : (  51,  -16,   -1,   12),   # AsprateD
-    0x21555869 : (  24,  -12,  -20,  -39),   # ChoEP K
-    0x812ffc26 : (  41,    8,   -2,    5),   # DimChors
-    0xa97b7320 : ( -35,  -25,  -10,   18),   # DstCutNz
-    0x50878d88 : ( -86,  -12,   -3,   -7),   # Frost
-    0xcfcdedc5 : (  -6,    1,  -19,  -44),   # HeinzUni
-    0xa183fc1e : ( -32,   -5,    9,    6),   # Insects
-    0xa44571d7 : (  19,  -35,  -35,    5),   # MuteStlG
-    0x99787da3 : (   5,  -58,   11,   -5),   # SlapBa2#
-    0x1f2a176e : (  17,   -7,  -37,  -48),   # Trcrtps
-    0x9e35ea84 : (  43,   -4,  -12,    3),   # WrnchDbl
+    0xf164d22b : (  51,  -16,   -1,   12),   # AsprateD
+    0x098c002a : (  24,  -12,  -20,  -39),   # ChoEP K
+    0x3f210359 : (  41,    8,   -2,    5),   # DimChors
+    0x378d340a : ( -35,  -25,  -10,   18),   # DstCutNz
+    0xeff6c7fc : ( -86,  -12,   -3,   -7),   # Frost
+    0x67005b08 : (  -6,    1,  -19,  -44),   # HeinzUni
+    0x34e20653 : ( -32,   -5,    9,    6),   # Insects
+    0x5f9ab9ab : (  19,  -35,  -35,    5),   # MuteStlG
+    0x50aa86b0 : (   5,  -58,   11,   -5),   # SlapBa2#
+    0x4402ea76 : (  17,   -7,  -37,  -48),   # Trcrtps
+    0x4a2982c7 : (  43,   -4,  -12,    3),   # WrnchDbl
 }
 
 def Key_Trim(raw : bytes | bytearray, edata : bytearray) -> None :
     import elemreduce
-    dev = KEY_TRIM_DB10.get(zlib.crc32(raw))
+    dev = KEY_TRIM_DB10.get(Voice_Key(raw))
     if dev is None or not edata[57] : 
         return
     offs = []

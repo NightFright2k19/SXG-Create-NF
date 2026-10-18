@@ -512,7 +512,7 @@ def apply_bitmaps(data : bytearray, model : str | None) :
 #   S-YXG50 -> S-YXG<n>, xg50 -> mu<n>, default table SXGBIN41.TBL -> the table just built,
 #   version info: Yamaha S-YXG<n> VSTi, S-YXG<n>, S-YXG<n>.DLL, Yamaha S-YXG<n> Portable VSTi.
 # MU50 keeps the original names except the default table name (an unknown model keeps everything).
-MODEL_NUMBER = {'MU80' : '80', 'MU90' : '90', 'MU100' : '100', 'MU128' : '128', 'MU1000' : '1000'}
+MODEL_NUMBER = {'MU80' : '80', 'MU90' : '90', 'MU100' : '100', 'MU128' : '128', 'MU1000' : '1000', 'MU2000' : '2000'}
 
 def Model_Dll_Name(model : str) -> str : 
     # multi-model conversion: one DLL per model, named after it (MU50: syxgmu50.dll, syxg50.dll is the original)

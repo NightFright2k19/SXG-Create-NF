@@ -326,7 +326,7 @@ if __name__ == '__main__' :
     panel.paste(setup.crop((80, 0, 160, 16)), SETUP_XY)    # the DLL draws SETUP only while it is pressed / released
     files = {'Panel101.bmp' : panel, 'Bitmap102.bmp' : screen, 'Bitmap103.bmp' : lamps, 'Bitmap104.bmp' : meters,
              'Bitmap105.bmp' : digits, 'Bitmap106.bmp' : setup, 'PanelButtons.bmp' : btn}
-    for m in ('MU50', 'MU80', 'MU90', 'MU100', 'MU128', 'MU1000') : files[f'Name_{m}.bmp'] = make_name(m)
+    for m in ('MU50', 'MU80', 'MU90', 'MU100', 'MU128', 'MU1000', 'MU2000') : files[f'Name_{m}.bmp'] = make_name(m)
     for n, im in files.items() : im.save(B / ('Modern_' + n))
     if '--preview' in sys.argv :
         levels = [0, 6, 0, 0, 0, 6, 0, 0, 0, 7, 0, 4, 0, 0, 0, 0, 8, 8]

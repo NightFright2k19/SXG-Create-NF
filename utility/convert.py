@@ -125,9 +125,24 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             mu_src = MU.MU90
 
         case MU.MU2000 : 
-            Friendly_error('MU2000: same voice data as the MU1000 (only the filter/level scaling is stored as '
-                           'per-note tables). Please convert the MU1000 ROM set, the result is the same sound set.')
-            sys.exit(1)
+
+            # * same voice data as the MU1000, scalings stored as per-note tables (decMU1000.MU2000_Scaling)
+            buildtarget.SYXG50_BIG = True
+            print('MU2000 voice maps: MU Native (default) + MU Basic')
+            rd = lambda p : open(p, mode='rb').read()
+            if len(program_roms) == 1 :     # S-MU2000's mu2000_flash.bin
+                prg = decMU1000.MU1000_Program(*decMU1000.MU2000_Flash_Split(rd(program_roms[0])))
+            else : 
+                assert len(program_roms) == 2
+                prg = decMU1000.MU1000_Program(rd(program_roms[0]), rd(program_roms[1]))
+            image = decMU1000.MU2000_Scaling(Dejumble(prg))
+            table_decoder = decMU1000.MU1000.From_Bytes(image, 'MU2000', False)
+            alt_decoder = decMU1000.MU1000.From_Bytes(image, 'MU2000', True)
+            table_converter = tableconvert.fromMU1000(MU.MU90)
+            assert len(wave_roms) == 4
+            in_wave_bytes = decMU1000.MU1000_Waverom([(rd(wave_roms[0]), rd(wave_roms[1])), 
+                                                      (rd(wave_roms[2]), rd(wave_roms[3]))])
+            mu_src = MU.MU90
 
         case _ : 
             raise NotImplementedError()

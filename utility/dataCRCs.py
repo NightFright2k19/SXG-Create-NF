@@ -87,6 +87,10 @@ TableIn(dataenum.MU.MU1000, 'MU1000 v2.01', program_roms={'D0809297' : 'mu1000-v
 TableIn(dataenum.MU.MU2000, 'MU2000 v2.01', program_roms={'BE3668F6' : 'mu2000-v2.01-h.bin', '55921A50' : 'mu2000-v2.01-l.bin'}, 
                                                          waveroms={'CDA1AFD6' : 'xv364a0.ic49', '10985ED0' : 'xv365a0.ic50',
                                                                    '34913E42' : 'xw848a0.ic53', '3728F1F2' : 'xw849a0.ic54',}, support='decode'),
+# the same program as one file: the ROM folder of tarboh's S-MU2000 (mu2000_flash.bin + dump/ with the wave ROMs)
+TableIn(dataenum.MU.MU2000, 'MU2000 v2.01 (S-MU2000 flash image)', program_roms={'9FD3268F' : 'mu2000_flash.bin'}, 
+                                                         waveroms={'CDA1AFD6' : 'xv364a0.ic49', '10985ED0' : 'xv365a0.ic50',
+                                                                   '34913E42' : 'xw848a0.ic53', '3728F1F2' : 'xw849a0.ic54',}, support='decode'),
 TableIn(dataenum.MU.MU50, 'MU50 xr174c0 v1.05, 1995-08-21', program_roms={'902520A4' : 'xr174c0.ic7'}, waveroms={'D4ADBC7E' : 'xq057c0.ic18',
                                                                                                                 '7B68F475' : 'xq058c0.ic19'}, support='decode'),
 ]
