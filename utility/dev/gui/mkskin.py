@@ -264,22 +264,11 @@ def make_lamps(panel) :
         im = canvas(40, 39); im.paste(panel.crop((x, LAMP_Y, x + 40, LAMP_Y + 39)).resize((40 * SS, 39 * SS), Image.LANCZOS))
         if k == 1 : lamp_logo(im, 0, 1)                                         # lit XG: drawn from the original lamp
         lamp = down(im)
-        if k == 1 : lamp = lit_xg_refine(lamp)
         if k == 0 : lamp = lamp_off(lamp, off, 0)
         elif k == 2 : lamp = lamp_off(lamp, off, 42)
         elif k == 3 : lamp = mockup_overlay(lamp, 'gs_lit_fixed.png', (1, 9), (35, 28))
         out.paste(lamp, (40 * k, 0))
     return out
-
-def lit_xg_refine(lamp) :
-    # refinement of the lit XG by a before / after mockup pair (skin52/src/xg_lit_before.png / _after.png, the
-    # "before" is the picture drawn above, 42 x 26 pixels at (1, 9) of the lamp): their difference is added
-    import numpy as np
-    bef = np.asarray(Image.open(HERE / 'skin52' / 'src' / 'xg_lit_before.png').convert('RGB')).astype(float)
-    aft = np.asarray(Image.open(HERE / 'skin52' / 'src' / 'xg_lit_after.png').convert('RGB')).astype(float)
-    b = np.asarray(lamp).astype(float); h, w = bef.shape[:2]; x0, y0 = 1, 9; w = min(w, 40 - x0)
-    b[y0 : y0 + h, x0 : x0 + w] += (aft - bef)[:, :w]
-    return Image.fromarray(np.clip(b, 0, 255).astype('uint8'))
 
 def lamp_off(lamp, off, mx0) :
     # unlit logo from the mockup: its columns mx0 ... mx0 + 39, difference to its background (51, 53, 63)
