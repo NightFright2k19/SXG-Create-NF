@@ -51,7 +51,7 @@ jobs:
             if echo "$existing" | grep -qx "$tag"; then
               echo "$tag exists, skipped (run $run)"; continue
             fi
-            echo "$tag: run $run, commit ${sha:0:7}, built ${created%T*}, assets: $(ls "$dir" | tr '\n' ' ')"
+            echo "::notice::$tag: run $run, commit ${sha:0:7}, built ${created%T*}, assets: $(ls "$dir" | tr '\n' ' ')"
             [ "$CREATE" = "true" ] || continue
             {
               echo "Autobuild r$revision of the **SXG-Create-NF Patcher**, built on ${created%T*} from commit $sha."
@@ -60,6 +60,8 @@ jobs:
               echo
               echo "For the instructions that apply to this version, see [README.md at this commit]($GITHUB_SERVER_URL/$GH_REPO/blob/$sha/README.md#patcher). The newest version is the pre-release on top of the Releases page."
             } > notes.md
-            gh release create "$tag" "$dir"/* --target "$sha" --title "Autobuild r$revision" \
-              --notes-file notes.md --latest=false
+            if ! out=$(gh release create "$tag" "$dir"/* --target "$sha" --title "Autobuild r$revision" \
+              --notes-file notes.md --latest=false 2>&1); then
+              echo "::error::$tag: $out"; exit 1
+            fi
           done
