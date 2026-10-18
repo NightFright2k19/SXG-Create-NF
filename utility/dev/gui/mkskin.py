@@ -168,35 +168,25 @@ def make_digits() :
     for k in range(11) : out.paste(digit(DIG[k]), (10 * k, 0))
     return out
 
-# stylised XG / GS logos after the original lamps (bitmap 103): an X merging into a square G; a slanted square G
-# interlocked with an S. Polygons in lamp coordinates (40 x 39), sheared to the right.
-G_BOX = lambda x0, y0, x1, y1, t : [[(x0, y0), (x1, y0), (x1, y0 + t), (x0, y0 + t)], [(x0, y0), (x0 + t, y0), (x0 + t, y1), (x0, y1)],
-    [(x0, y1 - t), (x1, y1 - t), (x1, y1), (x0, y1)], [(x1 - t, (y0 + y1) / 2), (x1, (y0 + y1) / 2), (x1, y1), (x1 - t, y1)],
-    [((x0 + x1) / 2 + 1, (y0 + y1) / 2), (x1, (y0 + y1) / 2), (x1, (y0 + y1) / 2 + t - 1), ((x0 + x1) / 2 + 1, (y0 + y1) / 2 + t - 1)]]
-S_BOX = lambda x0, y0, x1, y1, t : [[(x0, y0), (x1, y0), (x1, y0 + t), (x0, y0 + t)], [(x0, y0), (x0 + t, y0), (x0 + t, (y0 + y1 + t) / 2), (x0, (y0 + y1 + t) / 2)],
-    [(x0, (y0 + y1 - t) / 2), (x1, (y0 + y1 - t) / 2), (x1, (y0 + y1 + t) / 2), (x0, (y0 + y1 + t) / 2)],
-    [(x1 - t, (y0 + y1 - t) / 2), (x1, (y0 + y1 - t) / 2), (x1, y1), (x1 - t, y1)], [(x0, y1 - t), (x1, y1 - t), (x1, y1), (x0, y1)]]
-LOGOS = {
-    0 : [[(4, 11), (10.5, 11), (21, 29), (14.5, 29)], [(14.5, 11), (21, 11), (10.5, 29), (4, 29)]] + G_BOX(20, 11, 36, 29, 4),
-    1 : G_BOX(4, 9, 22, 27, 4) + S_BOX(20, 15, 35, 31, 3.4),
-}
+def original_lamps() :
+    # bitmap 103 of syxg50.dll (XG off / on, GS off / on, 40 x 39 each)
+    import io, struct
+    sys.path.insert(0, str(HERE.parent.parent.parent)); from utility import dllpatch as dp
+    data = (HERE.parent.parent.parent / 'source' / 'syxg50.dll').read_bytes()
+    dib = dp.resource_data(data, dp.resource_entries(data, dp.RT_BITMAP)[103])
+    return Image.open(io.BytesIO(b'BM' + struct.pack('<IHHI', 14 + len(dib), 0, 0, 54) + dib)).convert('RGB')
 
 def lamp_logo(im, k, on) :
-    m = Image.new('L', im.size, 0); d = ImageDraw.Draw(m); sh = 0.28 if k else 0.18
-    for poly in LOGOS[k] : d.polygon([((x + sh * (20 - y)) * SS, y * SS) for x, y in poly], fill = 255)
-    if k :                                                    # gap between G and S
-        for poly in S_BOX(20, 15, 35, 31, 3.4) :
-            g = [((x + sh * (20 - y)) * SS, y * SS) for x, y in poly]
-            d.line(g + g[:1], fill = 0, width = int(1.2 * SS))
-        for poly in S_BOX(20, 15, 35, 31, 3.4) : d.polygon([((x + sh * (20 - y)) * SS, y * SS) for x, y in poly], fill = 255)
-    if on :
-        halo = m.filter(ImageFilter.GaussianBlur(2.6 * SS)).point(lambda v : int(v * 0.8))
-        im.paste(Image.new('RGB', im.size, (30, 160, 185)), (0, 0), halo)
-        face = Image.new('RGB', im.size, CYAN); hl = Image.new('RGB', im.size, (190, 248, 255))
-    else : face = Image.new('RGB', im.size, (74, 82, 91)); hl = Image.new('RGB', im.size, (104, 113, 122))
+    # the original lamp picture on the dark panel: its difference to the grey background is the logo (with its
+    # glow when on), its brightness the relief; off = dark metal, on = light blue
+    src = original_lamps().crop((80 * k + 40 * on, 0, 80 * k + 40 * on + 40, 39))
+    bg = Image.new('RGB', src.size, src.getpixel((0, 0)))
+    m = ImageChops.difference(src, bg).convert('L').point(lambda v : min(255, v * 4))
+    lum = src.convert('L')
+    if on : face = Image.merge('RGB', [lum.point(lambda v, c = c : min(255, int(c * v / 200))) for c in CYAN])
+    else : face = Image.merge('RGB', [lum.point(lambda v, c = c : int(c * v / 255)) for c in (205, 214, 224)])
+    m = m.resize(im.size, Image.BICUBIC); face = face.resize(im.size, Image.BICUBIC)
     im.paste(face, (0, 0), m)
-    top = ImageChops.subtract(m, ImageChops.offset(m, 0, SS)).point(lambda v : v // 2)   # light top edges
-    im.paste(hl, (0, 0), top)
 
 def make_lamps(panel) :
     out = Image.new('RGB', (160, 39))
