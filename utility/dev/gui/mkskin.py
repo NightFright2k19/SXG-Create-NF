@@ -80,7 +80,7 @@ GLYPHS = {
     '9' : [[(4, 3), (1, 3), (0, 2), (0, 1), (1, 0), (3, 0), (4, 1), (4, 5), (3, 6), (0, 6)]],
 }
 
-def stroke_text(im, x, cy, s, h, color, weight = 1.6, gap = 0.55, aspect = 0.72, anchor = 'l', glow = None) :
+def stroke_text(im, x, cy, s, h, color, weight = 1.6, gap = 0.55, aspect = 0.72, anchor = 'l', glow = None, shadow = True) :
     # s drawn with GLYPHS: cap height h pixels, glyph width h * aspect, gap = fraction of the glyph width
     gw = h * aspect; adv = gw * (1 + gap); total = adv * (len(s) - 1) + gw
     x0 = x - {'l' : 0, 'm' : total / 2, 'r' : total}[anchor]
@@ -94,6 +94,9 @@ def stroke_text(im, x, cy, s, h, color, weight = 1.6, gap = 0.55, aspect = 0.72,
     if glow :
         g = Image.new('L', im.size, 0); draw(g, 255, weight); g = g.filter(ImageFilter.GaussianBlur(1.6 * SS)).point(lambda v : int(v * 0.6))
         im.paste(Image.new('RGB', im.size, glow), (0, 0), g)
+    if shadow :                                                # soft drop shadow, 1 pixel down / right
+        g = Image.new('L', im.size, 0); draw(g, 255, weight); g = ImageChops.offset(g, SS, SS).filter(ImageFilter.GaussianBlur(0.6 * SS))
+        im.paste(Image.new('RGB', im.size, (1, 3, 5)), (0, 0), g.point(lambda v : min(255, int(v * 1.1))))
     draw(im, color, weight)
 
 # ------------------------------------------------------------------ geometry of the original panel (do not move)
@@ -137,12 +140,12 @@ def make_panel() :
     for x, s in LABELS : text(im, (x, 38.6), s, 9.5, LABEL, 'SemiBold', 'lm', 0.92)
     bevel(im, SCREEN_XY[0] - 2, SCREEN_XY[1] - 2, SCREEN_XY[0] + 290, SCREEN_XY[1] + 49, 3, False, SCREEN)
     bevel(im, 305, 85, 393, 107, 3, False, (10, 13, 16))      # SETUP well
-    stroke_text(im, 29, 11.3, 'YAMAHA', 11, WHITE, 2.0, 0.42, 0.78)
-    p = down(im); p.paste(logo(p), (8, 2), logo(p)); return p
+    stroke_text(im, 32, 11.3, 'YAMAHA', 11, WHITE, 2.0, 0.42, 0.78)
+    p = down(im); p.paste(logo(p), (11, 2), logo(p)); return p
 
 def make_name(model) :
     im = canvas(100, 23); bevel(im, -5, 2, 98, 23, 3)
-    stroke_text(im, 93, 11.6, 'S-YXG' + model[2:], 9, GREY, 1.5, 0.5, 0.7, 'r')
+    stroke_text(im, 93, 11.6, 'S-YXG' + model[2:], 9, GREY, 2.1, 0.5, 0.7, 'r')
     return down(im).crop((0, 0, 100, 23))
 
 def make_screen() :
