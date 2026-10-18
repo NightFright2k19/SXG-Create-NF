@@ -26,7 +26,8 @@ jobs:
     name: Restore releases
     runs-on: ubuntu-24.04
     env:
-      GH_TOKEN: ${{ github.token }}
+      # Releases on old commits need a token with the "workflow" scope (secret RESTORE_TOKEN), unless the tags exist already
+      GH_TOKEN: ${{ secrets.RESTORE_TOKEN || github.token }}
       GH_REPO: ${{ github.repository }}
       CREATE: ${{ inputs.create }}
     steps:
