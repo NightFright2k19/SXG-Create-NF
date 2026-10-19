@@ -730,6 +730,7 @@ Modules used by the conversion (in `utility`): decoders `decBase.py` (incl. tabl
 - **TaleTN** – [MUTable](https://github.com/TaleTN/MUTable), MU series data table documentation (MU50 ext drum voice table, MU2000 scaling tables)
 - **VEG** (Evgeny Vrublevsky) – [S-YXG50](https://veg.by/en/projects/syxg50/) (`syxg50.dll`, included in this repository with the author's permission)
 - **Yamaha** – MU series tone generators and the S-YXG50 sound engine
+- **SyafriStudio** – ["Vst icon"](https://www.magnific.com/icon/vst_13122094) (Magnific, formerly Freepik), the basis of the patcher icon (light base, white paper and light blue label added, the 16 and 32 px sizes redrawn by hand; `utility/dev/gui/mkicon.py`)
 
 DPCM delta table, DPCM limits table, and delta format decoding code based on MAME, copyright (c) MAME contributors, and related contributions by TaleTN, tarboh, and hockinsk under the BSD-3 license.
 

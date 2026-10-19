@@ -150,10 +150,16 @@ jobs:
           echo "VERSION = '$REVISION'" > patcher_version.py
           HIDDEN=""
           for f in utility/*.py; do HIDDEN="$HIDDEN --hidden-import $(basename "$f" .py)"; done
-          python -m PyInstaller --onefile --windowed --noconfirm --clean \
+          case "${{ runner.os }}" in                  # program icon: .ico (Windows), .icns (macOS); Linux has none
+            Windows) ICON="--icon utility/icons/patcher.ico" ;;
+            macOS)   ICON="--icon utility/icons/patcher.icns" ;;
+            *)       ICON="" ;;
+          esac
+          python -m PyInstaller --onefile --windowed --noconfirm --clean $ICON \
             --name SXG-Create-NF-Patcher \
             --paths utility --paths . \
             --add-data "utility/bitmaps:bitmaps" \
+            --add-data "utility/icons:icons" \
             --add-data "templates.7z:." \
             --hidden-import main --hidden-import patcher_i18n --hidden-import patcher_version $HIDDEN \
             patcher.py

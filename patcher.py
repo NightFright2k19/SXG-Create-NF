@@ -16,6 +16,8 @@ HERE = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resol
 if FROZEN and sys.platform == 'darwin' and HERE.parent.name == 'Contents' :
     HERE = HERE.parents[2]                      # Patcher.app/Contents/MacOS -> folder holding the .app
 CODE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+ICONS = [CODE / ('icons' if FROZEN else 'utility/icons') / n for n in ('patcher.png', 'patcher_32.png', 'patcher_16.png')]
+                                                # window icons in three sizes (the exe / app icon is set by the build)
 sys.path.insert(0, str(CODE / 'utility'))
 sys.path.insert(0, str(CODE))
 try : from patcher_version import VERSION
@@ -88,6 +90,8 @@ def main_window() :
     root = tk.Tk()
     root.title(f'SXG-Create-NF Patcher {VERSION}')
     root.resizable(False, False)
+    try : root.iconphoto(True, *[tk.PhotoImage(file = str(f)) for f in ICONS])
+    except Exception : pass                                     # a missing icon must never stop the patcher
     st = dict(lang = system_language(LANGUAGES), folder = HERE, models = [],
               busy = False, details = False, status = ('scanning', {}))
     q = queue.Queue()
@@ -232,6 +236,7 @@ if __name__ == '__main__' :
     elif len(sys.argv) > 1 and sys.argv[1] == '--selftest' :
         import dllpatch, convert, dataCRCs, template, main as _m
         assert (Path(dllpatch.__file__).parent / 'bitmaps').is_dir(), 'bitmaps missing'
+        assert all(f.is_file() for f in ICONS), 'icons missing'
         template.check()                                    # every model's template is bundled and empty
         print('selftest ok', VERSION); sys.exit(0)
     else : main_window()
