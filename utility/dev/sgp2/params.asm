@@ -27,6 +27,7 @@ main_hook:
     lea ecx, [getp]
     mov [eax + 0x10], ecx
     mov dword ptr [eax + 0x18], NP
+    or dword ptr [eax + 0x24], 1         ; effFlagsHasEditor (editor.c, issue #39)
 mh_plain:
     mov ecx, [esp + 4]
     jmp IMG + 0x2cfb
@@ -282,8 +283,50 @@ d_not_mains:
     je d_one
     cmp eax, 56
     je d_props
+    cmp eax, 13
+    je d_edrect
+    cmp eax, 14
+    je d_edopen
+    cmp eax, 15
+    je d_edclose
+    cmp eax, 19
+    je d_edidle
 d_pass:
     jmp dword ptr [orig_disp]
+; editor (issue #39): effEditGetRect / Open / Close / Idle go to the C code of editor.c (blob after the data,
+; entries 8 bytes apart: getrect, open, close, idle); open gets the load address as third argument
+d_edrect:
+    push dword ptr [esp + 0x14]
+    push dword ptr [esp + 8]
+    lea eax, [ed_blob]
+    call eax
+    add esp, 8
+    ret
+d_edopen:
+    lea eax, [ed_share]
+    push eax
+    lea eax, [IMG]
+    push eax
+    push dword ptr [esp + 0x1C]
+    push dword ptr [esp + 0x10]
+    lea eax, [ed_blob + 8]
+    call eax
+    add esp, 16
+    ret
+d_edclose:
+    push dword ptr [esp + 4]
+    lea eax, [ed_blob + 16]
+    call eax
+    add esp, 4
+    xor eax, eax
+    ret
+d_edidle:
+    push dword ptr [esp + 4]
+    lea eax, [ed_blob + 24]
+    call eax
+    add esp, 4
+    xor eax, eax
+    ret
 ; open / close, sample rate, block size, mains: engine 2 gets them too
 d_fwd:
     push esi
@@ -431,10 +474,12 @@ dgc_loop:
     jb dgc_loop
     pop edi
     pop esi
+    mov eax, [skin]                      ; editor skin (#39) after the parameters; older readers ignore it
+    mov [chunk + 4 + 4 * NP], eax
     mov eax, [esp + 0x14]
     lea ecx, [chunk]
     mov [eax], ecx
-    mov eax, 4 + 4 * NP
+    mov eax, 8 + 4 * NP
     ret
 d_setchunk:
     mov eax, [esp + 0x14]
@@ -444,6 +489,12 @@ d_setchunk:
     jne dsc_5
     cmp dword ptr [esp + 0x14], 4 + 4 * NP
     jb dsc_pop
+    cmp dword ptr [esp + 0x14], 8 + 4 * NP
+    jb dsc_noskin
+    mov ecx, [eax + 4 + 4 * NP]          ; editor skin (#39): 0 original, 1 Modern
+    and ecx, 1
+    mov [skin], ecx
+dsc_noskin:
     xor edx, edx                         ; source index = target index
     jmp dsc_go
 ; 'SXR5' (test builds 12 / 13: Voices at 1, values from 2 one place later) and 'SXR4' (Panic last, ignored)
@@ -566,6 +617,9 @@ em_rl:
     mov ecx, 1
 em_gsm:
     mov [gsmode], ecx
+    movzx ecx, byte ptr [lamptab + eax]    ; editor lamps: MT-32 / GS -> GS, XGLite -> XG, GM -> none, GM2 -> none (3)
+    mov [lampm], ecx
+    call trk_reset
     or dword ptr [dirty], DIRTY_ALL        ; a reset restores the defaults: send ours again
 em_par:
     mov eax, [ivals + 4]
@@ -644,6 +698,101 @@ em_next:
     cmp ecx, NP
     jb em_loop
     mov dword ptr [dirty], 0
+em_pq:                                     ; editor (#39): program changes / bank selects from the panel (ring of 32)
+    mov ecx, [pq_tail]
+    cmp ecx, [pq_head]
+    je em_pq_done
+    cmp ebx, 800
+    jae em_pq_done
+    mov eax, ecx
+    and eax, 31
+    mov edx, [pq + eax * 4]
+    shl eax, 5
+    lea eax, [pmev + eax]
+    mov dword ptr [eax], 1                 ; kVstMidiType
+    mov dword ptr [eax + 4], 32
+    mov dword ptr [eax + 8], 0
+    mov dword ptr [eax + 0xC], 0
+    mov dword ptr [eax + 0x10], 0
+    mov dword ptr [eax + 0x14], 0
+    mov [eax + 0x18], edx
+    mov dword ptr [eax + 0x1C], 0
+    call trk
+    mov [edi], eax
+    add edi, 4
+    inc ebx
+    inc dword ptr [pq_tail]
+    jmp em_pq
+em_pq_done:
+    ret
+
+; editor (#39): program, bank MSB and LSB per channel as the plugin last sent them (host events and the panel's)
+; eax = VstMidiEvent*, all registers kept
+trk:
+    push eax
+    push ecx
+    push edx
+    mov edx, [eax + 0x18]
+    mov ecx, edx
+    and ecx, 0xF
+    mov eax, edx
+    and al, 0xF0
+    cmp al, 0xC0
+    jne tk_cc
+    shr edx, 8
+    and edx, 0x7F
+    mov [tprg + ecx], dl
+    jmp tk_ret
+tk_cc:
+    cmp al, 0xB0
+    jne tk_ret
+    mov eax, edx
+    shr eax, 8
+    and eax, 0x7F
+    shr edx, 16
+    and edx, 0x7F
+    test eax, eax
+    jnz tk_lsb
+    mov [tmsb + ecx], dl
+    jmp tk_ret
+tk_lsb:
+    cmp eax, 32
+    jne tk_ret
+    mov [tlsb + ecx], dl
+tk_ret:
+    pop edx
+    pop ecx
+    pop eax
+    ret
+
+; after a reset: program 0, banks as the mode sets them (XG: channel 10 MSB 127; GM2: 121, channel 10 120)
+trk_reset:
+    push eax
+    push ecx
+    push edx
+    xor edx, edx
+    cmp dword ptr [lampm], 3
+    jne tr_fill
+    mov edx, 121
+tr_fill:
+    mov ecx, 16
+tr_loop:
+    mov byte ptr [tprg + ecx - 1], 0
+    mov byte ptr [tmsb + ecx - 1], dl
+    mov byte ptr [tlsb + ecx - 1], 0
+    loop tr_loop
+    mov eax, [lampm]
+    cmp eax, 1
+    jne tr_n1
+    mov byte ptr [tmsb + 9], 127
+tr_n1:
+    cmp eax, 3
+    jne tr_ret
+    mov byte ptr [tmsb + 9], 120
+tr_ret:
+    pop edx
+    pop ecx
+    pop eax
     ret
 
 ; processEvents: our events in front; resets from the host always pass
@@ -686,6 +835,19 @@ de_loop:
     cmp byte ptr [edx + 1], 0x41
     sete cl
     mov [gsmode], ecx                ; GS reset: the engine now takes GS parameter SysEx only
+    mov cl, [edx + 1]                ; editor lamps: Roland -> GS, Yamaha -> XG, universal (GM / GM2) -> none
+    mov dword ptr [lampm], 2
+    cmp cl, 0x41
+    je de_lamp
+    mov dword ptr [lampm], 1
+    cmp cl, 0x43
+    je de_lamp
+    mov dword ptr [lampm], 0
+    cmp byte ptr [edx + 4], 3            ; F0 7E xx 09 03: GM2 on
+    jne de_lamp
+    mov dword ptr [lampm], 3
+de_lamp:
+    call trk_reset
     push ebx
     call em_par
     pop ecx
@@ -696,6 +858,7 @@ de_loop:
 de_keep:
     cmp dword ptr [eax], 1           ; kVstMidiType
     jne de_one
+    call trk
     call poly
     test byte ptr [route], 1
     jz de_two
@@ -953,6 +1116,13 @@ po_set:
     call own_idx
     mov [own + edx], cl
 po_add:
+    mov edx, eax                     ; editor meters (#39): last accepted velocity per channel and a hit counter
+    and edx, 0xF
+    push eax
+    mov eax, esi
+    mov byte ptr [mhit + edx], al
+    inc byte ptr [mseq + edx]
+    pop eax
     mov ecx, [ncount]
     cmp ecx, 256
     jae po_done
@@ -1312,6 +1482,11 @@ pg_done:
     pop esi
     fstp st(0)
 px_ret:
+    push dword ptr [esp + 0x10]           ; editor (#39): peak of the outputs for the L / R meters
+    push dword ptr [esp + 0x10]
+    lea eax, [ed_blob + 32]
+    call eax
+    add esp, 8
     ret
 
 ; render engine esi (awake) in pieces of 512 samples and add it to the outputs
@@ -1452,6 +1627,19 @@ pending: .int 0
 started: .int 0
 dirty: .int 0
 gsmode: .int 0
+lampm: .int 1                         ; editor lamps / bank display: 0 GM, 1 XG (start: XGLite), 2 GS, 3 GM2
+lamptab: .byte 2, 0, 2, 1, 3
+.align 4
+ed_share: .int ncount, notes, mhit, mseq, lampm, ivals, tprg, tmsb, tlsb, pq, pq_head, pq_tail, skin
+mhit: .space 16
+mseq: .space 16
+tprg: .space 16
+tmsb: .byte 0, 0, 0, 0, 0, 0, 0, 0, 0, 127, 0, 0, 0, 0, 0, 0
+tlsb: .space 16
+pq_head: .int 0
+pq_tail: .int 0
+pq: .space 4 * 32
+pmev: .space 32 * 32
 got: .int 0
 p_target: .int 0
 orig_disp: .int 0
@@ -1480,5 +1668,9 @@ tbuf1: .space 4 * 512
 evlx: .space 8 * 4096
 chunk: .int 0x36525853
 .space 4 * NP
+.int 0
+skin: .int 0
 evlist: .int 0, 0
 .space 4096
+.align 64                             ; ld aligns the blob to its largest input alignment (checked by mksgp2.py)
+ed_blob:

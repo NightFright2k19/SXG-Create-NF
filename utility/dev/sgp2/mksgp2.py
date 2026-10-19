@@ -1,7 +1,9 @@
-# mksgp2.py params.asm > ../../sgp2code.py  (pip: keystone-engine)
+# mksgp2.py params.asm > ../../sgp2code.py  (pip: keystone-engine; gcc with 32-bit ELF support and GNU ld for editor.c)
 # Assembles the code for the new section .sxg at SECTION_VA. IMG stands for the image base; the code is
 # assembled at two bases and the dwords that differ are the absolute addresses that need base relocations.
-import keystone, struct, sys, textwrap, re
+# editor.c (issue #39: the editor of the plugin) is compiled freestanding, linked as a flat blob right behind the
+# assembled code (label ed_blob, 8-byte jump table at its start) and goes through the same two-base comparison.
+import keystone, struct, sys, textwrap, re, subprocess, tempfile, os
 from pathlib import Path
 sys.path.insert(0, __file__.rsplit('/', 4)[0] + '/utility')
 from sgp2patch import B, SECTION_VA
@@ -27,11 +29,29 @@ import re
 n = iter(range(1000))
 src = re.sub(r'\n(\s*)jmp (sec - [^\n]+)', lambda m : f'\n.set J{(k := next(n))}, {m.group(2)}\n{m.group(1)}jmp J{k}', src)
 ks = keystone.Ks(keystone.KS_ARCH_X86, keystone.KS_MODE_32)
-LABELS = ('main_hook', 'fs_hook', 'fr_hook')
+LABELS = ('main_hook', 'fs_hook', 'fr_hook', 'ed_blob')
+EDITOR = Path(sys.argv[1]).resolve().parent / 'editor.c'
+TMP = tempfile.mkdtemp()
+OBJ = os.path.join(TMP, 'editor.o')
+subprocess.run(['gcc', '-m32', '-Os', '-ffreestanding', '-fno-pic', '-fno-stack-protector', '-fno-asynchronous-unwind-tables',
+                '-fcf-protection=none', '-mno-sse', '-fno-tree-loop-distribute-patterns', '-Wall', '-c', str(EDITOR), '-o', OBJ], check = True)
+open(os.path.join(TMP, 'l.ld'), 'w').write('SECTIONS { . = BASE; .blob : { *(.entry) *(.text .text.*) *(.rodata .rodata.*) *(.data .data.*) '
+                                           '*(.bss .bss.* COMMON) } /DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*) } }\n')
+def link(addr) :
+    out, elf = os.path.join(TMP, 'editor.bin'), os.path.join(TMP, 'editor.elf')
+    args = ['ld', '-m', 'elf_i386', '-T', os.path.join(TMP, 'l.ld'), '--defsym', f'BASE={addr:#x}', OBJ]
+    subprocess.run(args + ['--oformat', 'binary', '-o', out], check = True, stderr = subprocess.DEVNULL)
+    subprocess.run(args + ['-o', elf], check = True, stderr = subprocess.DEVNULL)
+    # the flat binary starts at the blob; ld may move the blob up to its alignment, which would shift every address
+    syms = dict(l.split()[2::-2] for l in subprocess.run(['nm', elf], capture_output = True, text = True).stdout.splitlines() if len(l.split()) == 3)
+    assert int(syms['ed_entries'], 16) == addr, f'editor blob linked at {syms["ed_entries"]}, expected {addr:#x}'
+    return open(out, 'rb').read()
 def build(base) :
     code = bytes(ks.asm(src, base + SECTION_VA)[0])
     tail = bytes(ks.asm(src + '\n' + '\n'.join(f'.int {l}' for l in LABELS), base + SECTION_VA)[0])[len(code):]
-    return code, [struct.unpack_from('<I', tail, 4 * i)[0] - base for i in range(len(LABELS))]
+    labels = [struct.unpack_from('<I', tail, 4 * i)[0] - base for i in range(len(LABELS))]
+    assert labels[-1] == SECTION_VA + len(code), 'ed_blob must be the last label of params.asm'
+    return code + link(base + SECTION_VA + len(code)), labels[:-1]
 code, labels = build(B)
 code2, labels2 = build(B + 0x01000000)
 assert labels == labels2 and len(code) == len(code2)

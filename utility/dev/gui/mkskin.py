@@ -78,6 +78,8 @@ GLYPHS = {
     '5' : [[(4, 0), (0, 0), (0, 3), (3, 3), (4, 4), (4, 5), (3, 6), (0, 6)]],
     '8' : [[(1, 0), (3, 0), (4, 1), (4, 2), (3, 3), (1, 3), (0, 2), (0, 1), (1, 0)], [(1, 3), (0, 4), (0, 5), (1, 6), (3, 6), (4, 5), (4, 4), (3, 3)]],
     '9' : [[(4, 3), (1, 3), (0, 2), (0, 1), (1, 0), (3, 0), (4, 1), (4, 5), (3, 6), (0, 6)]],
+    '6' : [[(0, 3), (3, 3), (4, 4), (4, 5), (3, 6), (1, 6), (0, 5), (0, 1), (1, 0), (4, 0)]],
+    'L' : [[(0, 0), (0, 6), (4, 6)]],
 }
 
 def stroke_text(im, x, cy, s, h, color, weight = 1.6, gap = 0.55, aspect = 0.72, anchor = 'l', glow = None, shadow = True) :
@@ -143,10 +145,11 @@ def make_panel() :
     stroke_text(im, 32, 11.3, 'YAMAHA', 11, WHITE, 2.0, 0.42, 0.78)
     p = down(im); p.paste(logo(p), (8, 2), logo(p)); return p
 
-def make_name(model) :
-    im = canvas(100, 23); bevel(im, -5, 2, 98, 23, 3)
-    stroke_text(im, 93, 11.6, 'S-YXG' + model[2:], 9, GREY, 2.1, 0.5, 0.7, 'r')
-    return down(im).crop((0, 0, 100, 23))
+def make_name(model, text = None, w = 100, gap = 0.5, aspect = 0.7) :
+    # the S-YXG2006LE name (issue #39) is 110 wide, at x 290 instead of 300, with its 11 letters set closer
+    im = canvas(w, 23); bevel(im, -5, 2, w - 2, 23, 3)
+    stroke_text(im, w - 7, 11.6, text or 'S-YXG' + model[2:], 9, GREY, 2.1, gap, aspect, 'r')
+    return down(im).crop((0, 0, w, 23))
 
 def make_screen() :
     im = canvas(288, 47, SCREEN); d = ImageDraw.Draw(im)
@@ -338,6 +341,7 @@ if __name__ == '__main__' :
     files = {'Panel101.bmp' : panel, 'Bitmap102.bmp' : screen, 'Bitmap103.bmp' : lamps, 'Bitmap104.bmp' : meters,
              'Bitmap105.bmp' : digits, 'Bitmap106.bmp' : setup, 'PanelButtons.bmp' : btn}
     for m in ('MU50', 'MU80', 'MU90', 'MU100', 'MU128', 'MU1000', 'MU2000') : files[f'Name_{m}.bmp'] = make_name(m)
+    files['Name_XG2006LE.bmp'] = make_name(None, 'S-YXG2006LE', 110, 0.36, 0.64)
     for n, im in files.items() : im.save(B / ('Modern_' + n))
     if '--preview' in sys.argv :
         levels = [0, 6, 0, 0, 0, 6, 0, 0, 0, 7, 0, 4, 0, 0, 0, 0, 8, 8]

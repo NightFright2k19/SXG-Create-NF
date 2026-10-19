@@ -86,7 +86,11 @@ def Patch(data : bytes, embed : list[tuple[str, bytes]] = ()) -> bytes :
     jmp(d, LOADERS[0], FS_HOOK, 6); jmp(d, LOADERS[1], FR_HOOK, 6)
     # resources in a new section .rsrc2 (the old .rsrc is not the last section, so it can't grow): the version
     # info gets the build date and the credits like the MU plugins, --embed adds the tables as RT_RCDATA
-    res = [(t, n, l, cp, Version_Date(b) if t == dllpatch.RT_VERSION else b) for t, n, l, cp, b in dllpatch.read_resources(d)]
+    res = [(t, n, l, cp, Version_Date(b) if t == dllpatch.RT_VERSION else Panel_Dib(b) if (t, n) == (dllpatch.RT_BITMAP, PANEL_BITMAP) else b)
+           for t, n, l, cp, b in dllpatch.read_resources(d)]
+    lang = next(l for t, n, l, cp, b in res if (t, n) == (dllpatch.RT_BITMAP, PANEL_BITMAP))
+    res += [(dllpatch.RT_BITMAP, i, lang, 0, dllpatch.bmp_to_dib24((dllpatch.BITMAP_DIR / f).read_bytes())[2]) for i, f in EDITOR_BITMAPS.items()]
+    res += [(dllpatch.RT_BITMAP, PANEL_BITMAP + SKIN_OFFSET, lang, 0, Modern_Panel_Dib())]
     res += [(dllpatch.RT_RCDATA, n.upper(), 0, 0, b) for n, b in embed]
     pe = struct.unpack_from('<I', d, 0x3C)[0]; opt = pe + 24
     tmp = bytearray(d); va = add_section(tmp, b'.rsrc2', b'', 0x40000040)
@@ -96,6 +100,35 @@ def Patch(data : bytes, embed : list[tuple[str, bytes]] = ()) -> bytes :
     pe = struct.unpack_from('<I', d, 0x3C)[0]; opt = pe + 24
     struct.pack_into('<I', d, opt + 64, Checksum(d, opt + 64))
     return bytes(d)
+
+# Editor (issue #39): the panel (bitmap 111 of the DLL, 400 x 90) gets the control row CHN / PRG / MSB / LSB of the MU
+# plugins' panel (bitmaps/Panel101.bmp, rows 24-47) under the title strip, like #42: 400 x 114. The Yamaha bitmap
+# itself is not part of this repository; it is taken from the user's DLL.
+PANEL_BITMAP = 111
+# for the control row: pressed buttons and dash (130) and the white digits (131) of the MU plugins' panel
+EDITOR_BITMAPS = {130 : 'PanelButtons.bmp', 131 : 'Bitmap105.bmp'}
+# Modern skin (#52, here #39): the ids + 100 hold the dark pictures of the MU plugins (dev/gui/mkskin.py); a click on
+# the YAMAHA logo switches, the choice is saved in the plugin state (chunk 'SXR6', after the parameters)
+SKIN_OFFSET = 100
+EDITOR_BITMAPS.update({204 : 'Modern_Bitmap106.bmp', 206 : 'Modern_Bitmap104.bmp', 207 : 'Modern_Bitmap105.bmp', 208 : 'Modern_Bitmap103.bmp',
+                       209 : 'Modern_Bitmap102.bmp', 230 : 'Modern_PanelButtons.bmp', 231 : 'Modern_Bitmap105.bmp'})
+
+def Modern_Panel_Dib() -> bytes :
+    w, h, panel = dllpatch.bmp_to_dib24((dllpatch.BITMAP_DIR / 'Modern_Panel101.bmp').read_bytes())
+    rows = dllpatch.dib_rows(panel)[3]
+    nw, nh, name = dllpatch.bmp_to_dib24((dllpatch.BITMAP_DIR / 'Modern_Name_XG2006LE.bmp').read_bytes())
+    for r, line in enumerate(dllpatch.dib_rows(name)[3]) : rows[r][3 * (400 - nw) : 1200] = line
+    return dllpatch.rows_to_dib(400, rows)
+
+def Panel_Dib(dib : bytes) -> bytes :
+    w, h, _, rows = dllpatch.dib_rows(dib)
+    assert (w, h) == (400, 90), f'bitmap {PANEL_BITMAP} is {w}x{h}, expected 400x90'
+    pw, ph, panel = dllpatch.bmp_to_dib24((dllpatch.BITMAP_DIR / 'Panel101.bmp').read_bytes())
+    assert (pw, ph) == (400, 114)
+    prows = dllpatch.dib_rows(panel)[3]
+    nw, nh, name = dllpatch.bmp_to_dib24((dllpatch.BITMAP_DIR / 'Name_XG2006LE.bmp').read_bytes())     # "S-YXG2006LE", flush right
+    for r, line in enumerate(dllpatch.dib_rows(name)[3]) : rows[r][3 * (400 - nw) : 1200] = line
+    return dllpatch.rows_to_dib(400, rows[:24] + prows[24:48] + rows[24:])
 
 def Version_Date(old : bytes, today = None) -> bytes :
     # FileVersion / ProductVersion 1.0.2.22 -> YYYY.MM.DD (build date), fixed file version YYYY,MM,DD,0,

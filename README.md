@@ -471,7 +471,14 @@ Patches (`utility/sgp2patch.py`, code in `utility/dev/sgp2/params.asm`):
 - **Embedded tables:** the two table loaders (`0x4C780` file size, `0x4C7D0` read) take `SXGBNW6L.TBL` / `SXGDAT6L.TBL` from `RT_RCDATA` resources when present (new section `.rsrc2`). Otherwise they read the files from the DLL's folder.
 - The code lives in a new section `.sxg` (hook at `0x2CF4` in `main`). It wraps dispatcher / process / processReplacing and has base relocations, so the DLL can be loaded at any address.
 
-The DLL has no editor of its own (its dialog resources are unused), so there is no Setup page or panel.
+**Editor** (issue #39): the DLL has no editor of its own (its dialog resources are unused), so the patch adds one (`utility/dev/sgp2/editor.c`, a small C program compiled into the code of the new section). It looks like the panel of the MU plugins (400 x 114) and uses the DLL's own pictures of Yamaha's unused editor (the Yamaha bitmaps are not part of this repository; the patch takes them from the user's DLL), plus the control row of `bitmaps/Panel101.bmp` and the title `bitmaps/Name_XG2006LE.bmp`:
+  - **Level meters:** 16 parts and L / R. L / R show the real output peaks (after Master Volume). The engine reports no part levels, so a part meter shows the velocity of its last note and falls back, more slowly while notes are held on that part.
+  - **POLYPHONY:** the notes the plugin counts (as for the Polyphony limit, sustained notes included).
+  - **XG / GS lamps:** XG at the start and after an XG reset, GS after a GS or MT-32 reset, none after GM / GM2 (resets from the Setup page and from the song).
+  - **CHN / PRG / MSB / LSB:** as on the MU plugins: click, hold (repeat after 400 ms every 75 ms) or mouse wheel. PRG sends a program change, MSB / LSB a bank select followed by the current program change, to every engine. The values shown are what the engines got last on that channel (from the host or from the panel; after a reset the defaults of the mode: XG part 10 MSB 127, GM2 MSB 121 / part 10 120). A bank value the mode ignores shows "---" and is not sent (GM: MSB and LSB, GS: LSB).
+  - **SETUP** opens the Setup page with the parameters above: Polyphony, Reverb / Chorus, Output Level, Master Tune, Transpose, the five Send Reset buttons, Set Defaults, OK / Cancel / Apply. It works through the plugin's own parameters, so host automation and the saved state do not change.
+  - **Modern skin:** a click on the YAMAHA logo switches to the dark skin of the MU plugins (`bitmaps/Modern_*.bmp`, title `Modern_Name_XG2006LE.bmp`) and back. The choice is saved in the plugin state (chunk `SXR6`, one value after the parameters; older chunks keep the current skin, older builds ignore the value). The S-YXG2006LE reads no ini, so there is no `Skin=` key.
+  - The engine state of the patch is one per DLL copy (as before), so two S-YXG2006LE instances in one process share their meters and control row values.
 
 ---
 
@@ -730,7 +737,6 @@ Modules used by the conversion (in `utility`): decoders `decBase.py` (incl. tabl
 - **TaleTN** – [MUTable](https://github.com/TaleTN/MUTable), MU series data table documentation (MU50 ext drum voice table, MU2000 scaling tables)
 - **VEG** (Evgeny Vrublevsky) – [S-YXG50](https://veg.by/en/projects/syxg50/) (`syxg50.dll`, included in this repository with the author's permission)
 - **Yamaha** – MU series tone generators and the S-YXG50 sound engine
-- **SyafriStudio** – ["Vst icon"](https://www.magnific.com/icon/vst_13122094) (Magnific, formerly Freepik), the basis of the patcher icon (light base, white paper and light blue label added, the 16 and 32 px sizes redrawn by hand; `utility/dev/gui/mkicon.py`)
 
 DPCM delta table, DPCM limits table, and delta format decoding code based on MAME, copyright (c) MAME contributors, and related contributions by TaleTN, tarboh, and hockinsk under the BSD-3 license.
 
