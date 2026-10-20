@@ -6,10 +6,10 @@
 ; is not sent. Buttons: single click, hold (repeat after 400 ms every 75 ms, panel timer 0x2317), mouse wheel.
 ; Positions (bitmap 101 from dev/gui/mkpanel.py): buttons 15 x 15 in row 31, see btn_table; digits (bitmap 105,
 ; 10 x 13) in row 32 at 46 (CHN, 2), 137 (PRG), 242 (MSB), 344 (LSB); bitmap 106 holds the pressed left / right
-; button at x 160 / 175 and a dash at 190.
+; button at x 160 / 175, a dash at 190 and the dimmed digits for a drum part's PRG at x 200 (issue #70).
 ; The values come from the part of the selected channel (part_ptr: the synth [engine +8] keeps the parts in the
 ; order of channels 10, 1-9, 11-16, records of 0x11C bytes from +0x248: +0 bank MSB, +1 bank LSB, +2 program).
-; A PRG step sends a program change, an MSB / LSB step a bank select (CC 0 / CC 32) followed by the program change
+; A PRG step sends a program change (on a drum part a step goes on to the next kit the engine takes, issue #70), an MSB / LSB step a bank select (CC 0 / CC 32) followed by the program change
 ; of the current program, so the new bank sounds at once (audio thread, panel_prog, called by send_pending; to
 ; engine A and the B of its slot).
 ; Per instance (issue #55): hosts such as VST Midi Driver run several instances in one process, so nothing the
@@ -49,11 +49,40 @@ pp_base:
     xchg byte ptr [ebx + 4], al
     test al, al
     je pp_m
-    movsx eax, al
+    movsx edx, al                            ; edx = step, ecx = program of the part
     movzx ecx, byte ptr [esi + 2]
-    add eax, ecx
+    lea eax, [ecx + edx]
+    and eax, 0x7f
+    call pp_pc                               ; (keeps ecx / edx)
+; Issue #70: a drum part only has a few kits (GS / GM2: programs 0, 8, 16, 24, 25, 32, 40, 48, 56, 127) and the engine ignores
+; any other program change from the panel, so a step stayed on the same kit. Go on in the direction of the step (round
+; the ring of 128 programs, like a step on a melodic part) until the engine takes a program. A melodic part takes the first.
+    test edx, edx
+    js pp_dn
+    mov edx, 1                               ; edx = distance of the program change that was sent
+pp_up:
+    cmp byte ptr [esi + 2], cl
+    jne pp_m
+    cmp edx, 127
+    jae pp_m
+    inc edx
+    lea eax, [ecx + edx]
     and eax, 0x7f
     call pp_pc
+    jmp pp_up
+pp_dn:
+    mov edx, 1
+pp_dnl:
+    cmp byte ptr [esi + 2], cl
+    jne pp_m
+    cmp edx, 127
+    jae pp_m
+    inc edx
+    mov eax, ecx
+    sub eax, edx
+    and eax, 0x7f
+    call pp_pc
+    jmp pp_dnl
 pp_m:
     xor eax, eax
     xchg byte ptr [ebx + 5], al
@@ -795,8 +824,15 @@ dp_values:
     push edx
     movzx ebx, byte ptr [edx + 2]
     inc ebx
+    call drum_part                           ; ecx = engine (kept by part_ptr), edx = part
     mov ecx, 137
+    test eax, eax
+    je dp_prg
+    call dp_three_dim                        ; a drum part: dimmed digits (issue #70)
+    jmp dp_prg_done
+dp_prg:
     call dp_three
+dp_prg_done:
     pop edx
     push edx
     movzx ebx, byte ptr [edx]
@@ -896,6 +932,86 @@ dt3_dash:
     push edi
     call dword ptr [ebp + 0x10040020]
     ret
+; drum_part: edx = part, ecx = engine -> eax = 1 for a drum part, else 0 (keeps the other registers). What marks a drum part
+; depends on the mode (synth +0x63B0: 0 XG / GS, 1 GM, 2 GM2; +0x63AE = 0 after a GS reset):
+;   bank MSB 126 / 127 (XG drum and SFX kits; channel 10 after any reset; GM: channel 10 keeps 127)         -> drum
+;   GM2: bank MSB 120                                                                                        -> drum
+;   GS: the part record's byte +0x91 is 2 for a rhythm part (channel 10 and any part GS sysex made one; the engine
+;       writes MSB 0 there after the first program change, so the bank says nothing); 3 for a melodic part
+; Known limit: after a GS sysex turns a rhythm part off again the byte stays 2, so that part keeps showing as a drum part.
+drum_part:
+    push ecx
+    movzx eax, byte ptr [edx]
+    cmp eax, 126
+    jae dr_yes
+    mov ecx, dword ptr [ecx + 8]
+    cmp byte ptr [ecx + 0x63b0], 2
+    jne dr_gs
+    cmp eax, 120
+    je dr_yes
+    jmp dr_no
+dr_gs:
+    cmp byte ptr [ecx + 0x63b0], 0
+    jne dr_no
+    cmp byte ptr [ecx + 0x63ae], 0
+    jne dr_no
+    cmp byte ptr [edx + 0x91], 2
+    jne dr_no
+dr_yes:
+    pop ecx
+    mov eax, 1
+    ret
+dr_no:
+    pop ecx
+    xor eax, eax
+    ret
+; dp_three_dim: ebx = value 0-999, ecx = x: three dimmed digits (bitmap 106 at x 200 + 10 * digit, selected into the memory DC
+; edi meanwhile), no blanks and no dashes
+dp_three_dim:
+    push ecx                                 ; SelectObject changes ecx
+    push dword ptr [ebp + 0x10055338]
+    push edi
+    call dword ptr [ebp + 0x10040020]
+    pop ecx
+    push ecx
+    mov eax, ebx
+    xor edx, edx
+    push ecx
+    mov ecx, 100
+    div ecx
+    pop ecx
+    call dp_digit_dim
+    pop ecx
+    push ecx
+    add ecx, 10
+    mov eax, ebx
+    xor edx, edx
+    push ecx
+    mov ecx, 10
+    div ecx
+    xor edx, edx
+    div ecx
+    mov eax, edx
+    pop ecx
+    call dp_digit_dim
+    pop ecx
+    add ecx, 20
+    mov eax, ebx
+    xor edx, edx
+    push ecx
+    mov ecx, 10
+    div ecx
+    mov eax, edx
+    pop ecx
+    call dp_digit_dim
+    push dword ptr [ebp + 0x1005533c]
+    push edi
+    call dword ptr [ebp + 0x10040020]
+    ret
+dp_digit_dim:
+    imul eax, eax, 10
+    add eax, 200
+    jmp dp_go
 ; dp_dash: ecx = x; a dash (bitmap 106 at x 190, memory DC edi has bitmap 106 selected)
 dp_dash:
     mov eax, 190
