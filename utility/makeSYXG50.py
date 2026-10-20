@@ -822,10 +822,12 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
             voice_prgmap_XG[dst : dst + ptr_size] = src
         for lsb in range(len(dataGM2.GM2_ROWS)) : 
             voice_bankmaps[row_gm2 + lsb] = gm2_base + lsb
-        gm2_drums = 128 * drum_bank_locations[Bank.GM2_DRUMS]
-        drumbank_prgmaps[gm2_drums : gm2_drums + 128] = drumbank_prgmaps[0 : 128]
         print(f'GM2: {len(dataGM2.GM2_ROWS)} voice banks (MSB 121, LSB 0-{len(dataGM2.GM2_ROWS) - 1}) from the XG / GS banks,'
               f' drum programs (MSB 120) like GS')
+    # GM2 drum programs (MSB 120) select the kits like GS, also for models with GM2 voices of their own (MU128, MU1000: their drum
+    # bank list has no GM2 entry, so the row stayed empty and every GM2 drum program change was ignored, issue #71)
+    gm2_drums = 128 * drum_bank_locations[Bank.GM2_DRUMS]
+    drumbank_prgmaps[gm2_drums : gm2_drums + 128] = drumbank_prgmaps[0 : 128]
 
 
     # * wavedata offset table
@@ -914,10 +916,13 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
     if alt_table is not None : 
         appendix = bytearray(Voice_Map_Appendix(alt_table, table, GSbanks, XGbanks, bank_map_order,
                                                 drum_bank_locations, voice_bankmaps, drumbank_prgmaps, alt_default))
-        if gm2_banks :      # the GM2 rows are the same in both voice maps
-            for row in (8 + 128 * drum_bank_locations[Bank.GM2_DRUMS], 8 + 4 * 128 + 128 * bank_map_order.index(Bank.GM2)) : 
-                src = (drumbank_prgmaps if row < 8 + 4 * 128 else voice_bankmaps)[row - 8 - (0 if row < 8 + 4 * 128 else 4 * 128) :][:128]
-                appendix[row : row + 128] = src
+        # the GM2 rows are the same in both voice maps: the drum program row always, the voice bank row only where the GM2 banks are built
+        # here (models with GM2 voices of their own, MU128 / MU1000, keep their own row)
+        gm2_rows = [8 + 128 * drum_bank_locations[Bank.GM2_DRUMS]]
+        if gm2_banks : gm2_rows.append(8 + 4 * 128 + 128 * bank_map_order.index(Bank.GM2))
+        for row in gm2_rows :
+            src = (drumbank_prgmaps if row < 8 + 4 * 128 else voice_bankmaps)[row - 8 - (0 if row < 8 + 4 * 128 else 4 * 128) :][:128]
+            appendix[row : row + 128] = src
         table_file = table_file + bytes(appendix)
 
 
