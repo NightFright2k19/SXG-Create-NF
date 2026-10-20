@@ -291,6 +291,12 @@ d_not_mains:
     je d_edclose
     cmp eax, 19
     je d_edidle
+    cmp eax, 45
+    je d_ename
+    cmp eax, 47
+    je d_evendor
+    cmp eax, 48
+    je d_eprod
 d_pass:
     jmp dword ptr [orig_disp]
 ; editor (issue #39): effEditGetRect / Open / Close / Idle go to the C code of editor.c (blob after the data,
@@ -326,6 +332,27 @@ d_edidle:
     call eax
     add esp, 4
     xor eax, eax
+    ret
+; the original DLL answers effGetEffectName / VendorString / ProductString with empty strings, so hosts show no name
+; (Falcosoft MIDI Player shows product string + version); the MU plugins carry their names in the string table
+d_ename:
+    lea ecx, [str_name]
+    jmp d_estr
+d_evendor:
+    lea ecx, [str_vendor]
+    jmp d_estr
+d_eprod:
+    lea ecx, [str_product]
+d_estr:
+    mov edx, [esp + 0x14]
+d_estr_loop:
+    mov al, [ecx]
+    mov [edx], al
+    inc ecx
+    inc edx
+    test al, al
+    jne d_estr_loop
+    mov eax, 1
     ret
 ; open / close, sample rate, block size, mains: engine 2 gets them too
 d_fwd:
@@ -1662,5 +1689,11 @@ chunk: .int 0x36525853
 .space 4 * NP
 evlist: .int 0, 0
 .space 4096
+str_name: .ascii "S-YXG2006LE"
+.byte 0
+str_vendor: .ascii "Yamaha"
+.byte 0
+str_product: .ascii "Yamaha S-YXG2006LE"
+.byte 0
 .align 64                             ; ld aligns the blob to its largest input alignment (checked by mksgp2.py)
 ed_blob:

@@ -473,6 +473,7 @@ Patches (`utility/sgp2patch.py`, code in `utility/dev/sgp2/params.asm`):
   - **POLYPHONY:** the notes the plugin counts (as for the Polyphony limit, sustained notes included).
   - **XG / GS lamps:** XG at the start and after an XG reset, GS after a GS or MT-32 reset, none after GM / GM2 (resets from the Setup page and from the song).
   - **CHN / PRG / MSB / LSB:** as on the MU plugins: click, hold (repeat after 400 ms every 75 ms) or mouse wheel. PRG sends a program change, MSB / LSB a bank select followed by the current program change, to every engine. The values shown are what the engines got last on that channel (from the host or from the panel; after a reset the defaults of the mode: XG part 10 MSB 127, GM2 MSB 121 / part 10 120). A bank value the mode ignores shows "---" and is not sent (GM: MSB and LSB, GS: LSB).
+  - **Names:** the DLL answers the host's name queries (it returned empty strings, so hosts such as Falcosoft MIDI Player showed no name): effect name `S-YXG2006LE`, vendor `Yamaha`, product `Yamaha S-YXG2006LE` (shown with the plugin version as "Yamaha S-YXG2006LE 1.0").
   - **SETUP** opens the Setup page with the parameters above: Polyphony, Reverb / Chorus, Output Level, Master Tune, Transpose, the five Send Reset buttons, Set Defaults, OK / Cancel / Apply. It works through the plugin's own parameters, so host automation and the saved state do not change.
   - The engine state of the patch is one per DLL copy (as before), so two S-YXG2006LE instances in one process share their meters and control row values.
 
