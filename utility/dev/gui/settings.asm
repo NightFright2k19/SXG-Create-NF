@@ -6,9 +6,8 @@
 ; 0x428 Native ("MU Tone Map" label 0x429, MU100 / MU128 / MU1000 only) drive the hidden checkbox 0x420 of the
 ; voice map patch (checked = MU Basic) and enable Apply; without a voice map appendix (0x10056DC1 != 1) they
 ; are hidden. The plugin state: getChunk / setChunk (vtable slots of both AudioEffect vtables, set in
-; dllpatch.py) wrap the original functions and append 'R','P',skin,extra voices (4 bytes); the byte that held the
-; Reset Mode of earlier versions now holds the panel skin (issue #52: 0 = none, 1 original, 2 Modern; skin_get /
-; skin_set in poly/panel.asm).
+; dllpatch.py) wrap the original functions and append 'R','P',0,extra voices (4 bytes); the byte that held the
+; Reset Mode of earlier versions is ignored.
 ; Output Level (trackbar 0x3FE): value 77-125 (101 = 0 dB, 0.5 dB steps, range set in dllpatch.py), tick at 101.
 
 ; --- page procedure (0x10030AF0, (page, hwnd, msg, wparam, lparam), ret 0x14) jumps here
@@ -272,7 +271,7 @@ ps_byte:
     call 0x10030ea0
     jmp 0x1003114c
 
-; --- getChunk (thiscall: void **data, bool isPreset; ret 8): original chunk + 'R','P',skin,extra voices
+; --- getChunk (thiscall: void **data, bool isPreset; ret 8): original chunk + 'R','S',Reset Mode,0
 chunk_get:
     push dword ptr [esp + 8]
     push dword ptr [esp + 8]
@@ -291,10 +290,7 @@ cg_base:
     mov dword ptr [edx], edi
     rep movsb
     mov word ptr [edi], 0x5052
-    push eax
-    call SKIN_GET                            ; byte 2: the panel skin (issue #52), 1 original / 2 Modern
-    mov byte ptr [edi + 2], al
-    pop eax
+    mov byte ptr [edi + 2], 0
     mov cl, byte ptr [ebp + 0x10056eb8]
     xor cl, 0x80
     mov byte ptr [edi + 3], cl
@@ -321,10 +317,6 @@ cs_base:
     je cs_tag
     cmp word ptr [esi + eax - 4], 0x5052
     jne cs_out
-    push eax
-    mov al, byte ptr [esi + eax - 2]         ; the panel skin (0 = none: the ini decides)
-    call SKIN_SET
-    pop eax
     mov cl, byte ptr [esi + eax - 1]
     cmp cl, 128
     jbe cs_tag

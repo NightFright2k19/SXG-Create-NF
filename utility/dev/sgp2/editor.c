@@ -102,10 +102,9 @@ typedef struct Ed {
     AEffect *e;                 /* claimed with compare-and-swap */
     PTR panel, setup, parent, tab, font;
     PTR inst, buf;
-    PTR pics[2][8];             /* [skin] 0 panel (111), DLL bitmaps 104 SETUP, 106 meter stages, 107 digits, 108 lamps,
-                                   109 meter screen; added by the patch: 130 pressed buttons / dash, 131 white digits.
-                                   Skin 1 (Modern): the same ids + 100 */
-    PTR bmp, *parts;            /* the current skin's panel and parts */
+    PTR pics[8];                /* 0 panel (111), DLL bitmaps 104 SETUP, 106 meter stages, 107 digits, 108 lamps,
+                                   109 meter screen; added by the patch: 130 pressed buttons / dash, 131 white digits */
+    PTR bmp, *parts;            /* the panel and its parts (pics + 1) */
     int chn, held, wheel;       /* control row: channel 0-15, held button (btn codes), wheel remainder */
     int vals[7];                /* parameter values shown on the Setup page (not yet applied) */
     int press;                  /* SETUP button held */
@@ -115,7 +114,7 @@ typedef struct Ed {
 /* shared with params.asm (ed_share): sounding notes (key << 8 | channel), velocity and hit counter of the last
    note-on per channel, lamp mode (0 none, 1 XG, 2 GS), parameter values. The engine state of params.asm is one per
    DLL copy, so these are too. */
-typedef struct { i32 *ncount; u32 *notes; u8 *mhit, *mseq; i32 *lampm, *ivals; u8 *prg, *msb, *lsb; u32 *pq; volatile u32 *pq_head, *pq_tail; i32 *skin; } Share;
+typedef struct { i32 *ncount; u32 *notes; u8 *mhit, *mseq; i32 *lampm, *ivals; u8 *prg, *msb, *lsb; u32 *pq; volatile u32 *pq_head, *pq_tail; } Share;
 static Share *sh;
 static volatile float pk[2];    /* output peaks since the last meter update (audio thread writes, editor reads) */
 static const u16 part_id[8] = { 111, 104, 106, 107, 108, 109, 130, 131 };
@@ -436,13 +435,6 @@ static int group_at(int x, int y) {                                   /* wheel: 
     return 0;
 }
 
-/* skin (#52 for the MU plugins): a click on the YAMAHA logo (x 8-103, y 0-22) switches; params.asm keeps the choice in
-   the plugin state. A skin whose pictures are missing falls back to the original one. */
-static void use_skin(Ed *d) {
-    int k = (sh && (*sh->skin & 1) && d->pics[1][0]) ? 1 : 0;
-    d->bmp = d->pics[k][0]; d->parts = &d->pics[k][1];
-}
-
 static void paint_panel(Ed *d, PTR dc) {
     PTR mem = CALL(CreateCompatibleDC, STD(PTR, PTR))(dc);
     if (!d->buf) d->buf = CALL(CreateCompatibleBitmap, STD(PTR, PTR, int, int))(dc, 400, 114);
@@ -507,7 +499,6 @@ static i32 WINAPI panel_proc(PTR h, u32 m, u32 w, i32 l) {
     case WM_PAINT: {
         PAINTSTRUCT ps;
         PTR dc = CALL(BeginPaint, STD(PTR, PTR, PAINTSTRUCT *))(h, &ps);
-        if (d) use_skin(d);
         if (d && d->bmp) paint_panel(d, dc);
         CALL(EndPaint, STD(int, PTR, PAINTSTRUCT *))(h, &ps);
         return 0;
@@ -529,13 +520,7 @@ static i32 WINAPI panel_proc(PTR h, u32 m, u32 w, i32 l) {
             CALL(SetCapture, STD(PTR, PTR))(h);
             CALL(SetTimer, STD(u32, PTR, u32, u32, PTR))(h, 2, 400, NULL);
         } else if (in_setup(l)) { d->press = 1; CALL(SetCapture, STD(PTR, PTR))(h); }
-        else {
-            int x = (short)(l & 0xFFFF), y = (short)((l >> 16) & 0xFFFF);
-            if (sh && x >= 8 && x <= 103 && y >= 0 && y <= 22) {                /* YAMAHA logo: switch the skin */
-                *sh->skin ^= 1; use_skin(d);
-                if (d->setup) CALL(InvalidateRect, STD(int, PTR, PTR, int))(d->setup, NULL, 1);
-            }
-        }
+
         CALL(InvalidateRect, STD(int, PTR, PTR, int))(h, NULL, 0);
         return 0;
     }
@@ -567,8 +552,7 @@ static i32 WINAPI panel_proc(PTR h, u32 m, u32 w, i32 l) {
 
 /* ---- entry points (called by params.asm, cdecl) ------------------------------------------------------------ */
 static void ed_free_pics(Ed *d) {
-    for (int k = 0; k < 2; k++)
-        for (int i = 0; i < 8; i++) if (d->pics[k][i]) { CALL(DeleteObject, STD(int, PTR))(d->pics[k][i]); d->pics[k][i] = NULL; }
+    for (int i = 0; i < 8; i++) if (d->pics[i]) { CALL(DeleteObject, STD(int, PTR))(d->pics[i]); d->pics[i] = NULL; }
 }
 
 int ed_getrect(AEffect *e, ERect **out) { (void)e; if (out) *out = &rect; return 1; }
@@ -592,9 +576,8 @@ int ed_open(AEffect *e, PTR parent, u32 base, Share *share) {
     d->inst = (PTR)base; d->parent = parent; d->setup = NULL; d->font = NULL; d->buf = NULL; d->press = 0; d->chn = 0; d->held = 0; d->wheel = 0;
     for (int i = 0; i < 18; i++) d->lv[i] = 0;
     for (int i = 0; i < 16; i++) { d->hit[i] = 0; d->seq[i] = sh->mseq[i]; }
-    for (int k = 0; k < 2; k++)
-        for (int i = 0; i < 8; i++) d->pics[k][i] = CALL(LoadBitmapA, STD(PTR, PTR, PTR))((PTR)base, (PTR)(u32)(part_id[i] + 100 * k));
-    use_skin(d);
+    for (int i = 0; i < 8; i++) d->pics[i] = CALL(LoadBitmapA, STD(PTR, PTR, PTR))((PTR)base, (PTR)(u32)part_id[i]);
+    d->bmp = d->pics[0]; d->parts = &d->pics[1];
     d->panel = mkwin(0, cls_panel, "", WS_CHILD | WS_VISIBLE, 0, 0, 400, 114, parent, 0, d->inst, NULL);
     if (!d->panel) { ed_free_pics(d); d->e = NULL; return 0; }
     CALL(SetWindowLongA, STD(i32, PTR, int, i32))(d->panel, GWL_USERDATA, (i32)d);
@@ -608,8 +591,7 @@ void ed_close(AEffect *e) {
     if (d->setup) CALL(DestroyWindow, STD(int, PTR))(d->setup);
     if (d->panel) { CALL(KillTimer, STD(int, PTR, u32))(d->panel, 1); CALL(DestroyWindow, STD(int, PTR))(d->panel); }
     if (d->buf) CALL(DeleteObject, STD(int, PTR))(d->buf);
-    for (int k = 0; k < 2; k++)
-        for (int i = 0; i < 8; i++) if (d->pics[k][i]) { CALL(DeleteObject, STD(int, PTR))(d->pics[k][i]); d->pics[k][i] = NULL; }
+    ed_free_pics(d);
     d->setup = d->panel = d->bmp = d->buf = NULL;
     __sync_synchronize();
     d->e = NULL;                                                  /* release the slot last */

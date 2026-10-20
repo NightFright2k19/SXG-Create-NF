@@ -474,12 +474,10 @@ dgc_loop:
     jb dgc_loop
     pop edi
     pop esi
-    mov eax, [skin]                      ; editor skin (#39) after the parameters; older readers ignore it
-    mov [chunk + 4 + 4 * NP], eax
     mov eax, [esp + 0x14]
     lea ecx, [chunk]
     mov [eax], ecx
-    mov eax, 8 + 4 * NP
+    mov eax, 4 + 4 * NP
     ret
 d_setchunk:
     mov eax, [esp + 0x14]
@@ -489,12 +487,6 @@ d_setchunk:
     jne dsc_5
     cmp dword ptr [esp + 0x14], 4 + 4 * NP
     jb dsc_pop
-    cmp dword ptr [esp + 0x14], 8 + 4 * NP
-    jb dsc_noskin
-    mov ecx, [eax + 4 + 4 * NP]          ; editor skin (#39): 0 original, 1 Modern
-    and ecx, 1
-    mov [skin], ecx
-dsc_noskin:
     xor edx, edx                         ; source index = target index
     jmp dsc_go
 ; 'SXR5' (test builds 12 / 13: Voices at 1, values from 2 one place later) and 'SXR4' (Panic last, ignored)
@@ -1630,7 +1622,7 @@ gsmode: .int 0
 lampm: .int 1                         ; editor lamps / bank display: 0 GM, 1 XG (start: XGLite), 2 GS, 3 GM2
 lamptab: .byte 2, 0, 2, 1, 3
 .align 4
-ed_share: .int ncount, notes, mhit, mseq, lampm, ivals, tprg, tmsb, tlsb, pq, pq_head, pq_tail, skin
+ed_share: .int ncount, notes, mhit, mseq, lampm, ivals, tprg, tmsb, tlsb, pq, pq_head, pq_tail
 mhit: .space 16
 mseq: .space 16
 tprg: .space 16
@@ -1668,8 +1660,6 @@ tbuf1: .space 4 * 512
 evlx: .space 8 * 4096
 chunk: .int 0x36525853
 .space 4 * NP
-.int 0
-skin: .int 0
 evlist: .int 0, 0
 .space 4096
 .align 64                             ; ld aligns the blob to its largest input alignment (checked by mksgp2.py)
