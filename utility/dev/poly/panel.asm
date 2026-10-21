@@ -824,7 +824,7 @@ dp_values:
     push edx
     movzx ebx, byte ptr [edx + 2]
     inc ebx
-    call drum_part                           ; ecx = engine (kept by part_ptr), edx = part
+    call drum_part                           ; edx = part
     mov ecx, 137
     test eax, eax
     je dp_prg
@@ -932,38 +932,15 @@ dt3_dash:
     push edi
     call dword ptr [ebp + 0x10040020]
     ret
-; drum_part: edx = part, ecx = engine -> eax = 1 for a drum part, else 0 (keeps the other registers). What marks a drum part
-; depends on the mode (synth +0x63B0: 0 XG / GS, 1 GM, 2 GM2; +0x63AE = 0 after a GS reset):
-;   bank MSB 126 / 127 (XG drum and SFX kits; channel 10 after any reset; GM: channel 10 keeps 127)         -> drum
-;   GM2: bank MSB 120                                                                                        -> drum
-;   GS: the part record's byte +0x91 is 2 for a rhythm part (channel 10 and any part GS sysex made one; the engine
-;       writes MSB 0 there after the first program change, so the bank says nothing); 3 for a melodic part
-; Known limit: after a GS sysex turns a rhythm part off again the byte stays 2, so that part keeps showing as a drum part.
+; drum_part: edx = part -> eax = 1 for a drum part, else 0 (keeps the other registers). Byte +0x92 of the part record is the
+; engine's own rhythm flag: 0 for a melodic part, 2 / 3 (drum map 1 / 2) for a drum part. It follows every way a part becomes
+; or stops being a drum part: GS "use for rhythm part" on any channel, bank MSB 120 / 126 / 127 in XG (channel 10 always is
+; one in the S-YXG engines), GM2 (MSB 120 / 126 / 127 drum, 121 melodic) and GM (channel 10); in GS the banks 120 / 127 are
+; only variations and leave it 0. It is set by the program change that follows a bank select (the panel shows the engine's state).
 drum_part:
-    push ecx
-    movzx eax, byte ptr [edx]
-    cmp eax, 126
-    jae dr_yes
-    mov ecx, dword ptr [ecx + 8]
-    cmp byte ptr [ecx + 0x63b0], 2
-    jne dr_gs
-    cmp eax, 120
-    je dr_yes
-    jmp dr_no
-dr_gs:
-    cmp byte ptr [ecx + 0x63b0], 0
-    jne dr_no
-    cmp byte ptr [ecx + 0x63ae], 0
-    jne dr_no
-    cmp byte ptr [edx + 0x91], 2
-    jne dr_no
-dr_yes:
-    pop ecx
-    mov eax, 1
-    ret
-dr_no:
-    pop ecx
     xor eax, eax
+    cmp byte ptr [edx + 0x92], 0
+    setne al
     ret
 ; dp_three_dim: ebx = value 0-999, ecx = x: three dimmed digits (bitmap 106 at x 200 + 10 * digit, selected into the memory DC
 ; edi meanwhile), no blanks and no dashes
