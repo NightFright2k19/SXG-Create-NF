@@ -180,6 +180,14 @@ SYXG50_FXFADE = [
     (0x08CDF, '66 83 86 da 66 00 00 fc', '66 83 86 da 66 00 00 d8'),
 ]
 
+# * port select 0xF5 nn ignored (issue #74): the synth's short message method (0x10003700) set its port byte
+#   [synth + 0x1C] = nn - 1 and added port * 16 to the channel of every later message; the channel method drops
+#   channels >= 16, so after F5 02 ... F5 7E everything was lost, even after a reset. F5 now always selects port 1
+#   (jmp to the "nn = 0 or 0x7F" branch), so all messages stay on channels 1-16, like the S-YXG2006LE.
+SYXG50_PORT = [
+    (0x03723, '84 c0', 'eb 15'),
+]
+
 
 # * voice map switch (MU100 / MU128 / MU1000, "Full" level): the table carries both voice maps of the model
 #   (MU Native in the normal bank map / drum program rows, MU Basic in an appendix behind the wave data, see
@@ -1138,6 +1146,7 @@ def Patch(path : Path, full : bool, model : str | None = None, table_name : str 
     apply(data, SYXG50_FX, 'effect types without counterpart -> nearest type')
     text_virtual_size(data, FX_CAVE_END)
     apply(data, SYXG50_FXFADE, 'effect fade-in after a type change: 0.3-1 s -> 80-90 ms')
+    apply(data, SYXG50_PORT, 'port select F5 nn ignored')
     if full :
         if len(data) == 5070848 :
             print('  note: 5 MB syxg50.dll, its embedded (classic) tables are not used, the ini selects the table')
