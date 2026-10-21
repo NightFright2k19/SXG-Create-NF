@@ -232,10 +232,6 @@ jobs:
             - `syxg50.dll` is **no longer needed**: the patcher carries ready-patched plugin templates (without any ROM data) and only writes the converted ROMs into them. The S-YXG2006LE still needs your own `SGP2.OLD` or `SGP2.DLL`.
             - Start it, check the list of found models, click **Patch**. MU models and the S-YXG2006LE are built in the same run; each also works on its own.
             - The plugins (one DLL per model, tables inside; `syxg2006le.dll` for the S-YXG2006LE) end up in the folder `Plugins` next to the patcher.
-            - The files are not signed: Windows SmartScreen and macOS Gatekeeper warn on the first start. See README.md ("Patcher") for how to start it anyway.
-
-            **OLDER VERSIONS**
-            - Only the newest Autobuild is marked as Latest. Older Autobuilds stay available under Releases, e.g. for regression tests.
 
       - name: Keep previous Autobuild releases without a label
         uses: actions/github-script@v8
