@@ -8,6 +8,10 @@
 #   user's SGP2.OLD / SGP2.DLL (sgp2patch.py).
 # * patcher --cli <args> runs main.py's command line (used for the per-model runs).
 # * Language: the system language, else English; a menu at the top right switches it.
+# * Update (issue #72): a release patcher looks for a newer release a moment after it has started and offers it with the
+#   Update button (utility/selfupdate.py); `--no-update-check` (or SXG_NO_UPDATE_CHECK=1) leaves out the check at the start.
+#   Test options: --update-dir <folder with release files>, --update-test-version r<N>; --after-update <old> and
+#   --selftest-out <file> are used by the update itself.
 import sys, os, threading, queue, subprocess, locale
 from pathlib import Path
 
@@ -84,8 +88,9 @@ SGP2_NAME = 'S-YXG2006LE'
 
 def main_window() :
     import tkinter as tk
-    from tkinter import ttk, filedialog
+    from tkinter import ttk, filedialog, messagebox
     from patcher_i18n import TEXT, LANGUAGES
+    import selfupdate
 
     root = tk.Tk()
     root.title(f'SXG-Create-NF Patcher {VERSION}')
@@ -98,27 +103,33 @@ def main_window() :
     def T(key, **kw) : return TEXT[st['lang']].get(key, TEXT['en'][key]).format(**kw)
 
     frame = ttk.Frame(root, padding = 14); frame.grid(sticky = 'nsew')
-    head = ttk.Frame(frame); head.grid(row = 0, column = 0, columnspan = 3, sticky = 'ew')
+    head = ttk.Frame(frame); head.grid(row = 0, column = 0, columnspan = 4, sticky = 'ew')
     ttk.Label(head, text = 'SXG-Create-NF Patcher', font = ('TkDefaultFont', 13, 'bold')).pack(side = 'left')
     lang_var = tk.StringVar(value = LANGUAGES[st['lang']])
     lang_box = ttk.Combobox(head, textvariable = lang_var, values = list(LANGUAGES.values()), state = 'readonly',
                             width = 16, height = len(LANGUAGES))
     lang_box.pack(side = 'right')
-    intro = ttk.Label(frame); intro.grid(row = 1, column = 0, columnspan = 3, sticky = 'w', pady = (2, 10))
-    box = ttk.LabelFrame(frame, padding = 10); box.grid(row = 2, column = 0, columnspan = 3, sticky = 'ew')
+    intro = ttk.Label(frame); intro.grid(row = 1, column = 0, columnspan = 4, sticky = 'w', pady = (2, 10))
+    box = ttk.LabelFrame(frame, padding = 10); box.grid(row = 2, column = 0, columnspan = 4, sticky = 'ew')
     box.columnconfigure(1, weight = 1)
     folder_lbl = ttk.Label(box); folder_lbl.grid(row = 0, column = 0, sticky = 'w')
     folder_val = ttk.Label(box, foreground = '#444'); folder_val.grid(row = 0, column = 1, sticky = 'w', padx = 6)
     browse = ttk.Button(box); browse.grid(row = 0, column = 2, sticky = 'e')
     rows = ttk.Frame(box); rows.grid(row = 1, column = 0, columnspan = 3, sticky = 'ew', pady = (6, 0))
     rows.columnconfigure(1, weight = 1)
-    target = ttk.Label(frame, foreground = '#444'); target.grid(row = 3, column = 0, columnspan = 3, sticky = 'w', pady = (8, 0))
-    progress = ttk.Progressbar(frame, mode = 'determinate'); progress.grid(row = 4, column = 0, columnspan = 3, sticky = 'ew', pady = (8, 0))
-    ttk.Separator(frame).grid(row = 5, column = 0, columnspan = 3, sticky = 'ew', pady = 10)
+    target = ttk.Label(frame, foreground = '#444'); target.grid(row = 3, column = 0, columnspan = 4, sticky = 'w', pady = (8, 0))
+    progress = ttk.Progressbar(frame, mode = 'determinate'); progress.grid(row = 4, column = 0, columnspan = 4, sticky = 'ew', pady = (8, 0))
+    ttk.Separator(frame).grid(row = 5, column = 0, columnspan = 4, sticky = 'ew', pady = 10)
     status = ttk.Label(frame, wraplength = 330); status.grid(row = 6, column = 0, sticky = 'w')
-    det_btn = ttk.Button(frame); det_btn.grid(row = 6, column = 1, sticky = 'e', padx = 6)
-    patch_btn = ttk.Button(frame, width = 14); patch_btn.grid(row = 6, column = 2, sticky = 'e')
+    det_btn = ttk.Button(frame); det_btn.grid(row = 6, column = 2, sticky = 'e', padx = 6)
+    patch_btn = ttk.Button(frame, width = 14); patch_btn.grid(row = 6, column = 3, sticky = 'e')
     open_btn = ttk.Button(frame)
+    cur = selfupdate.current(VERSION)
+    upd_on = selfupdate.enabled(VERSION, FROZEN)
+    # state: None, checking, new, current, error, load, verify, start, failed; quiet: no message (the check at the start)
+    upd = dict(state = None, rev = None, err = '', done = 0, total = 0, quiet = True)
+    upd_btn = ttk.Button(frame); upd_note = ttk.Label(frame, wraplength = 330)
+    if upd_on : upd_btn.grid(row = 6, column = 1, sticky = 'e')
     log = tk.Text(frame, height = 14, width = 80, font = ('TkFixedFont', 9), state = 'disabled')
     frame.columnconfigure(0, weight = 1)
 
@@ -138,6 +149,64 @@ def main_window() :
         can = not st['busy'] and st['models']
         patch_btn.state(['!disabled'] if can else ['disabled'])
         browse.state(['disabled'] if st['busy'] else ['!disabled'])
+        refresh_upd()
+    def refresh_upd() :
+        if not upd_on : return
+        s, v = upd['state'], f"r{upd['rev']}"
+        av = f'Autobuild {v}'                                          # the name of the release, in the messages of the update itself
+        upd_btn['text'] = T('upd_btn')
+        upd_btn.state(['disabled'] if st['busy'] or s in ('checking', 'load', 'verify', 'start') else ['!disabled'])
+        mb = lambda n : f'{n / 1e6:.1f}'
+        note, color = {
+            'checking' : ('' if upd['quiet'] else T('upd_checking'), '#444'),
+            'new' : (T('upd_new', ver = v), '#1a7f37'),
+            'current' : ('' if upd['quiet'] else T('upd_none', ver = f'r{cur}'), '#444'),
+            'error' : ('' if upd['quiet'] else T('upd_fail', err = upd['err']), '#b3261e'),
+            'load' : (T('upd_load', ver = av, done = mb(upd['done']), total = mb(upd['total']) if upd['total'] else '?'), '#444'),
+            'verify' : (T('upd_verify', ver = av), '#444'),
+            'start' : (T('upd_start', ver = av), '#444'),
+            'failed' : (T('upd_fail', err = upd['err']), '#b3261e'),
+        }.get(s, ('', '#444'))
+        upd_note.configure(text = note, foreground = color)
+        if note : upd_note.grid(row = 7, column = 0, columnspan = 3, sticky = 'w', pady = (8, 0))
+        else : upd_note.grid_remove()
+    def start_check(manual) :
+        if upd['state'] in ('checking', 'load', 'verify', 'start') : return
+        upd.update(state = 'checking', quiet = not manual); refresh_upd()
+        def work() :
+            try : q.put(('upd_checked', selfupdate.latest_revision(), '', manual))
+            except Exception as e : q.put(('upd_checked', None, str(e) or type(e).__name__, manual))
+        threading.Thread(target = work, daemon = True).start()
+    def upd_checked(rev, err, manual) :
+        if err : upd.update(state = 'error', err = err, quiet = not manual)
+        elif rev is not None and cur is not None and rev > cur : upd.update(state = 'new', rev = rev, quiet = False)
+        else : upd.update(state = 'current', quiet = not manual)
+        refresh_upd()
+        if manual and upd['state'] == 'new' : upd_click()
+    def upd_click() :
+        if upd['state'] == 'new' :
+            if messagebox.askokcancel(T('upd_btn'), T('upd_ask', ver = f"Autobuild r{upd['rev']}")) : start_update()
+        else : start_check(True)
+    def start_update() :
+        st['busy'] = True; upd.update(state = 'load', done = 0, total = 0, err = '')
+        progress.configure(mode = 'determinate', maximum = 100, value = 0); refresh()
+        rev = upd['rev']
+        def work() :
+            try : cmd = selfupdate.perform(rev, HERE, FROZEN, lambda d, t : q.put(('upd_prog', d, t)), lambda key : q.put(('upd_stage', key)))
+            except Exception as e : q.put(('upd_failed', str(e) or type(e).__name__)); return
+            q.put(('upd_ready', cmd))
+        threading.Thread(target = work, daemon = True).start()
+    def upd_prog(done, total) :
+        upd.update(state = 'load', done = done, total = total)
+        progress.configure(value = 100 * done / total if total else 0); refresh_upd()
+    def upd_stage(key) : upd['state'] = key; progress.configure(value = 100); refresh_upd()
+    def upd_ready(cmd) :
+        upd['state'] = 'start'; refresh_upd()
+        try : selfupdate.launch(cmd, HERE)
+        except Exception as e : return upd_failed(str(e) or type(e).__name__)
+        root.after(400, root.destroy)
+    def upd_failed(err) :
+        st['busy'] = False; upd.update(state = 'failed', err = err); progress.configure(value = 0); refresh()
     def set_status(key, **kw) : st['status'] = (key, kw); refresh()
     def write_log(text) :
         log.configure(state = 'normal'); log.insert('end', text); log.see('end'); log.configure(state = 'disabled')
@@ -161,7 +230,7 @@ def main_window() :
         if d : st['folder'] = Path(d); start_scan()
     def toggle_details() :
         st['details'] = not st['details']
-        if st['details'] : log.grid(row = 8, column = 0, columnspan = 3, sticky = 'nsew', pady = (10, 0))
+        if st['details'] : log.grid(row = 8, column = 0, columnspan = 4, sticky = 'nsew', pady = (10, 0))
         else : log.grid_remove()
         refresh()
     def start_patch() :
@@ -208,7 +277,7 @@ def main_window() :
             failed.append(SGP2_NAME)
         if failed : set_status('failed', models = ', '.join(failed))
         else : set_status('done', n = n)
-        open_btn.grid(row = 7, column = 2, sticky = 'e', pady = (8, 0))
+        open_btn.grid(row = 7, column = 3, sticky = 'e', pady = (8, 0))
         if failed and not st['details'] : toggle_details()
     def open_folder() :
         p = str(plugins_dir())
@@ -221,22 +290,37 @@ def main_window() :
         try :
             while True :
                 m = q.get_nowait()
-                {'scanned' : scanned, 'line' : line, 'finished' : finished}[m[0]](*m[1:])
+                {'scanned' : scanned, 'line' : line, 'finished' : finished, 'upd_checked' : upd_checked, 'upd_prog' : upd_prog,
+                 'upd_stage' : upd_stage, 'upd_ready' : upd_ready, 'upd_failed' : upd_failed}[m[0]](*m[1:])
         except queue.Empty : pass
         root.after(80, poll)
 
     browse['command'] = choose_folder; det_btn['command'] = toggle_details
-    patch_btn['command'] = start_patch; open_btn['command'] = open_folder
+    patch_btn['command'] = start_patch; open_btn['command'] = open_folder; upd_btn['command'] = upd_click
     lang_box.bind('<<ComboboxSelected>>', pick_lang)
     refresh(); start_scan(); poll()
+    old = os.environ.get('SXG_AFTER_UPDATE', '')
+    if old : threading.Thread(target = selfupdate.after_update, args = (old, FROZEN), daemon = True).start()   # just updated
+    if upd_on and selfupdate.auto_check() : root.after(1500, lambda : start_check(False))
     root.mainloop()
+
+def option(name : str) -> str | None :
+    a = sys.argv
+    return a[a.index(name) + 1] if name in a and a.index(name) + 1 < len(a) else None
 
 if __name__ == '__main__' :
     if len(sys.argv) > 1 and sys.argv[1] == '--cli' : run_cli(sys.argv[2:])
     elif len(sys.argv) > 1 and sys.argv[1] == '--selftest' :
-        import dllpatch, convert, dataCRCs, template, main as _m
+        import dllpatch, convert, dataCRCs, template, selfupdate, main as _m
         assert (Path(dllpatch.__file__).parent / 'bitmaps').is_dir(), 'bitmaps missing'
         assert all(f.is_file() for f in ICONS), 'icons missing'
         template.check()                                    # every model's template is bundled and empty
+        assert selfupdate.asset_name(1).startswith('SXG-Create-NF-Patcher-r1-'), 'selfupdate'
+        if option('--selftest-out') : Path(option('--selftest-out')).write_text(f'selftest ok {VERSION}\n')    # a windowed exe prints nothing
         print('selftest ok', VERSION); sys.exit(0)
-    else : main_window()
+    else :
+        for opt, env in (('--update-dir', 'SXG_UPDATE_DIR'), ('--update-test-version', 'SXG_UPDATE_TEST_VERSION'),
+                         ('--after-update', 'SXG_AFTER_UPDATE')) :
+            if option(opt) is not None : os.environ[env] = option(opt)
+        if '--no-update-check' in sys.argv : os.environ['SXG_NO_UPDATE_CHECK'] = '1'
+        main_window()
