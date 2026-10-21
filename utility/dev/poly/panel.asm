@@ -6,7 +6,7 @@
 ; is not sent. Buttons: single click, hold (repeat after 400 ms every 75 ms, panel timer 0x2317), mouse wheel.
 ; Positions (bitmap 101 from dev/gui/mkpanel.py): buttons 15 x 15 in row 31, see btn_table; digits (bitmap 105,
 ; 10 x 13) in row 32 at 46 (CHN, 2), 137 (PRG), 242 (MSB), 344 (LSB); bitmap 106 holds the pressed left / right
-; button at x 160 / 175, a dash at 190 and the dimmed digits for a drum part's PRG at x 200 (issue #70).
+; button at x 160 / 175, a dash at 190 the dimmed digits for a drum part's PRG at x 200 (issue #70) and the red ones for a part without an instrument at x 300 (issue #73).
 ; The values come from the part of the selected channel (part_ptr: the synth [engine +8] keeps the parts in the
 ; order of channels 10, 1-9, 11-16, records of 0x11C bytes from +0x248: +0 bank MSB, +1 bank LSB, +2 program).
 ; A PRG step sends a program change (on a drum part a step goes on to the next kit the engine takes, issue #70), an MSB / LSB step a bank select (CC 0 / CC 32) followed by the program change
@@ -825,9 +825,16 @@ dp_values:
     movzx ebx, byte ptr [edx + 2]
     inc ebx
     call drum_part                           ; edx = part
+    test eax, eax
+    jne dp_prg_drum
+    call no_voice                            ; ecx = engine (kept by part_ptr and drum_part), edx = part
     mov ecx, 137
     test eax, eax
     je dp_prg
+    call dp_three_red                        ; a melodic part without a valid instrument: red digits (issue #73)
+    jmp dp_prg_done
+dp_prg_drum:
+    mov ecx, 137
     call dp_three_dim                        ; a drum part: dimmed digits (issue #70)
     jmp dp_prg_done
 dp_prg:
@@ -988,6 +995,86 @@ dp_three_dim:
 dp_digit_dim:
     imul eax, eax, 10
     add eax, 200
+    jmp dp_go
+; no_voice: ecx = engine, edx = part -> eax = 1 for a part that has no instrument (issue #73). The engine has no flag for it:
+; it looks the voice up at each note (the function at 0x10004540: stdcall (synth, bank MSB, bank LSB, program) -> pointer to the
+; voice), and a bank or program without a voice gets the voice of its silent bank (XG: SFX MSB 1, in XG and GM2 mode all its
+; programs). So the part has no instrument when its voice is the one of MSB 1 / LSB 0 / program 0. Not in GS mode (+0x63AE = 0
+; after a GS reset): there an unknown bank falls back on a capital tone and the engine is never silent. The caller has
+; excluded drum parts (they keep ignoring a program without a kit). ebx, esi, edi, ebp are kept; the engine's function keeps them too.
+no_voice:
+    push esi
+    push edi
+    mov esi, dword ptr [ecx + 8]             ; the synth
+    xor eax, eax
+    cmp byte ptr [esi + 0x63ae], al
+    je nv_ret
+    movzx eax, byte ptr [edx + 2]
+    push eax                                 ; program
+    movzx eax, byte ptr [edx + 1]
+    push eax                                 ; bank LSB
+    movzx eax, byte ptr [edx]
+    push eax                                 ; bank MSB
+    push esi
+    call 0x10004540
+    mov edi, eax                             ; the part's voice
+    push 0
+    push 0
+    push 1
+    push esi
+    call 0x10004540                          ; the voice of the silent bank
+    cmp eax, edi
+    sete al
+    movzx eax, al
+nv_ret:
+    pop edi
+    pop esi
+    ret
+; dp_three_red: like dp_three_dim, with the red digits (bitmap 106 at x 300 + 10 * digit)
+dp_three_red:
+    push ecx                                 ; SelectObject changes ecx
+    push dword ptr [ebp + 0x10055338]
+    push edi
+    call dword ptr [ebp + 0x10040020]
+    pop ecx
+    push ecx
+    mov eax, ebx
+    xor edx, edx
+    push ecx
+    mov ecx, 100
+    div ecx
+    pop ecx
+    call dp_digit_red
+    pop ecx
+    push ecx
+    add ecx, 10
+    mov eax, ebx
+    xor edx, edx
+    push ecx
+    mov ecx, 10
+    div ecx
+    xor edx, edx
+    div ecx
+    mov eax, edx
+    pop ecx
+    call dp_digit_red
+    pop ecx
+    add ecx, 20
+    mov eax, ebx
+    xor edx, edx
+    push ecx
+    mov ecx, 10
+    div ecx
+    mov eax, edx
+    pop ecx
+    call dp_digit_red
+    push dword ptr [ebp + 0x1005533c]
+    push edi
+    call dword ptr [ebp + 0x10040020]
+    ret
+dp_digit_red:
+    imul eax, eax, 10
+    add eax, 300
     jmp dp_go
 ; dp_dash: ecx = x; a dash (bitmap 106 at x 190, memory DC edi has bitmap 106 selected)
 dp_dash:
