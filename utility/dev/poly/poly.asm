@@ -11,6 +11,10 @@
 ;   0x10056EC0  4 slots x 16 bytes: +0 plugin object A, +4 AEffect of instance B, +8 samples B stays awake,
 ;               +0xC event lists (16 KB: list A at +0, list B at +0x2008)
 ;   0x10056F08  4 panel records x 16 bytes (panel.asm, issue #55), freed at effClose
+; Port engines (issue #74, experimental): F5 02 / 03 / 04 make one more instance each (create_inst, same as B), kept in three
+; pseudo-slots after the slot's list block (init_ext: +0x3008 current port, +0x3010 pseudo-slots, +0x3040 last reset SysEx,
+; lists at +0x4000 / +0x5010 / +0x6020). route sends channel messages of port 2-4 to that port's list only and SysEx and
+; system messages to all; a GM / XG / GS reset selects port 1. Ports render after B (pm_ports), ports have 128 voices.
 ; Instance B is created (VSTPluginMain 0x10003610, own audioMaster stub) in the first block of the plugin and
 ; then gets all events, so it always knows the song's state; notes go to it only with extra voices. Every block: B gets the settings of A (Set 0x10030770 on B's settings object; effect switches,
 ; Output Level, polyphony = extra), the host's events are split: a Note On goes to A while A has two voices
@@ -58,6 +62,7 @@ pm_found:
     je pm_a
     push edi
     call sync_b
+    call sync_ports
     call route
     pop edi
 pm_a:
@@ -70,7 +75,7 @@ pm_a:
     test ebx, ebx
     je pm_done
     cmp dword ptr [ebx + 8], 0
-    jle pm_done
+    jle pm_ports
     mov eax, dword ptr [ebx + 4]
     mov ecx, dword ptr [eax + 0x40]
     mov eax, dword ptr [ebx + 0xc]
@@ -97,12 +102,57 @@ pm_list:
     mov eax, dword ptr [esi + 0xd8]
     shl eax, 2
     mov dword ptr [ebx + 8], eax
-    jmp pm_done
+    jmp pm_ports
 pm_idle:
     mov eax, dword ptr [esp + 0x30]
     sub dword ptr [ebx + 8], eax
-    jg pm_done
+    jg pm_ports
     mov dword ptr [ebx + 8], 0
+; port instances (F5 02 .. 04, issue #74): the pseudo-slots after the slot's list block, same rules as B
+pm_ports:
+    mov eax, dword ptr [ebx + 0xc]
+    lea ebx, [eax + 0x3010]
+    push 3
+pp_loop:
+    cmp dword ptr [ebx + 4], 0
+    je pp_next
+    cmp dword ptr [ebx + 8], 0
+    jle pp_next
+    mov eax, dword ptr [ebx + 4]
+    mov ecx, dword ptr [eax + 0x40]
+    mov eax, dword ptr [ebx + 0xc]
+    cmp dword ptr [eax], 0
+    jne pp_list
+    xor eax, eax
+pp_list:
+    mov dword ptr [ecx + 0xe0], eax
+    push ecx
+    mov edx, dword ptr [ecx]
+    push dword ptr [esp + 0x38]
+    push dword ptr [esp + 0x38]
+    push dword ptr [esp + 0x38]
+    call dword ptr [edx + 0x10]
+    pop ecx
+    mov dword ptr [ecx + 0xe0], 0
+    mov eax, dword ptr [ecx + 0xb0]
+    mov eax, dword ptr [eax + 8]
+    movzx edx, word ptr [eax + 0x64be]
+    cmp dx, word ptr [eax + 0x64c0]
+    jae pp_idle
+    mov eax, dword ptr [esi + 0xd8]
+    shl eax, 2
+    mov dword ptr [ebx + 8], eax
+    jmp pp_next
+pp_idle:
+    mov eax, dword ptr [esp + 0x34]
+    sub dword ptr [ebx + 8], eax
+    jg pp_next
+    mov dword ptr [ebx + 8], 0
+pp_next:
+    add ebx, 16
+    dec dword ptr [esp]
+    jne pp_loop
+    add esp, 4
 pm_done:
     popal
     ret
@@ -147,13 +197,16 @@ create_b:
     jne cb_main
     push 4
     push 0x3000
-    push 0x4000
+    push 0x8000
     push 0
     call dword ptr [ebp + 0x1004013c]
     test eax, eax
     je cb_ret
     mov dword ptr [ebx + 0xc], eax
 cb_main:
+    call init_ext
+; create_inst: ebx = slot or pseudo-slot, esi = plugin A
+create_inst:
     lea eax, [ebp + fake_am]
     push eax
     call 0x10003610
@@ -167,6 +220,35 @@ cb_main:
     call disp_b
     call set_rate
 cb_ret:
+    ret
+
+; init_ext (ebx = slot): extension of the list block (issue #74): +0x3008 current port (0-3), +0x3040 the last reset SysEx
+;     seen (length, bytes at +0x3044, at most 16; a new port instance gets it), +0x3010 3 pseudo-slots of
+;     16 bytes (like a slot: +4 AEffect of the port instance for F5 02 / 03 / 04, +8 samples awake, +0xC its event list),
+;     lists at +0x4000, +0x5010, +0x6020 (block 0x8000 bytes)
+init_ext:
+    push eax
+    push ecx
+    push edx
+    mov edx, dword ptr [ebx + 0xc]
+    mov dword ptr [edx + 0x3008], 0
+    mov dword ptr [edx + 0x3040], 0
+    lea ecx, [edx + 0x3010]
+    lea eax, [edx + 0x4000]
+    push 3
+ie_loop:
+    mov dword ptr [ecx], 0
+    mov dword ptr [ecx + 4], 0
+    mov dword ptr [ecx + 8], 0
+    mov dword ptr [ecx + 0xc], eax
+    add ecx, 16
+    add eax, 0x1010
+    dec dword ptr [esp]
+    jne ie_loop
+    add esp, 4
+    pop edx
+    pop ecx
+    pop eax
     ret
 
 ; set_rate: instance B (slot ebx) gets sample rate and block size of A (esi): mains off, rate, block, mains on
@@ -219,13 +301,21 @@ fa_ret:
 ;     settings live in the plugin's engine object ([plugin +0xB0], vtable 0x1004E110: Set 0x10030770 = vtable
 ;     +0x1C, settings at +0x0D), a separate heap block (find_set).
 sync_b:
+    xor edx, edx
+    jmp sync_x
+; sync_p: same for a port instance (ebx = its pseudo-slot): polyphony fixed at 128, the Settings value is for A / B
+sync_p:
+    mov edx, 1
+sync_x:
     mov eax, dword ptr [ebx + 4]
     mov edi, dword ptr [eax + 0x40]
     mov eax, dword ptr [esi + 0xd8]
     cmp eax, dword ptr [edi + 0xd8]
     je sb_set
     push edi
+    push edx
     call set_rate
+    pop edx
     pop edi
 sb_set:
     mov eax, esi
@@ -249,6 +339,10 @@ sb_set:
     jae sb_poly
     mov al, 8
 sb_poly:
+    test edx, edx
+    je sb_pw
+    mov al, 128
+sb_pw:
     mov byte ptr [esp], al
     mov eax, dword ptr [esp]
     cmp eax, dword ptr [edi + 0xd]
@@ -265,6 +359,23 @@ sb_call:
 sb_out:
     add esp, 8
 sb_ret:
+    ret
+; sync_ports (ebx = slot, esi = A): settings of A to every port instance
+sync_ports:
+    push ebx
+    mov eax, dword ptr [ebx + 0xc]
+    lea ebx, [eax + 0x3010]
+    push 3
+sp_loop:
+    cmp dword ptr [ebx + 4], 0
+    je sp_next
+    call sync_p
+sp_next:
+    add ebx, 16
+    dec dword ptr [esp]
+    jne sp_loop
+    add esp, 4
+    pop ebx
     ret
 ; find_set: eax = plugin object -> eax = its settings object (engine object [plugin +0xB0], vtable 0x1004E110;
 ;     0 if it is not there)
@@ -284,6 +395,7 @@ fs_ret:
 
 ; --- route (esi = A, ebx = slot): split the host events [A+0xE0] into list A and list B
 route:
+    call clear_ports
     mov edx, dword ptr [ebx + 0xc]
     mov dword ptr [edx], 0
     mov dword ptr [edx + 4], 0
@@ -315,6 +427,32 @@ rt_loop:
     cmp ebx, 1024
     jge rt_end
     mov eax, dword ptr [ecx + ebx*4 + 8]
+    ; ports (issue #74): F5 nn selects the port, channel messages of a port go to its instance only, SysEx and
+    ; system messages go to everybody, a reset selects port 1 again
+    cmp dword ptr [eax], 1
+    jne rt_nm
+    movzx edi, byte ptr [eax + 0x18]
+    cmp edi, 0xf5
+    je rt_psel
+    cmp edi, 0xf0
+    jae rt_sysev
+    call get_port
+    test edi, edi
+    je rt_orig
+    call add_port
+    jmp rt_next
+rt_psel:
+    call port_select
+    jmp rt_next
+rt_sysev:
+    call add_ports
+    jmp rt_orig
+rt_nm:
+    cmp dword ptr [eax], 6
+    jne rt_orig
+    call sysex_ports
+    call add_ports
+rt_orig:
     cmp dword ptr [eax], 1
     jne rt_both
     mov edi, dword ptr [eax + 0x18]
@@ -396,6 +534,7 @@ rt_direct:
 rt_clear:
     mov dword ptr [edx], 0
 rt_ret:
+    call deliver_ports
     ret
 add_a:
 add_ev:
@@ -406,6 +545,257 @@ add_ev:
     inc dword ptr [edx]
     pop ecx
     ret
+; --- port instances (issue #74). Helpers of route get the slot at [esp + 4] (the route's own push), registers as noted
+; clear_ports (ebx = slot): empty the three port lists
+clear_ports:
+    push edx
+    mov edx, dword ptr [ebx + 0xc]
+    mov dword ptr [edx + 0x4000], 0
+    mov dword ptr [edx + 0x4004], 0
+    mov dword ptr [edx + 0x5010], 0
+    mov dword ptr [edx + 0x5014], 0
+    mov dword ptr [edx + 0x6020], 0
+    mov dword ptr [edx + 0x6024], 0
+    pop edx
+    ret
+; get_port: edi = current port 0-3
+get_port:
+    mov edi, dword ptr [esp + 4]
+    mov edi, dword ptr [edi + 0xc]
+    mov edi, dword ptr [edi + 0x3008]
+    ret
+; add_port: event eax to the list of port edi (1-3), dropped when that port has no instance
+add_port:
+    push ecx
+    push edx
+    mov ecx, dword ptr [esp + 0xc]
+    mov ecx, dword ptr [ecx + 0xc]
+    shl edi, 4
+    lea ecx, [ecx + edi + 0x3000]
+    cmp dword ptr [ecx + 4], 0
+    je ap_ret
+    mov edx, dword ptr [ecx + 0xc]
+    call add_ev
+ap_ret:
+    pop edx
+    pop ecx
+    ret
+; add_ports: event eax to the lists of all port instances
+add_ports:
+    push ebx
+    push ecx
+    push edx
+    mov ebx, dword ptr [esp + 0x10]
+    mov ebx, dword ptr [ebx + 0xc]
+    lea ebx, [ebx + 0x3010]
+    mov ecx, 3
+aps_loop:
+    cmp dword ptr [ebx + 4], 0
+    je aps_next
+    mov edx, dword ptr [ebx + 0xc]
+    call add_ev
+aps_next:
+    add ebx, 16
+    dec ecx
+    jne aps_loop
+    pop edx
+    pop ecx
+    pop ebx
+    ret
+; port_select: F5 nn (event eax). nn 1 = port 1, 2-4 = ports 2-4 (the instance is made at the first F5), others ignored
+port_select:
+    push ebx
+    push ecx
+    push edx
+    movzx ecx, byte ptr [eax + 0x19]
+    cmp ecx, 1
+    jb ps_ret
+    cmp ecx, 4
+    ja ps_ret
+    dec ecx
+    mov edx, dword ptr [esp + 0x10]
+    mov edx, dword ptr [edx + 0xc]
+    mov dword ptr [edx + 0x3008], ecx
+    test ecx, ecx
+    je ps_ret
+    shl ecx, 4
+    lea ebx, [edx + ecx + 0x3000]
+    cmp dword ptr [ebx + 4], 0
+    jne ps_ret
+    pushal
+    call create_inst
+    call sync_p
+    popal
+    mov ecx, dword ptr [edx + 0x3040]
+    test ecx, ecx
+    je ps_ret
+    lea eax, [edx + 0x3044]
+    mov edi, dword ptr [ebx + 4]
+    mov edi, dword ptr [edi + 0x40]
+    mov edi, dword ptr [edi + 0xb0]
+    push ecx
+    push eax
+    push edi
+    mov edx, dword ptr [edi]
+    call dword ptr [edx + 0xc]
+    call keep_awake
+ps_ret:
+    pop edx
+    pop ecx
+    pop ebx
+    ret
+; sysex_ports: a GM / XG / GS reset in the SysEx eax selects port 1 again
+sysex_ports:
+    push ecx
+    push edx
+    mov edx, dword ptr [eax + 0x18]
+    mov ecx, dword ptr [eax + 0x10]
+    cmp ecx, 5
+    jb sx_ret
+    cmp byte ptr [edx + 1], 0x7e
+    jne sx_xg
+    cmp byte ptr [edx + 3], 9
+    je sx_reset
+    jmp sx_ret
+sx_xg:
+    cmp ecx, 8
+    jb sx_ret
+    cmp byte ptr [edx + 1], 0x43
+    jne sx_gs
+    cmp byte ptr [edx + 3], 0x4c
+    jne sx_ret
+    cmp byte ptr [edx + 4], 0
+    jne sx_ret
+    cmp byte ptr [edx + 5], 0
+    jne sx_ret
+    cmp byte ptr [edx + 6], 0x7e
+    je sx_reset
+    jmp sx_ret
+sx_gs:
+    cmp byte ptr [edx + 1], 0x41
+    jne sx_ret
+    cmp byte ptr [edx + 3], 0x42
+    jne sx_ret
+    cmp byte ptr [edx + 4], 0x12
+    jne sx_ret
+    cmp byte ptr [edx + 5], 0x40
+    jne sx_ret
+    cmp byte ptr [edx + 6], 0
+    jne sx_ret
+    cmp byte ptr [edx + 7], 0x7f
+    jne sx_ret
+sx_reset:
+    push edi
+    push esi
+    mov edi, dword ptr [esp + 0x14]
+    mov edi, dword ptr [edi + 0xc]
+    mov dword ptr [edi + 0x3008], 0
+    cmp ecx, 16
+    ja sx_end
+    mov dword ptr [edi + 0x3040], ecx
+    lea edi, [edi + 0x3044]
+    mov esi, edx
+    rep movsb
+sx_end:
+    pop esi
+    pop edi
+sx_ret:
+    pop edx
+    pop ecx
+    ret
+; deliver_ports (ebx = slot, esi = A): a sleeping port instance with a Note On in its list wakes (4 s, A's control
+; clock) and renders the list; one without takes its events straight into the engine, like B
+deliver_ports:
+    pushal
+    mov eax, dword ptr [ebx + 0xc]
+    lea ebx, [eax + 0x3010]
+    push 3
+dp_loop:
+    cmp dword ptr [ebx + 4], 0
+    je dp_next
+    mov edx, dword ptr [ebx + 0xc]
+    cmp dword ptr [edx], 0
+    je dp_next
+    cmp dword ptr [ebx + 8], 0
+    jg dp_next
+    xor ecx, ecx
+dp_scan:
+    cmp ecx, dword ptr [edx]
+    jge dp_direct
+    mov eax, dword ptr [edx + ecx*4 + 8]
+    inc ecx
+    cmp dword ptr [eax], 1
+    jne dp_scan
+    mov edi, dword ptr [eax + 0x18]
+    and edi, 0xf0
+    cmp edi, 0x90
+    jne dp_scan
+    cmp byte ptr [eax + 0x1a], 0
+    je dp_scan
+    mov eax, dword ptr [esi + 0xd8]
+    shl eax, 2
+    mov dword ptr [ebx + 8], eax
+    mov eax, dword ptr [ebx + 4]
+    mov eax, dword ptr [eax + 0x40]
+    mov ecx, dword ptr [esi + 0xe4]
+    mov dword ptr [eax + 0xe4], ecx
+    mov ecx, dword ptr [esi + 0xe8]
+    mov dword ptr [eax + 0xe8], ecx
+    mov ecx, dword ptr [esi + 0xec]
+    mov dword ptr [eax + 0xec], ecx
+    jmp dp_next
+dp_direct:
+    mov eax, dword ptr [ebx + 4]
+    mov eax, dword ptr [eax + 0x40]
+    mov edi, dword ptr [eax + 0xb0]
+    xor ecx, ecx
+dp_dl:
+    cmp ecx, dword ptr [edx]
+    jge dp_clr
+    mov eax, dword ptr [edx + ecx*4 + 8]
+    push ecx
+    push edx
+    call to_engine
+    pop edx
+    pop ecx
+    inc ecx
+    jmp dp_dl
+dp_clr:
+    mov dword ptr [edx], 0
+dp_next:
+    add ebx, 16
+    dec dword ptr [esp]
+    jne dp_loop
+    add esp, 4
+    popal
+    ret
+; close_ports (ebx = slot): close the port instances and forget the port
+close_ports:
+    push ebx
+    mov eax, dword ptr [ebx + 0xc]
+    lea ebx, [eax + 0x3010]
+    push 3
+cp_loop:
+    cmp dword ptr [ebx + 4], 0
+    je cp_next
+    mov ecx, 12
+    xor edx, edx
+    call disp_b
+    mov ecx, 1
+    xor edx, edx
+    call disp_b
+    mov dword ptr [ebx + 4], 0
+    mov dword ptr [ebx + 8], 0
+cp_next:
+    add ebx, 16
+    dec dword ptr [esp]
+    jne cp_loop
+    add esp, 4
+    pop ebx
+    mov eax, dword ptr [ebx + 0xc]
+    mov dword ptr [eax + 0x3008], 0
+    ret
+
 ; to_engine: event eax to engine edi (MIDI: entry +0x08, SysEx: +0x0C), like the engine's own event loop
 to_engine:
     cmp dword ptr [eax], 1
@@ -456,6 +846,21 @@ bx_base:
     mov edi, dword ptr [eax + 0xb0]
     call bx_one
     call keep_awake
+    mov eax, dword ptr [ebx + 0xc]
+    lea ebx, [eax + 0x3010]
+    mov esi, 3
+bp_loop:
+    mov eax, dword ptr [ebx + 4]
+    test eax, eax
+    je bp_next
+    mov eax, dword ptr [eax + 0x40]
+    mov edi, dword ptr [eax + 0xb0]
+    call bx_one
+    call keep_awake
+bp_next:
+    add ebx, 16
+    dec esi
+    jne bp_loop
 bx_out:
     popal
     ret 8
@@ -533,6 +938,7 @@ pd_find:
     mov ecx, 1
     xor edx, edx
     call disp_b
+    call close_ports
 pd_free:
     mov dword ptr [ebx + 4], 0
     mov dword ptr [ebx + 8], 0
