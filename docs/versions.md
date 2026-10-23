@@ -6,7 +6,7 @@ Releases before r14 were not kept. Releases that only touched the build or the d
 
 | Release | Date | Changes |
 |---|---|---|
-| next | | Patcher: link "What's new? (version history)" at the bottom of the window; version history added. |
+| next | | Patcher: link "What's new?" at the bottom of the window; version history added. |
 | r50 | 2026-10-21 | Build only: workflow cleanup, no change to the patcher or the plugins. |
 | r49 | 2026-10-21 | The port select command `F5 nn` is now ignored instead of switching the instance's channels (#74). |
 | r48 | 2026-10-21 | PRG digits turn red when a channel has no valid instrument (#73). |

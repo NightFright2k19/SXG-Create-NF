@@ -93,7 +93,7 @@ TEXT = {
   upd_fail='فشل التحديث: {err}',
   upd_none='لديك بالفعل أحدث إصدار ({ver}).',
   upd_checking='جارٍ البحث عن تحديثات…',
-  whatsnew='ما الجديد؟ (سجل الإصدارات)',
+  whatsnew='ما الجديد؟',
   ),
  'id': dict(
   intro='Mengonversi ROM Yamaha MU menjadi plugin untuk synthesizer perangkat lunak S-YXG50.',
@@ -123,7 +123,7 @@ TEXT = {
   upd_fail='Pembaruan gagal: {err}',
   upd_none='Anda sudah memiliki versi terbaru ({ver}).',
   upd_checking='Memeriksa pembaruan…',
-  whatsnew='Apa yang baru? (riwayat versi)',
+  whatsnew='Apa yang baru?',
   ),
  'bn': dict(
   intro='Yamaha MU ROM-কে S-YXG50 সফট সিন্থের প্লাগইনে রূপান্তর করে।',
@@ -153,7 +153,7 @@ TEXT = {
   upd_fail='আপডেট ব্যর্থ হয়েছে: {err}',
   upd_none='আপনার কাছে ইতিমধ্যেই সর্বশেষ সংস্করণ ({ver}) আছে।',
   upd_checking='আপডেট খোঁজা হচ্ছে…',
-  whatsnew='নতুন কী? (সংস্করণের ইতিহাস)',
+  whatsnew='নতুন কী?',
   ),
  'cs': dict(
   intro='Převádí ROM syntezátorů Yamaha MU na pluginy pro softwarový syntezátor S-YXG50.',
@@ -183,7 +183,7 @@ TEXT = {
   upd_fail='Aktualizace se nezdařila: {err}',
   upd_none='Již máte nejnovější verzi ({ver}).',
   upd_checking='Hledají se aktualizace…',
-  whatsnew='Co je nového? (historie verzí)',
+  whatsnew='Co je nového?',
   ),
  'da': dict(
   intro='Konverterer Yamaha MU-ROM’er til plugins til software-synthesizeren S-YXG50.',
@@ -213,7 +213,7 @@ TEXT = {
   upd_fail='Opdateringen mislykkedes: {err}',
   upd_none='Du har allerede den nyeste version ({ver}).',
   upd_checking='Søger efter opdateringer…',
-  whatsnew='Hvad er nyt? (versionshistorik)',
+  whatsnew='Hvad er nyt?',
   ),
  'de': dict(
   intro='Wandelt Yamaha-MU-ROMs in Plugins für den Software-Synthesizer S-YXG50 um.',
@@ -243,7 +243,7 @@ TEXT = {
   upd_fail='Update fehlgeschlagen: {err}',
   upd_none='Sie haben bereits die neueste Version ({ver}).',
   upd_checking='Suche nach Updates…',
-  whatsnew='Was ist neu? (Versionsgeschichte)',
+  whatsnew='Was ist neu?',
   ),
  'el': dict(
   intro='Μετατρέπει τις ROM των Yamaha MU σε πρόσθετα για το λογισμικό συνθεσάιζερ S-YXG50.',
@@ -273,7 +273,7 @@ TEXT = {
   upd_fail='Η ενημέρωση απέτυχε: {err}',
   upd_none='Έχετε ήδη την πιο πρόσφατη έκδοση ({ver}).',
   upd_checking='Έλεγχος για ενημερώσεις…',
-  whatsnew='Τι νέο υπάρχει; (ιστορικό εκδόσεων)',
+  whatsnew='Τι νέο υπάρχει;',
   ),
  'en': dict(
   intro='Converts Yamaha MU ROMs into plugins for the S-YXG50 soft synth.',
@@ -303,7 +303,7 @@ TEXT = {
   upd_fail='Update failed: {err}',
   upd_none='You already have the newest version ({ver}).',
   upd_checking='Checking for updates…',
-  whatsnew="What's new? (version history)",
+  whatsnew="What's new?",
   ),
  'es': dict(
   intro='Convierte las ROM de Yamaha MU en plugins para el sintetizador por software S-YXG50.',
@@ -333,7 +333,7 @@ TEXT = {
   upd_fail='Error en la actualización: {err}',
   upd_none='Ya tiene la versión más reciente ({ver}).',
   upd_checking='Buscando actualizaciones…',
-  whatsnew='¿Qué hay de nuevo? (historial de versiones)',
+  whatsnew='¿Qué hay de nuevo?',
   ),
  'fa': dict(
   intro='ROMهای Yamaha MU را به پلاگین برای سینتیسایزر نرم\u200cافزاری S-YXG50 تبدیل می\u200cکند.',
@@ -363,7 +363,7 @@ TEXT = {
   upd_fail='به\u200cروزرسانی ناموفق بود: {err}',
   upd_none='شما از قبل جدیدترین نسخه ({ver}) را دارید.',
   upd_checking='در حال جست\u200cوجوی به\u200cروزرسانی…',
-  whatsnew='چه چیز جدید است؟ (تاریخچهٔ نسخه‌ها)',
+  whatsnew='چه چیز جدید است؟',
   ),
  'fr': dict(
   intro='Convertit les ROM Yamaha MU en plugins pour le synthétiseur logiciel S-YXG50.',
@@ -393,7 +393,7 @@ TEXT = {
   upd_fail='Échec de la mise à jour : {err}',
   upd_none='Vous avez déjà la version la plus récente ({ver}).',
   upd_checking='Recherche de mises à jour…',
-  whatsnew='Nouveautés (historique des versions)',
+  whatsnew='Nouveautés',
   ),
  'ko': dict(
   intro='Yamaha MU의 ROM을 S-YXG50 소프트 신시사이저용 플러그인으로 변환합니다.',
@@ -423,7 +423,7 @@ TEXT = {
   upd_fail='업데이트 실패: {err}',
   upd_none='이미 최신 버전({ver})을 사용 중입니다.',
   upd_checking='업데이트 확인 중…',
-  whatsnew='새로운 기능 (버전 기록)',
+  whatsnew='새로운 기능',
   ),
  'hi': dict(
   intro='Yamaha MU ROM को S-YXG50 सॉफ़्ट सिंथ के प्लगइन में बदलता है।',
@@ -453,7 +453,7 @@ TEXT = {
   upd_fail='अपडेट विफल रहा: {err}',
   upd_none='आपके पास पहले से नवीनतम संस्करण ({ver}) है।',
   upd_checking='अपडेट जाँचे जा रहे हैं…',
-  whatsnew='नया क्या है? (संस्करण इतिहास)',
+  whatsnew='नया क्या है?',
   ),
  'it': dict(
   intro='Converte le ROM Yamaha MU in plugin per il sintetizzatore software S-YXG50.',
@@ -483,7 +483,7 @@ TEXT = {
   upd_fail='Aggiornamento non riuscito: {err}',
   upd_none='Ha già la versione più recente ({ver}).',
   upd_checking='Ricerca di aggiornamenti…',
-  whatsnew='Novità (cronologia delle versioni)',
+  whatsnew='Novità',
   ),
  'he': dict(
   intro='ממיר קובצי ROM של Yamaha MU לתוספים עבור הסינתיסייזר התוכנתי S-YXG50.',
@@ -513,7 +513,7 @@ TEXT = {
   upd_fail='העדכון נכשל: {err}',
   upd_none='כבר יש לך את הגרסה העדכנית ביותר ({ver}).',
   upd_checking='בודק אם יש עדכונים…',
-  whatsnew='מה חדש? (היסטוריית גרסאות)',
+  whatsnew='מה חדש?',
   ),
  'hu': dict(
   intro='A Yamaha MU ROM-okat pluginekké alakítja az S-YXG50 szoftveres szintetizátorhoz.',
@@ -543,7 +543,7 @@ TEXT = {
   upd_fail='A frissítés nem sikerült: {err}',
   upd_none='Már a legújabb verziót használja ({ver}).',
   upd_checking='Frissítések keresése…',
-  whatsnew='Újdonságok (verziótörténet)',
+  whatsnew='Újdonságok',
   ),
  'nl': dict(
   intro="Zet Yamaha MU-ROM's om in plug-ins voor de softwaresynthesizer S-YXG50.",
@@ -573,7 +573,7 @@ TEXT = {
   upd_fail='Bijwerken mislukt: {err}',
   upd_none='U heeft al de nieuwste versie ({ver}).',
   upd_checking='Zoeken naar updates…',
-  whatsnew='Wat is er nieuw? (versiegeschiedenis)',
+  whatsnew='Wat is er nieuw?',
   ),
  'ja': dict(
   intro='Yamaha MU の ROM を S-YXG50 ソフトシンセ用プラグインに変換します。',
@@ -603,7 +603,7 @@ TEXT = {
   upd_fail='更新に失敗しました: {err}',
   upd_none='すでに最新バージョン ({ver}) をお使いです。',
   upd_checking='更新を確認中…',
-  whatsnew='新機能 (バージョン履歴)',
+  whatsnew='新機能',
   ),
  'pl': dict(
   intro='Konwertuje pamięci ROM Yamaha MU na wtyczki do programowego syntezatora S-YXG50.',
@@ -633,7 +633,7 @@ TEXT = {
   upd_fail='Aktualizacja nie powiodła się: {err}',
   upd_none='Używana wersja jest już najnowsza ({ver}).',
   upd_checking='Sprawdzanie aktualizacji…',
-  whatsnew='Co nowego? (historia wersji)',
+  whatsnew='Co nowego?',
   ),
  'pt': dict(
   intro='Converte ROMs Yamaha MU em plugins para o sintetizador de software S-YXG50.',
@@ -663,7 +663,7 @@ TEXT = {
   upd_fail='A atualização falhou: {err}',
   upd_none='Já tem a versão mais recente ({ver}).',
   upd_checking='A procurar atualizações…',
-  whatsnew='Novidades (histórico de versões)',
+  whatsnew='Novidades',
   ),
  'ro': dict(
   intro='Convertește ROM-urile Yamaha MU în pluginuri pentru sintetizatorul software S-YXG50.',
@@ -693,7 +693,7 @@ TEXT = {
   upd_fail='Actualizarea a eșuat: {err}',
   upd_none='Aveți deja cea mai nouă versiune ({ver}).',
   upd_checking='Se caută actualizări…',
-  whatsnew='Noutăți (istoricul versiunilor)',
+  whatsnew='Noutăți',
   ),
  'ru': dict(
   intro='Преобразует ПЗУ Yamaha MU в плагины для программного синтезатора S-YXG50.',
@@ -723,7 +723,7 @@ TEXT = {
   upd_fail='Не удалось обновить: {err}',
   upd_none='У вас уже установлена последняя версия ({ver}).',
   upd_checking='Поиск обновлений…',
-  whatsnew='Что нового? (история версий)',
+  whatsnew='Что нового?',
   ),
  'sr': dict(
   intro='Претвара Yamaha MU ROM-ове у плагинове за софтверски синтисајзер S-YXG50.',
@@ -753,7 +753,7 @@ TEXT = {
   upd_fail='Ажурирање није успело: {err}',
   upd_none='Већ имате најновију верзију ({ver}).',
   upd_checking='Тражење ажурирања…',
-  whatsnew='Шта је ново? (историја верзија)',
+  whatsnew='Шта је ново?',
   ),
  'sv': dict(
   intro='Konverterar Yamaha MU-ROM:ar till plugins för mjukvarusyntesen S-YXG50.',
@@ -783,7 +783,7 @@ TEXT = {
   upd_fail='Uppdateringen misslyckades: {err}',
   upd_none='Du har redan den senaste versionen ({ver}).',
   upd_checking='Söker efter uppdateringar…',
-  whatsnew='Vad är nytt? (versionshistorik)',
+  whatsnew='Vad är nytt?',
   ),
  'th': dict(
   intro='แปลง ROM ของ Yamaha MU เป็นปลั๊กอินสำหรับซอฟต์ซินธ์ S-YXG50',
@@ -813,7 +813,7 @@ TEXT = {
   upd_fail='อัปเดตไม่สำเร็จ: {err}',
   upd_none='คุณมีเวอร์ชันล่าสุดอยู่แล้ว ({ver})',
   upd_checking='กำลังตรวจหาการอัปเดต…',
-  whatsnew='มีอะไรใหม่? (ประวัติเวอร์ชัน)',
+  whatsnew='มีอะไรใหม่?',
   ),
  'vi': dict(
   intro='Chuyển đổi ROM Yamaha MU thành plugin cho bộ tổng hợp âm thanh phần mềm S-YXG50.',
@@ -843,7 +843,7 @@ TEXT = {
   upd_fail='Cập nhật không thành công: {err}',
   upd_none='Bạn đã có phiên bản mới nhất ({ver}).',
   upd_checking='Đang kiểm tra bản cập nhật…',
-  whatsnew='Có gì mới? (lịch sử phiên bản)',
+  whatsnew='Có gì mới?',
   ),
  'tr': dict(
   intro="Yamaha MU ROM'larını S-YXG50 yazılım sentezleyicisi için eklentilere dönüştürür.",
@@ -873,7 +873,7 @@ TEXT = {
   upd_fail='Güncelleme başarısız: {err}',
   upd_none='Zaten en yeni sürüme sahipsiniz ({ver}).',
   upd_checking='Güncellemeler denetleniyor…',
-  whatsnew='Yenilikler (sürüm geçmişi)',
+  whatsnew='Yenilikler',
   ),
  'uk': dict(
   intro='Перетворює ПЗП Yamaha MU на плагіни для програмного синтезатора S-YXG50.',
@@ -903,7 +903,7 @@ TEXT = {
   upd_fail='Не вдалося оновити: {err}',
   upd_none='У вас уже остання версія ({ver}).',
   upd_checking='Пошук оновлень…',
-  whatsnew='Що нового? (історія версій)',
+  whatsnew='Що нового?',
   ),
  'zh': dict(
   intro='将 Yamaha MU 的 ROM 转换为 S-YXG50 软件合成器的插件。',
@@ -933,6 +933,6 @@ TEXT = {
   upd_fail='更新失败：{err}',
   upd_none='您已经使用最新版本 ({ver})。',
   upd_checking='正在检查更新…',
-  whatsnew='新增功能 (版本历史)',
+  whatsnew='新增功能',
   ),
 }
