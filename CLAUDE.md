@@ -1,6 +1,6 @@
 # CLAUDE.md – SXG-Create-NF
 
-Guidance for Claude (Claude Code or chat) working in this repository. The README is the full reference; this file is the short map.
+Guidance for Claude (Claude Code or chat) working in this repository. The README covers what users need; the technical reference is in `docs/` (see its table "More documentation"); this file is the short map.
 
 ## Binding project rules for changes and documentation
 
@@ -9,7 +9,7 @@ Apply them proactively, without needing to be reminded.
 
 ### 1. Documentation on every change
 
-- For every change, check whether `README.md` and/or the Autobuild Release Notes
+- For every change, check whether `README.md`, the matching file in `docs/` (technical details) and/or the Autobuild Release Notes
   need to be updated. The release notes are the `body` of the "Create GitHub
   release" step in `.github/workflows/build.yml`.
 - Required documentation changes belong in the same change (the same PR).

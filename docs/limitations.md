@@ -1,0 +1,16 @@
+# Known limitations and unsolved problems
+
+These are limits of the S-YXG50 engine, or changes that were tried and rejected because they made things worse or were too risky.
+
+- **Insertion effects** (MU80 and later): not converted. syxg50.dll has reverb, chorus and one variation block; the MU's insertion effect blocks (e.g. distortion on a single part) have no place in it. Adding them would mean extending the DLL's effect routing and DSP code, which was judged too risky for the gain.
+- **Effect types without counterpart** stay Thru: Pitch Change, Harmonic Enhancer, Compressor, Noise Gate, Lo-Fi. The DLL has nothing close enough to substitute.
+- **Effect switching:** a type change still mutes the block for 80-90 ms. The DLL mutes the block while it sets up the new type, and the ramp back was shortened rather than removed.
+- **Two elements per voice:** the 22 MU1000 voices with 3 or 4 elements are approximations. Stereo pairs become mono, layers are folded into levels, and members of a key split share the filter, LFO and (except for percussive members) the amp EG of one element.
+- **Sustained amp EG differences in merged voices are not baked:** baking them into the samples was implemented and measured, but made 5partStr (-4.5 dB) and Sweet Tp (up to -16 dB on single keys) worse than keeping one EG, and added 15 MB. Only percussive members are baked.
+- **HPF as baked copies:** the filter cutoff is exact only every 6 keys (within about 3 semitones), it cannot follow real-time changes, and it costs wave data. The DLL has no high-pass filter to do it properly.
+- **Rising decay 2:** the dip is limited to -46 dB (decay 1 level 64), because the DLL ends notes below that level; Bounce and Ana Echo have shallower gaps between their repeats than on the hardware.
+- **Drum attack without hold for MU50/MU80:** the MU90+ correction is not applied to MU50/MU80. Yamaha's own MU50-based S-YXG50 table uses the hold, and whether the real MU50/MU80 decay immediately like the MU90 could not be verified without recordings.
+- **MU2000:** not converted directly. Its scaling tables are in the ROM and convert back to the MU1000's break points (a test build sounded identical to the MU1000), but as the result is the same, the MU1000 set is used instead.
+- **MU50 DOC bank:** the 'DOC' voice bank and drum kit are not converted. Some DOC drum voices appear to be missing data, so it would need reconstruction.
+- **Polyphony above 128:** see the limits in [Polyphony up to 256](gui.md#polyphony-up-to-256).
+- **Remaining deviations:** a sweep of all 1,193 MU1000 voices (XG + SFX, C2/C4/C6, no effects) against the S-MU2000 gave a median deviation of 0.33 dB in the sustain level and 0.39 dB in the attack; 2.1 % of the notes are more than 3 dB off. About half of those depend on the note-on time in both synths (beating between elements, free-running LFO) and are not conversion errors. Stable deviations remain for the merged 3/4-element voices (e.g. 5partStr, Trcrtps), a few SFX voices with very deep pitch modulation (Insects, Sweepy) and single voices (e.g. VX El.P1, RobotClv, AfrcnWnd). Above 3.2 kHz the S-YXG50 is slightly darker (-0.3 to -0.6 dB). Release tails end at about -50 dB in the S-YXG50 (about -70 dB on the S-MU2000). A few effect types are 2-3 dB off.
