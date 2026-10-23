@@ -34,6 +34,16 @@ The S-YXG50 engine has 128 voices (one voice per element, so a 2-element voice t
 - Effect switches and Output Level follow the first engine. Effects are linear, so two reverbs over two halves of the notes add up to one reverb over all of them.
 - Limits: exclusive groups (e.g. open / closed hi-hat) and mono parts only act within one engine; after a voice map switch the second engine takes the new map with the next program change; the setting above 128 is shared by all instances of the same DLL in one host process.
 
+## Ports B-D (`F5 nn`)
+
+The original S-YXG50 drivers addressed 4 ports of 16 channels with the port select message `F5 nn` (nn = 1-4, Yamaha "cable select"). The VST plugins used to lose every message after `F5 02` (issue #74); since r49 `F5` is ignored, and the experimental multi-port build (branch `multiport`) plays real ports:
+
+- `F5 01` ... `F5 04` select port A-D for all following channel messages. The first `F5 02` / `03` / `04` creates one more complete engine for that port (128 voices, about 1.3 MB), made the same way as the second engine of the polyphony patch, so an unused port costs nothing. The Polyphony setting applies to port A only (with its second engine).
+- Port B-D engines take the settings of the plugin (effects, output level) and add their sound to the plugin's stereo output. Their reverb and chorus are separate from port A's (the original shares them).
+- System messages and SysEx (resets, setup) go to all ports. A GM / GM2 / XG / GS reset selects port A again; a new port engine is first given the last reset the plugin saw. `F5` with a number outside 1-4 is ignored.
+- Not done yet: XG parts above 16 / GS block B by SysEx address (they act on port A), a port selector in the panel, voices of ports B-D in the POLYPHONY readout. Hosts with only 16 channels never send `F5`, so nothing changes for them.
+- Like the second engine, the port engines exist only in the first four instances of a DLL copy.
+
 ## Panel controls (channel, program, bank)
 
 Since issue #42 the panel is 24 pixels higher (400 x 114) and has a control row of its own under the title strip (all models; earlier versions: issues #16, #23, #35):
