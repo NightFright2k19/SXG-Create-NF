@@ -12,9 +12,10 @@
 #   Update button (utility/selfupdate.py); `--no-update-check` (or SXG_NO_UPDATE_CHECK=1) leaves out the check at the start.
 #   Test options: --update-dir <folder with release files>, --update-test-version r<N>; --after-update <old> and
 #   --selftest-out <file> are used by the update itself.
-import sys, os, threading, queue, subprocess, locale
+import sys, os, threading, queue, subprocess, locale, webbrowser
 from pathlib import Path
 
+HISTORY_URL = 'https://github.com/NightFright2k19/SXG-Create-NF/blob/main/docs/versions.md'
 FROZEN = getattr(sys, 'frozen', False)
 HERE = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
 if FROZEN and sys.platform == 'darwin' and HERE.parent.name == 'Contents' :
@@ -124,6 +125,9 @@ def main_window() :
     det_btn = ttk.Button(frame); det_btn.grid(row = 6, column = 2, sticky = 'e', padx = 6)
     patch_btn = ttk.Button(frame, width = 14); patch_btn.grid(row = 6, column = 3, sticky = 'e')
     open_btn = ttk.Button(frame)
+    whatsnew = ttk.Label(frame, foreground = '#0057b8', cursor = 'hand2', font = ('TkDefaultFont', 9, 'underline'))   # a link, not a button
+    whatsnew.grid(row = 8, column = 0, columnspan = 4, sticky = 'w', pady = (8, 0))
+    whatsnew.bind('<Button-1>', lambda e : webbrowser.open(HISTORY_URL))
     cur = selfupdate.current(VERSION)
     upd_on = selfupdate.enabled(VERSION, FROZEN)
     # state: None, checking, new, current, error, load, verify, start, failed; quiet: no message (the check at the start)
@@ -145,7 +149,7 @@ def main_window() :
         target['text'] = T('target') + ':  ' + str(plugins_dir())
         key, kw = st['status']; status['text'] = T(key, **kw)
         det_btn['text'] = T('hide') if st['details'] else T('details')
-        patch_btn['text'] = T('patch'); open_btn['text'] = T('open_folder')
+        patch_btn['text'] = T('patch'); open_btn['text'] = T('open_folder'); whatsnew['text'] = T('whatsnew')
         can = not st['busy'] and st['models']
         patch_btn.state(['!disabled'] if can else ['disabled'])
         browse.state(['disabled'] if st['busy'] else ['!disabled'])
