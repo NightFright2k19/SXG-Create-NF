@@ -132,6 +132,7 @@ Technical documentation is in [`docs`](docs):
 
 | Document | Content |
 |---|---|
+| [Version history](docs/versions.md) | What changed in each Autobuild release |
 | [Changes compared to the original SXG-Create](docs/changes.md) | Complete list of what this fork adds |
 | [Python script and command line](docs/python-script.md) | `main.py`, parameters, examples |
 | [Models, output files and table layouts](docs/models-and-output.md) | Table layouts, file sizes, MU2000 |
