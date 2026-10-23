@@ -233,6 +233,9 @@ jobs:
             - Start it, check the list of found models, click **Patch**. MU models and the S-YXG2006LE are built in the same run; each also works on its own.
             - The plugins (one DLL per model, tables inside; `syxg2006le.dll` for the S-YXG2006LE) end up in the folder `Plugins` next to the patcher.
 
+            **WHAT'S NEW**
+            - See the [version history](https://github.com/NightFright2k19/SXG-Create-NF/blob/main/docs/versions.md) for the changes of every release.
+
       - name: Keep previous Autobuild releases without a label
         uses: actions/github-script@v8
         env:
