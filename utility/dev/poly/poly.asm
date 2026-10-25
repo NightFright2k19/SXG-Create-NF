@@ -451,7 +451,16 @@ rt_nm:
     cmp dword ptr [eax], 6
     jne rt_orig
     call sysex_ports
+    ; XG part data (parts 17-64) and GS block B go to the instance of their port only, part data of port 1 to A / B only
+    call sysex_part
+    cmp edi, -1
+    jne rt_pt
     call add_ports
+    jmp rt_orig
+rt_pt:
+    test edi, edi
+    je rt_orig
+    jmp rt_next
 rt_orig:
     cmp dword ptr [eax], 1
     jne rt_both
@@ -550,6 +559,7 @@ add_ev:
 clear_ports:
     push edx
     mov edx, dword ptr [ebx + 0xc]
+    mov dword ptr [edx + 0x7100], 0
     mov dword ptr [edx + 0x4000], 0
     mov dword ptr [edx + 0x4004], 0
     mov dword ptr [edx + 0x5010], 0
@@ -557,6 +567,119 @@ clear_ports:
     mov dword ptr [edx + 0x6020], 0
     mov dword ptr [edx + 0x6024], 0
     pop edx
+    ret
+; sysex_part: SysEx eax. edi = -1: not addressed to a part (goes to everybody); 0: part data of port 1; 1-3: part data of that port,
+; a copy with the part moved to port 1 is appended to the list of the port (dropped when it has no instance, or when it is longer
+; than 64 bytes or more than 20 copies were made in this block). XG: F0 43 1n 4C 08 pp .. (pp 16-63; no checksum);
+; GS: F0 41 dev 42 12 40 1x .. = part data of port 1, 50 1x .. = block B: address 50 -> 40, the checksum rises by 0x10.
+; Scratch copies: block + 0x7100 count, +0x7110 entries of 0x60 bytes (event 0x20 + data 0x40)
+sysex_part:
+    push ecx
+    push edx
+    push ebx
+    push esi
+    push 0
+    mov edx, dword ptr [eax + 0x18]
+    mov ecx, dword ptr [eax + 0x10]
+    mov edi, -1
+    cmp ecx, 8
+    jb spx_ret
+    cmp byte ptr [edx + 1], 0x43
+    jne spx_gs
+    cmp byte ptr [edx + 3], 0x4c
+    jne spx_ret
+    mov bl, byte ptr [edx + 2]
+    and bl, 0xf0
+    cmp bl, 0x10
+    jne spx_ret
+    cmp byte ptr [edx + 4], 8
+    jne spx_ret
+    movzx edi, byte ptr [edx + 5]
+    cmp edi, 64
+    jb spx_xg
+    mov edi, -1
+    jmp spx_ret
+spx_xg:
+    shr edi, 4
+    jmp spx_have
+spx_gs:
+    cmp byte ptr [edx + 1], 0x41
+    jne spx_ret
+    cmp byte ptr [edx + 3], 0x42
+    jne spx_ret
+    cmp byte ptr [edx + 4], 0x12
+    jne spx_ret
+    mov bl, byte ptr [edx + 5]
+    mov bh, byte ptr [edx + 6]
+    and bh, 0xf0
+    cmp bh, 0x10
+    jne spx_ret
+    cmp bl, 0x40
+    jne spx_gsb
+    xor edi, edi
+    jmp spx_ret
+spx_gsb:
+    cmp bl, 0x50
+    jne spx_ret
+    mov edi, 1
+    mov dword ptr [esp], 1
+spx_have:
+    test edi, edi
+    je spx_ret
+    cmp ecx, 0x40
+    ja spx_ret
+    mov ebx, dword ptr [esp + 0x18]
+    mov ebx, dword ptr [ebx + 0xc]
+    mov esi, edi
+    shl esi, 4
+    cmp dword ptr [ebx + esi + 0x3004], 0
+    je spx_ret
+    mov esi, dword ptr [ebx + 0x7100]
+    cmp esi, 20
+    jae spx_ret
+    inc dword ptr [ebx + 0x7100]
+    imul esi, esi, 0x60
+    push edi
+    lea edi, [ebx + esi + 0x7110]
+    push edi
+    mov esi, eax
+    mov ecx, 0x20
+    rep movsb
+    mov ecx, dword ptr [eax + 0x10]
+    mov esi, dword ptr [eax + 0x18]
+    push edi
+    rep movsb
+    pop edi
+    mov eax, dword ptr [esp]
+    mov dword ptr [eax + 0x18], edi
+    cmp dword ptr [esp + 8], 0
+    jne spx_gsc
+    and byte ptr [edi + 5], 15
+    jmp spx_add
+spx_gsc:
+    mov byte ptr [edi + 5], 0x40
+    mov edx, dword ptr [eax + 0x10]
+    cmp byte ptr [edi + edx - 1], 0xf7
+    jne spx_cs
+    dec edx
+spx_cs:
+    add byte ptr [edi + edx - 1], 0x10
+    and byte ptr [edi + edx - 1], 0x7f
+spx_add:
+    mov edx, dword ptr [esp + 4]
+    shl edx, 4
+    mov ebx, dword ptr [esp + 0x20]
+    mov ebx, dword ptr [ebx + 0xc]
+    mov edx, dword ptr [ebx + edx + 0x300c]
+    call add_ev
+    mov edi, dword ptr [esp + 4]
+    add esp, 8
+spx_ret:
+    add esp, 4
+    pop esi
+    pop ebx
+    pop edx
+    pop ecx
     ret
 ; get_port: edi = current port 0-3
 get_port:
