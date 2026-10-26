@@ -105,7 +105,7 @@ for i, port in enumerate('ABCD') :
     d.rectangle((bx, by, bx + BOXW - 1, by + BOXH - 1), fill = BOX_BG)
     d.line((bx, by, bx + BOXW - 2, by), fill = (0x60, 0x62, 0x6e)); d.line((bx, by, bx, by + BOXH - 2), fill = (0x60, 0x62, 0x6e))
     d.line((bx, by + BOXH - 1, bx + BOXW - 1, by + BOXH - 1), fill = (0xfa, 0xfa, 0xfc)); d.line((bx + BOXW - 1, by, bx + BOXW - 1, by + BOXH - 1), fill = (0xfa, 0xfa, 0xfc))
-    g = Image.new('L', (40 * 8, 20 * 8), 0); ImageDraw.Draw(g).text((4 * 8, 16 * 8), port, font = gfont, fill = 255, anchor = 'ls')
+    g = Image.new('L', (40 * 8, 20 * 8), 0); ImageDraw.Draw(g).text((4 * 8, 16 * 8), port, font = gfont, fill = 255, anchor = 'ls', stroke_width = 3, stroke_fill = 255)
     g = g.resize((40, 20), Image.BOX).point(lambda v : 255 if v >= 128 else 0)                  # crisp, like the digits
     gb = g.getbbox(); g = g.crop(gb)
     cell.paste(Image.new('RGB', g.size, ORANGE), (bx + 1 + (BOXW - 2 - g.width) // 2, by + 1 + (BOXH - 2 - g.height) // 2), g)
