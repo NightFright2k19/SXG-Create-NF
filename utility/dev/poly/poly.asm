@@ -573,9 +573,10 @@ clear_ports:
 ; longer than 64 bytes or more than 20 copies were made in this block). XG: F0 43 1n 4C 08 pp .. (pp 16-63; no checksum).
 ; GS (address a1 a2 a3): 40 1x / 41 = part and drum setup of block A (port 1 only), 50 1x / 51 = block B (-> 40 1x / 41 on port 2,
 ; the checksum rises by 0x10). Patch Common and effects 40 0x / 50 0x: mode 1 (one common set): 50 00 becomes 40 00, to everybody; mode 2:
-; 40 00 to port 1, 50 00 to port 2 as 40 00. GS reset 40 00 7F: mode 1 to everybody, mode 2 to the current port only.
+; 40 00 to port 1, 50 00 to port 2 as 40 00. GS reset 40 00 7F: mode 1 to everybody, mode 2 to the current port only; 50 00 7F: mode 1 as 40 00 7F to everybody, mode 2 to the other
+; port (port xor 1) as 40 00 7F.
 ; Scratch copies: block + 0x7100 count, +0x7110 entries of 0x60 bytes (event 0x20 + data 0x40).
-; Stack: [esp] = kind (0 XG, 1 GS block B, 2 GS common B in mode 1, 3 the original event), then ecx edx ebx esi, the return address, the slot
+; Stack: [esp] = kind (0 XG, 1 GS block B, 2 GS common B in mode 1, 3 the original event, 4 GS reset 50 00 7F in mode 2), then ecx edx ebx esi, the return address, the slot
 sysex_part:
     push ecx
     push edx
@@ -631,7 +632,19 @@ spx_gs:
     jmp spx_ret
 spx_g50c:
     cmp dword ptr [esi + 0x300c], 0
+    je spx_g50k
+    cmp byte ptr [edx + 6], 0
     jne spx_b_conv
+    cmp byte ptr [edx + 7], 0x7f
+    jne spx_b_conv
+    ; mode 2: the reset 50 00 7F resets the other port (A <-> B, C <-> D), as the normal form 40 00 7F
+    mov edi, dword ptr [esi + 0x3008]
+    xor edi, 1
+    mov dword ptr [esp], 4
+    test edi, edi
+    je spx_scratch
+    jmp spx_have
+spx_g50k:
     mov dword ptr [esp], 2
     jmp spx_scratch
 spx_b_conv:
@@ -718,6 +731,11 @@ spx_cs:
 spx_add:
     cmp dword ptr [esp + 8], 2
     je spx_k2
+    cmp dword ptr [esp + 8], 4
+    jne spx_addl
+    cmp dword ptr [esp + 4], 0
+    je spx_k2
+spx_addl:
     mov edx, dword ptr [esp + 4]
     shl edx, 4
     mov ebx, dword ptr [esp + 0x20]
@@ -728,7 +746,7 @@ spx_add:
     add esp, 8
     jmp spx_ret
 spx_k2:
-    mov edi, -1
+    mov edi, dword ptr [esp + 4]
     add esp, 8
 spx_ret:
     add esp, 4
@@ -875,8 +893,12 @@ sx_gs:
     pop edi
     jmp sx_ret
 sx_gs2:
+    ; the reset is also known in the form 50 00 7F (Falcosoft): mode 1 = a normal reset, mode 2 = resets the other port
+    cmp byte ptr [edx + 5], 0x50
+    je sx_gs3
     cmp byte ptr [edx + 5], 0x40
     jne sx_ret
+sx_gs3:
     cmp byte ptr [edx + 6], 0
     jne sx_ret
     cmp byte ptr [edx + 7], 0x7f
@@ -900,6 +922,20 @@ sx_reset:
     lea edi, [edi + 0x3044]
     mov esi, edx
     rep movsb
+    ; the stored reset is the normal form: 50 00 7F .. becomes 40 00 7F .. (checksum + 0x10)
+    mov edi, dword ptr [esp + 0x14]
+    mov edi, dword ptr [edi + 0xc]
+    mov ecx, dword ptr [edi + 0x3040]
+    lea edi, [edi + 0x3044]
+    cmp byte ptr [edi + 1], 0x41
+    jne sx_end
+    cmp byte ptr [edi + 5], 0x50
+    jne sx_end
+    cmp byte ptr [edi + ecx - 1], 0xf7
+    jne sx_end
+    mov byte ptr [edi + 5], 0x40
+    add byte ptr [edi + ecx - 2], 0x10
+    and byte ptr [edi + ecx - 2], 0x7f
 sx_end:
     pop esi
     pop edi
