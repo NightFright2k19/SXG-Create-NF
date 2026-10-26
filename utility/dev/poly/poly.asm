@@ -568,11 +568,14 @@ clear_ports:
     mov dword ptr [edx + 0x6024], 0
     pop edx
     ret
-; sysex_part: SysEx eax. edi = -1: not addressed to a part (goes to everybody); 0: part data of port 1; 1-3: part data of that port,
-; a copy with the part moved to port 1 is appended to the list of the port (dropped when it has no instance, or when it is longer
-; than 64 bytes or more than 20 copies were made in this block). XG: F0 43 1n 4C 08 pp .. (pp 16-63; no checksum);
-; GS: F0 41 dev 42 12 40 1x .. = part data of port 1, 50 1x .. = block B: address 50 -> 40, the checksum rises by 0x10.
-; Scratch copies: block + 0x7100 count, +0x7110 entries of 0x60 bytes (event 0x20 + data 0x40)
+; sysex_part: SysEx eax. edi = -1: goes to everybody (eax may then be a converted copy); 0: part data of port 1; 1-3: part data of that
+; port, a copy with the part moved to port 1 is appended to the list of the port (dropped when it has no instance, or when it is
+; longer than 64 bytes or more than 20 copies were made in this block). XG: F0 43 1n 4C 08 pp .. (pp 16-63; no checksum).
+; GS (address a1 a2 a3): 40 1x / 41 = part and drum setup of block A (port 1 only), 50 1x / 51 = block B (-> 40 1x / 41 on port 2,
+; the checksum rises by 0x10). Patch Common and effects 40 0x / 50 0x: mode 1 (one common set): 50 00 becomes 40 00, to everybody; mode 2:
+; 40 00 to port 1, 50 00 to port 2 as 40 00. GS reset 40 00 7F: mode 1 to everybody, mode 2 to the current port only.
+; Scratch copies: block + 0x7100 count, +0x7110 entries of 0x60 bytes (event 0x20 + data 0x40).
+; Stack: [esp] = kind (0 XG, 1 GS block B, 2 GS common B in mode 1, 3 the original event), then ecx edx ebx esi, the return address, the slot
 sysex_part:
     push ecx
     push edx
@@ -609,31 +612,78 @@ spx_gs:
     jne spx_ret
     cmp byte ptr [edx + 4], 0x12
     jne spx_ret
-    mov bl, byte ptr [edx + 5]
-    mov bh, byte ptr [edx + 6]
-    and bh, 0xf0
-    cmp bh, 0x10
-    jne spx_ret
+    mov esi, dword ptr [esp + 0x18]
+    mov esi, dword ptr [esi + 0xc]
+    movzx ebx, byte ptr [edx + 5]
+    cmp bl, 0x41
+    je spx_a_only
+    cmp bl, 0x51
+    je spx_b_conv
     cmp bl, 0x40
-    jne spx_gsb
-    xor edi, edi
-    jmp spx_ret
-spx_gsb:
+    je spx_g40
     cmp bl, 0x50
     jne spx_ret
+    mov bh, byte ptr [edx + 6]
+    and bh, 0xf0
+    je spx_g50c
+    cmp bh, 0x10
+    je spx_b_conv
+    jmp spx_ret
+spx_g50c:
+    cmp dword ptr [esi + 0x300c], 0
+    jne spx_b_conv
+    mov dword ptr [esp], 2
+    jmp spx_scratch
+spx_b_conv:
     mov edi, 1
     mov dword ptr [esp], 1
+    jmp spx_have
+spx_a_only:
+    xor edi, edi
+    jmp spx_ret
+spx_g40:
+    mov bh, byte ptr [edx + 6]
+    and bh, 0xf0
+    je spx_g40c
+    cmp bh, 0x10
+    jne spx_ret
+    xor edi, edi
+    jmp spx_ret
+spx_g40c:
+    cmp dword ptr [esi + 0x300c], 0
+    je spx_ret
+    cmp byte ptr [edx + 6], 0
+    jne spx_a_only
+    cmp byte ptr [edx + 7], 0x7f
+    jne spx_a_only
+    mov edi, dword ptr [esi + 0x3008]
+    test edi, edi
+    je spx_ret
+    mov dword ptr [esp], 3
 spx_have:
     test edi, edi
     je spx_ret
+    cmp dword ptr [esp], 3
+    je spx_have3
     cmp ecx, 0x40
     ja spx_ret
+spx_have3:
     mov ebx, dword ptr [esp + 0x18]
     mov ebx, dword ptr [ebx + 0xc]
     mov esi, edi
     shl esi, 4
     cmp dword ptr [ebx + esi + 0x3004], 0
     je spx_ret
+    cmp dword ptr [esp], 3
+    jne spx_scratch
+    mov edx, dword ptr [ebx + esi + 0x300c]
+    call add_ev
+    jmp spx_ret
+spx_scratch:
+    mov ebx, dword ptr [esp + 0x18]
+    mov ebx, dword ptr [ebx + 0xc]
+    cmp ecx, 0x40
+    ja spx_ret
     mov esi, dword ptr [ebx + 0x7100]
     cmp esi, 20
     jae spx_ret
@@ -657,7 +707,7 @@ spx_have:
     and byte ptr [edi + 5], 15
     jmp spx_add
 spx_gsc:
-    mov byte ptr [edi + 5], 0x40
+    sub byte ptr [edi + 5], 0x10
     mov edx, dword ptr [eax + 0x10]
     cmp byte ptr [edi + edx - 1], 0xf7
     jne spx_cs
@@ -666,6 +716,8 @@ spx_cs:
     add byte ptr [edi + edx - 1], 0x10
     and byte ptr [edi + edx - 1], 0x7f
 spx_add:
+    cmp dword ptr [esp + 8], 2
+    je spx_k2
     mov edx, dword ptr [esp + 4]
     shl edx, 4
     mov ebx, dword ptr [esp + 0x20]
@@ -673,6 +725,10 @@ spx_add:
     mov edx, dword ptr [ebx + edx + 0x300c]
     call add_ev
     mov edi, dword ptr [esp + 4]
+    add esp, 8
+    jmp spx_ret
+spx_k2:
+    mov edi, -1
     add esp, 8
 spx_ret:
     add esp, 4
@@ -801,11 +857,36 @@ sx_gs:
     jne sx_ret
     cmp byte ptr [edx + 4], 0x12
     jne sx_ret
+    cmp byte ptr [edx + 5], 0
+    jne sx_gs2
+    ; System Mode Set 00 00 7F dd: dd = 0 mode 1 (single module), 1 mode 2 (double module), kept at +0x300C
+    cmp byte ptr [edx + 6], 0
+    jne sx_ret
+    cmp byte ptr [edx + 7], 0x7f
+    jne sx_ret
+    cmp ecx, 9
+    jb sx_ret
+    movzx ecx, byte ptr [edx + 8]
+    and ecx, 1
+    push edi
+    mov edi, dword ptr [esp + 0x10]
+    mov edi, dword ptr [edi + 0xc]
+    mov dword ptr [edi + 0x300c], ecx
+    pop edi
+    jmp sx_ret
+sx_gs2:
     cmp byte ptr [edx + 5], 0x40
     jne sx_ret
     cmp byte ptr [edx + 6], 0
     jne sx_ret
     cmp byte ptr [edx + 7], 0x7f
+    jne sx_ret
+    ; GS reset in mode 2 only resets the module of the current port (sysex_part sends it there): no port change
+    push edi
+    mov edi, dword ptr [esp + 0x10]
+    mov edi, dword ptr [edi + 0xc]
+    cmp dword ptr [edi + 0x300c], 0
+    pop edi
     jne sx_ret
 sx_reset:
     push edi
