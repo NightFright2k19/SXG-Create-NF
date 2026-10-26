@@ -9,7 +9,8 @@
 #   Name_<model>.bmp   the model name S-YXGM<n> (title strip x 280-399, y 0-22, 120 x 23) pasted into bitmap 101 per model: the
 #                      100 x 23 names of the earlier versions with an M drawn between G and the number (issue #74)
 #   PortLabels.bmp     the port labels PORT A - PORT D (64 x 16 each, 256 x 16) appended to bitmap 106 at x 400 and drawn into the
-#                      title strip at x 153, y 3 (issue #74, dev/poly/panel.asm); the strip's own background with embossed text
+#                      title strip at x 168, y 3 (issue #74, dev/poly/panel.asm): embossed PORT and a black box with the orange
+#                      letter, the group centred on x 200
 #   PanelButtons.bmp   appended to bitmap 106: pressed left / right button (15 x 15 each) and a dash digit (10 x 13)
 from PIL import Image
 from pathlib import Path
@@ -82,12 +83,32 @@ def with_m(old, prefix = 46, mw = 11, shift = 20) :
     new.paste(g, (pend + shift - mw, 0))
     return new
 for model in ('MU50', 'MU80', 'MU90', 'MU100', 'MU128', 'MU1000', 'MU2000') :
-    with_m(Image.open(B / f'Name_{model}.bmp').convert('RGB')).save(B / f'Name_{model}.bmp')
-LABEL = (153, 3, 64, 16)                                             # x, y, width, height in the title strip
+    old = Image.open(B / f'Name_{model}.bmp').convert('RGB')
+    if old.width == 100 : with_m(old).save(B / f'Name_{model}.bmp')        # the names already carry the M after the first run
+LABEL = (168, 3, 64, 16)                                             # x, y, width, height in the title strip
+# PORT (embossed like the names), a gap and the letter in a 17 x 15 box (bevel: dark top / left, light bottom / right) in the colours of the
+# polyphony digits (bitmap 105: background (9, 7, 28), orange (255, 106, 0)); PORT + box are centred on the panel (x 200)
+BOX_BG, ORANGE, GAP, BOXW, BOXH = (9, 7, 28), (255, 106, 0), 3, 17, 15
+bg = np.asarray(panel.crop((LABEL[0], LABEL[1], LABEL[0] + LABEL[2], LABEL[1] + LABEL[3])), dtype = float)
+TEXT_W = 38                                                                  # width of PORT in the approved mockup
+mt = text_mask('PORT', 13, 0.9, LABEL[2], LABEL[3], 13.5, x0 = 0); cols = np.where(mt.max(axis = 0) > 0.25)[0]
+size = 13 * TEXT_W / (cols.max() - cols.min() + 1)
+mt = text_mask('PORT', size, 0.9, LABEL[2], LABEL[3], 13.5, x0 = 0); cols = np.where(mt.max(axis = 0) > 0.25)[0]
+tw = int(cols.max() - cols.min() + 1); left = 200 - (tw + GAP + BOXW) // 2 - LABEL[0]            # label-relative x of the group
+mt = text_mask('PORT', size, 0.9, LABEL[2], LABEL[3], 13.5, x0 = left - cols.min())
+bx = left + tw + GAP; by = 1
+gfont = ImageFont.truetype(FONT, 14 * 8)
 labels = Image.new('RGB', (4 * LABEL[2], LABEL[3]))
 for i, port in enumerate('ABCD') :
-    bg = np.asarray(panel.crop((LABEL[0], LABEL[1], LABEL[0] + LABEL[2], LABEL[1] + LABEL[3])), dtype = float)
-    m = text_mask("PORT " + port, 13, 0.9, LABEL[2], LABEL[3], 13.5, x0 = 7)
-    labels.paste(Image.fromarray(emboss(m, bg, 0.40, 0.95), 'RGB'), (i * LABEL[2], 0))
+    cell = Image.fromarray(emboss(mt, bg, 0.40, 0.95), 'RGB')
+    d = ImageDraw.Draw(cell)
+    d.rectangle((bx, by, bx + BOXW - 1, by + BOXH - 1), fill = BOX_BG)
+    d.line((bx, by, bx + BOXW - 2, by), fill = (0x60, 0x62, 0x6e)); d.line((bx, by, bx, by + BOXH - 2), fill = (0x60, 0x62, 0x6e))
+    d.line((bx, by + BOXH - 1, bx + BOXW - 1, by + BOXH - 1), fill = (0xfa, 0xfa, 0xfc)); d.line((bx + BOXW - 1, by, bx + BOXW - 1, by + BOXH - 1), fill = (0xfa, 0xfa, 0xfc))
+    g = Image.new('L', (40 * 8, 20 * 8), 0); ImageDraw.Draw(g).text((4 * 8, 16 * 8), port, font = gfont, fill = 255, anchor = 'ls')
+    g = g.resize((40, 20), Image.BOX).point(lambda v : 255 if v >= 128 else 0)                  # crisp, like the digits
+    gb = g.getbbox(); g = g.crop(gb)
+    cell.paste(Image.new('RGB', g.size, ORANGE), (bx + 1 + (BOXW - 2 - g.width) // 2, by + 1 + (BOXH - 2 - g.height) // 2), g)
+    labels.paste(cell, (i * LABEL[2], 0))
 labels.save(B / 'PortLabels.bmp')
 print('Panel101.bmp, Name_*.bmp, PanelButtons.bmp, PortLabels.bmp written')

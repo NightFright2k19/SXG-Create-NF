@@ -571,9 +571,9 @@ clear_ports:
 ; sysex_part: SysEx eax. edi = -1: goes to everybody (eax may then be a converted copy); 0: part data of port 1; 1-3: part data of that
 ; port, a copy with the part moved to port 1 is appended to the list of the port (dropped when it has no instance, or when it is
 ; longer than 64 bytes or more than 20 copies were made in this block). XG: F0 43 1n 4C 08 pp .. (pp 16-63; no checksum).
-; GS (address a1 a2 a3): 40 1x / 41 = part and drum setup of block A (port 1 only), 50 1x / 51 = block B (-> 40 1x / 41 on port 2,
-; the checksum rises by 0x10). Patch Common and effects 40 0x / 50 0x: mode 1 (one common set): 50 00 becomes 40 00, to everybody; mode 2:
-; 40 00 to port 1, 50 00 to port 2 as 40 00. GS reset 40 00 7F: mode 1 to everybody, mode 2 to the current port only; 50 00 7F: mode 1 as 40 00 7F to everybody, mode 2 to the other
+; GS (address a1 a2 a3): 40 1x / 41 = part and drum setup of the current port (the one F5 selected), 50 1x / 51 = those of the other port
+; (port xor 1, as 40 1x / 41; the checksum rises by 0x10). Patch Common and effects 40 0x / 50 0x: mode 1 (one common set): 50 00 becomes 40 00,
+; to everybody; mode 2: 40 00 to the current port, 50 00 to the other port as 40 00. GS reset 40 00 7F: mode 1 to everybody, mode 2 to the current port only; 50 00 7F: mode 1 as 40 00 7F to everybody, mode 2 to the other
 ; port (port xor 1) as 40 00 7F.
 ; Scratch copies: block + 0x7100 count, +0x7110 entries of 0x60 bytes (event 0x20 + data 0x40).
 ; Stack: [esp] = kind (0 XG, 1 GS block B, 2 GS common B in mode 1, 3 the original event, 4 GS reset 50 00 7F in mode 2), then ecx edx ebx esi, the return address, the slot
@@ -617,7 +617,7 @@ spx_gs:
     mov esi, dword ptr [esi + 0xc]
     movzx ebx, byte ptr [edx + 5]
     cmp bl, 0x41
-    je spx_a_only
+    je spx_cur
     cmp bl, 0x51
     je spx_b_conv
     cmp bl, 0x40
@@ -648,31 +648,29 @@ spx_g50k:
     mov dword ptr [esp], 2
     jmp spx_scratch
 spx_b_conv:
-    mov edi, 1
+    mov edi, dword ptr [esi + 0x3008]
+    xor edi, 1
     mov dword ptr [esp], 1
+    test edi, edi
+    je spx_scratch
     jmp spx_have
-spx_a_only:
-    xor edi, edi
-    jmp spx_ret
+spx_cur:
+    mov edi, dword ptr [esi + 0x3008]
+    test edi, edi
+    je spx_ret
+    mov dword ptr [esp], 3
+    jmp spx_have
 spx_g40:
     mov bh, byte ptr [edx + 6]
     and bh, 0xf0
     je spx_g40c
     cmp bh, 0x10
     jne spx_ret
-    xor edi, edi
-    jmp spx_ret
+    jmp spx_cur
 spx_g40c:
     cmp dword ptr [esi + 0x300c], 0
     je spx_ret
-    cmp byte ptr [edx + 6], 0
-    jne spx_a_only
-    cmp byte ptr [edx + 7], 0x7f
-    jne spx_a_only
-    mov edi, dword ptr [esi + 0x3008]
-    test edi, edi
-    je spx_ret
-    mov dword ptr [esp], 3
+    jmp spx_cur
 spx_have:
     test edi, edi
     je spx_ret
@@ -731,8 +729,6 @@ spx_cs:
 spx_add:
     cmp dword ptr [esp + 8], 2
     je spx_k2
-    cmp dword ptr [esp + 8], 4
-    jne spx_addl
     cmp dword ptr [esp + 4], 0
     je spx_k2
 spx_addl:

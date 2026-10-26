@@ -20,7 +20,7 @@
 ; thread), +0xA mouse button held in the POLYPHONY field, +0xB channel of the sounding note, +0xC 1 once the
 ; audio thread has processed that engine (the readouts stay blank until then).
 ; Ports (issue #74): +0xD of the record = the port the panel shows and controls (0 = A, 1-3 = B-D; 0 at open). A click on the title
-; strip at x 153-216, y 0-22 (the label PORT A - PORT D, bitmap 106 at x 400 + 64 * port) selects the next port that has an engine
+; strip at x 168-231, y 0-22 (the label PORT A - PORT D, bitmap 106 at x 400 + 64 * port) selects the next port that has an engine
 ; (F5 02 .. 04 made it). Then the readouts (CHN / PRG / MSB / LSB, meters, POLYPHONY: get_hook for the three Get calls of the idle
 ; redraw) and the steps / the preview note of the panel (rec_short, pv_send: port_msg) belong to that engine.
 ; .data (UI thread only): 0x10056E43 held button (1 / 2 PRG down / up, 3 / 4 CHN, 5 / 6 MSB, 7 / 8 LSB),
@@ -466,9 +466,9 @@ lbd_hook:
     sar eax, 16
     cmp eax, 23
     jge lbd_rows
-    cmp ecx, 153
+    cmp ecx, 168
     jl lbd_orig
-    cmp ecx, 217
+    cmp ecx, 232
     jge lbd_orig
     jmp lbd_port
 lbd_rows:
@@ -1082,7 +1082,7 @@ dp_lab:
     push 16
     push 64
     push 3
-    push 153
+    push 168
     push esi
     call dword ptr [ebp + 0x10040018]
     push dword ptr [ebp + 0x1005533c]
