@@ -12,7 +12,7 @@ Apply them proactively, without needing to be reminded.
 - For every change, check whether `README.md`, the matching file in `docs/` (technical details) and/or the Autobuild Release Notes
   need to be updated. The release notes are the `body` of the "Create GitHub
   release" step in `.github/workflows/build.yml`.
-- Add a row to `docs/versions.md` (version history) for every change that ends up in a release; plain language, one line, newest on top.
+- Add a row to `docs/versions.md` (version history) for every change that ends up in a release; plain language, one line, newest on top. New rows start with `next` in the Release column and an empty Date column (`| next | | ... |`); the Autobuild workflow replaces them with the release number and date after the release. Never write `r<N>` by hand.
 - Required documentation changes belong in the same change (the same PR).
 - Never skip a documentation update without checking first. State the result of
   the check (updated, or not needed and why) in the PR.
