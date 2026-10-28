@@ -999,8 +999,8 @@ dp_digit_dim:
 ; no_voice: ecx = engine, edx = part -> eax = 1 for a part that has no instrument (issue #73). The engine has no flag for it:
 ; it looks the voice up at each note (the function at 0x10004540: stdcall (synth, bank MSB, bank LSB, program) -> pointer to the
 ; voice), and a bank or program without a voice gets the voice of its silent bank (XG: SFX MSB 1, in XG and GM2 mode all its
-; programs). So the part has no instrument when its voice is the one of MSB 1 / LSB 0 / program 0. Not in GS mode (+0x63AE = 0
-; after a GS reset): there an unknown bank falls back on a capital tone and the engine is never silent. The caller has
+; programs). So the part has no instrument when its voice is the one of MSB 1 / LSB 0 / program 0. In GS mode (+0x63AE = 0
+; after a GS reset) an unknown bank falls back on a capital tone, so only MSB 126 with a program from 64 up (silent) counts. The caller has
 ; excluded drum parts (they keep ignoring a program without a kit). ebx, esi, edi, ebp are kept; the engine's function keeps them too.
 no_voice:
     push esi
@@ -1008,7 +1008,13 @@ no_voice:
     mov esi, dword ptr [ecx + 8]             ; the synth
     xor eax, eax
     cmp byte ptr [esi + 0x63ae], al
-    je nv_ret
+    jne nv_xg
+    cmp byte ptr [edx], 126                  ; GS: bank MSB 126 has voices for programs 0-63 only
+    jne nv_ret
+    cmp byte ptr [edx + 2], 64
+    setae al
+    jmp nv_ret
+nv_xg:
     movzx eax, byte ptr [edx + 2]
     push eax                                 ; program
     movzx eax, byte ptr [edx + 1]
