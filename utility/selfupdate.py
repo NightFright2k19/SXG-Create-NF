@@ -74,6 +74,10 @@ def context() -> ssl.SSLContext :
     if sys.platform == 'darwin' and not ctx.cert_store_stats().get('x509_ca') :      # python.org builds: no certificates
         for f in ('/etc/ssl/cert.pem', '/private/etc/ssl/cert.pem') :
             if os.path.exists(f) : ctx.load_verify_locations(f); break
+    try :                                                                           # Mozilla roots in addition to the system store (#84)
+        import certifi
+        ctx.load_verify_locations(cafile = certifi.where())
+    except Exception : pass                                                         # no certifi: system store only
     return ctx
 
 def _why(e : BaseException) -> str : return str(getattr(e, 'reason', None) or e)

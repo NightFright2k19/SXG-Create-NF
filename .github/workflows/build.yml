@@ -140,7 +140,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install PyInstaller
-        run: python -m pip install --upgrade pip pyinstaller
+        run: python -m pip install --upgrade pip pyinstaller certifi
 
       - name: Build patcher
         env:
@@ -161,7 +161,7 @@ jobs:
             --add-data "utility/bitmaps:bitmaps" \
             --add-data "utility/icons:icons" \
             --add-data "templates.7z:." \
-            --hidden-import main --hidden-import patcher_i18n --hidden-import patcher_version $HIDDEN \
+            --hidden-import main --hidden-import patcher_i18n --hidden-import patcher_version --hidden-import certifi $HIDDEN \
             patcher.py
           ls -la dist
 
