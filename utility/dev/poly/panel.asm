@@ -19,6 +19,10 @@
 ; step (signed), +7 channel (0-15), +8 note XOR 0x3C (zeroed = 60), +9 note sounding + 1 (0 = none, audio
 ; thread), +0xA mouse button held in the POLYPHONY field, +0xB channel of the sounding note, +0xC 1 once the
 ; audio thread has processed that engine (the readouts stay blank until then).
+; Ports (issue #74): +0xD of the record = the port the panel shows and controls (0 = A, 1-3 = B-D; 0 at open). A click on the title
+; strip at x 168-231, y 0-22 (the label PORT A - PORT D, bitmap 106 at x 400 + 64 * port) selects the next port that has an engine
+; (F5 02 .. 04 made it). Then the readouts (CHN / PRG / MSB / LSB, meters, POLYPHONY: get_hook for the three Get calls of the idle
+; redraw) and the steps / the preview note of the panel (rec_short, pv_send: port_msg) belong to that engine.
 ; .data (UI thread only): 0x10056E43 held button (1 / 2 PRG down / up, 3 / 4 CHN, 5 / 6 MSB, 7 / 8 LSB),
 ; 0x10056E48 / 0x10056E4C SetTimer / KillTimer, 0x10056E50 wheel remainder.
 ; Preview note (issue #43): holding the left mouse button in the POLYPHONY field (x 245-298, y 57-103) plays a
@@ -42,7 +46,8 @@ pp_base:
     and edi, 15
     call pp_prev
     mov eax, edi
-    mov ecx, dword ptr [ebx]
+    mov ecx, ebx
+    call rec_view
     call part_ptr
     mov esi, eax
     xor eax, eax
@@ -89,7 +94,8 @@ pp_m:
     test al, al
     je pp_l
     mov edx, 1
-    mov ecx, dword ptr [ebx]
+    mov ecx, ebx
+    call rec_view
     call bank_ignored
     jne pp_l
     movsx eax, al
@@ -103,7 +109,8 @@ pp_l:
     test al, al
     je pp_ret
     mov edx, 2
-    mov ecx, dword ptr [ebx]
+    mov ecx, ebx
+    call rec_view
     call bank_ignored
     jne pp_ret
     movsx eax, al
@@ -155,6 +162,11 @@ pv_ret:
 ; only while the dispatcher has given it notes, so a note sent to it here would keep a voice and count in
 ; POLYPHONY (issue #46)
 pv_send:
+    cmp byte ptr [ebx + 0xd], 0
+    je pv_a
+    call port_msg
+    ret
+pv_a:
     mov ecx, dword ptr [ebx]
     push eax
     push ecx
@@ -221,6 +233,11 @@ pp_pc:
     ret
 ; rec_short: eax = message to the engine of panel record ebx and to the B of its slot; keeps all registers
 rec_short:
+    cmp byte ptr [ebx + 0xd], 0
+    je rs_a
+    call port_msg
+    ret
+rs_a:
     pushal
     mov edi, dword ptr [ebx]
     push eax
@@ -298,6 +315,144 @@ ui_rec:
     mov eax, dword ptr [eax + 8]
     jmp rec_claim
 
+; port_engine: eax = engine of plugin A, edx = port 1-3 -> eax = the engine of that port (0 if it has none); keeps the other registers
+port_engine:
+    push ebx
+    push ecx
+    push esi
+    push ebp
+    call pe_base
+pe_base:
+    pop ebp
+    sub ebp, pe_base
+    mov ecx, eax
+    lea ebx, [ebp + 0x10056ec0]
+    mov esi, 4
+pe_find:
+    mov eax, dword ptr [ebx]
+    test eax, eax
+    je pe_next
+    cmp ecx, dword ptr [eax + 0xb0]
+    je pe_got
+pe_next:
+    add ebx, 16
+    dec esi
+    jne pe_find
+    xor eax, eax
+    jmp pe_out
+pe_got:
+    mov eax, dword ptr [ebx + 0xc]
+    test eax, eax
+    je pe_out
+    mov ecx, edx
+    shl ecx, 4
+    mov eax, dword ptr [eax + ecx + 0x3004]
+    test eax, eax
+    je pe_out
+    mov eax, dword ptr [eax + 0x40]
+    mov eax, dword ptr [eax + 0xb0]
+pe_out:
+    pop ebp
+    pop esi
+    pop ecx
+    pop ebx
+    ret
+; rec_view: ecx = panel record -> ecx = the engine the panel shows (that of plugin A, or of the selected port when it has one); keeps
+; the other registers
+rec_view:
+    cmp byte ptr [ecx + 0xd], 0
+    je rv_a
+    push eax
+    push edx
+    movzx edx, byte ptr [ecx + 0xd]
+    mov eax, dword ptr [ecx]
+    call port_engine
+    test eax, eax
+    je rv_none
+    mov ecx, eax
+    pop edx
+    pop eax
+    ret
+rv_none:
+    pop edx
+    pop eax
+rv_a:
+    mov ecx, dword ptr [ecx]
+    ret
+; port_msg: eax = message (short-message entry), ebx = panel record -> to the engine of the selected port, which wakes up like after a Note On
+; (4 s, control clock of A) so that it renders the note; nothing when the port has no engine. Keeps all registers
+port_msg:
+    pushal
+    call pmg_base
+pmg_base:
+    pop ebp
+    sub ebp, pmg_base
+    mov esi, dword ptr [ebx]
+    movzx edx, byte ptr [ebx + 0xd]
+    lea ebx, [ebp + 0x10056ec0]
+    mov ecx, 4
+pmg_find:
+    mov edi, dword ptr [ebx]
+    test edi, edi
+    je pmg_next
+    cmp esi, dword ptr [edi + 0xb0]
+    je pmg_got
+pmg_next:
+    add ebx, 16
+    loop pmg_find
+    jmp pmg_ret
+pmg_got:
+    mov ecx, dword ptr [ebx + 0xc]
+    test ecx, ecx
+    je pmg_ret
+    shl edx, 4
+    lea ebx, [ecx + edx + 0x3000]
+    mov esi, dword ptr [ebx + 4]
+    test esi, esi
+    je pmg_ret
+    mov esi, dword ptr [esi + 0x40]
+    mov ecx, dword ptr [esi + 0xb0]
+    push dword ptr [esp + 0x1c]
+    push ecx
+    mov edx, dword ptr [ecx]
+    call dword ptr [edx + 8]
+    cmp dword ptr [ebx + 8], 0
+    jg pmg_ret
+    mov eax, dword ptr [edi + 0xd8]
+    shl eax, 2
+    mov dword ptr [ebx + 8], eax
+    mov eax, dword ptr [edi + 0xe4]
+    mov dword ptr [esi + 0xe4], eax
+    mov eax, dword ptr [edi + 0xe8]
+    mov dword ptr [esi + 0xe8], eax
+    mov eax, dword ptr [edi + 0xec]
+    mov dword ptr [esi + 0xec], eax
+pmg_ret:
+    popal
+    ret
+; get_hook (stdcall this, op, buf): the three Get calls of the panel's idle redraw (op 2 part levels, 3 output levels, 4 voices in use;
+; 0x10031F09, 0x10031F86, 0x100320A0). This = the engine of plugin A; when the panel shows another port, that engine answers
+get_hook:
+    mov eax, dword ptr [esp + 4]
+    call rec_find
+    test eax, eax
+    je gh_orig
+    movzx edx, byte ptr [eax + 0xd]
+    test edx, edx
+    je gh_orig
+    mov eax, dword ptr [esp + 4]
+    call port_engine
+    test eax, eax
+    je gh_orig
+    mov ecx, dword ptr [eax]
+    push dword ptr [esp + 0xc]
+    push dword ptr [esp + 0xc]
+    push eax
+    call dword ptr [ecx + 0x20]
+    ret 0xc
+gh_orig:
+    jmp poly_count
+
 ; button table: held code, x (row 31, 15 x 15); odd codes step down, even up
 btn_table:
     .int 3, 25, 4, 73, 1, 116, 2, 174, 5, 221, 6, 279, 7, 323, 8, 381
@@ -309,6 +464,14 @@ lbd_hook:
     mov eax, dword ptr [esp + 0x64]
     movsx ecx, ax
     sar eax, 16
+    cmp eax, 23
+    jge lbd_rows
+    cmp ecx, 168
+    jl lbd_orig
+    cmp ecx, 232
+    jge lbd_orig
+    jmp lbd_port
+lbd_rows:
     cmp eax, 31
     jl lbd_orig
     cmp eax, 46
@@ -349,6 +512,41 @@ lbd_orig:
     mov esi, dword ptr [esp + 0x54]
     mov al, byte ptr [esi + 0x8c]
     jmp 0x10032475
+; click on the port label: the next port with an engine (A is always there)
+lbd_port:
+    pushal
+    call lbq_base
+lbq_base:
+    pop ebp
+    sub ebp, lbq_base
+    mov ebx, dword ptr [esp + 0x78]
+    mov eax, dword ptr [esp + 0x74]
+    call ui_rec
+    test eax, eax
+    je lbq_end
+    mov esi, eax
+    movzx edi, byte ptr [esi + 0xd]
+    mov ecx, 3
+lbq_next:
+    inc edi
+    and edi, 3
+    je lbq_set
+    mov eax, dword ptr [esi]
+    mov edx, edi
+    call port_engine
+    test eax, eax
+    jne lbq_set
+    loop lbq_next
+    jmp lbq_end
+lbq_set:
+    mov eax, edi
+    mov byte ptr [esi + 0xd], al
+    push esi
+    push ebx
+    call redraw_values
+lbq_end:
+    popal
+    jmp 0x100324b3
 ; preview note: left button in the POLYPHONY field, eax = y, ecx = x
 lbd_prev:
     cmp eax, 57
@@ -818,7 +1016,7 @@ dp_blank:
 dp_values:
     movzx eax, byte ptr [ecx + 7]
     and eax, 15
-    mov ecx, dword ptr [ecx]
+    call rec_view
     call part_ptr
     mov edx, eax                             ; edx = part (MSB, LSB, program)
     push edx
@@ -846,7 +1044,7 @@ dp_prg_done:
     push edx
     mov edx, 1
     mov ecx, dword ptr [esp + 0x30]
-    mov ecx, dword ptr [ecx]
+    call rec_view
     call bank_ignored
     pop edx
     je dp_msb
@@ -858,7 +1056,7 @@ dp_msb:
     movzx ebx, byte ptr [edx + 1]
     mov edx, 2
     mov ecx, dword ptr [esp + 0x28]
-    mov ecx, dword ptr [ecx]
+    call rec_view
     call bank_ignored
     je dp_lsb
     mov ebx, -2
@@ -866,6 +1064,30 @@ dp_lsb:
     mov ecx, 344
     call dp_three
 dp_rel:
+    mov ecx, dword ptr [esp + 0x28]
+    xor ebx, ebx
+    test ecx, ecx
+    je dp_lab
+    movzx ebx, byte ptr [ecx + 0xd]
+dp_lab:
+    shl ebx, 6
+    add ebx, 400                             ; the port label: bitmap 106 at x 400 + 64 * port
+    push dword ptr [ebp + 0x10055338]
+    push edi
+    call dword ptr [ebp + 0x10040020]
+    push 0xcc0020
+    push 0
+    push ebx
+    push edi
+    push 16
+    push 64
+    push 3
+    push 168
+    push esi
+    call dword ptr [ebp + 0x10040018]
+    push dword ptr [ebp + 0x1005533c]
+    push edi
+    call dword ptr [ebp + 0x10040020]
     push edi
     call dword ptr [ebp + 0x10040024]
 dp_end:

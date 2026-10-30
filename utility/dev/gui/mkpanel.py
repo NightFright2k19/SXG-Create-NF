@@ -6,7 +6,9 @@
 # model names), PresetButtons_old.bmp (pressed buttons of #35), and ../../bitmaps/Bitmap105.bmp.
 # Outputs (../../bitmaps/):
 #   Panel101.bmp       bitmap 101 for every model: template + the control row of the mockup, value cells blank
-#   Name_<model>.bmp   the model name (title strip x 300-399, y 0-22) pasted into bitmap 101 per model
+#   PortLabels.bmp     the port labels PORT A - PORT D (64 x 16 each, 256 x 16) appended to bitmap 106 at x 400 and drawn into the
+#                      title strip at x 168, y 3 (issue #74, dev/poly/panel.asm): embossed PORT and a black box with the orange
+#                      letter, the group centred on x 200
 #   PanelButtons.bmp   appended to bitmap 106: pressed left / right button (15 x 15 each) and a dash digit (10 x 13)
 from PIL import Image
 from pathlib import Path
@@ -51,4 +53,43 @@ for (x, n), txt in zip(DIGITS, ('01', '078', '001', '040')) :
     for i, c in enumerate(txt) :
         a = mock.crop((x + 10 * i, 32, x + 10 * i + 10, 45)); b = dig.crop((int(c) * 10, 0, int(c) * 10 + 10, 13))
         assert list(a.getdata()) == list(b.getdata()), (x, i)
-print('Panel101.bmp, Name_*.bmp, PanelButtons.bmp written')
+
+# --- issue #74: the port labels (the model name pictures Name_<model>.bmp are made elsewhere and read S-YXG<n>)
+import numpy as np
+FONT = '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'
+def text_mask(text, size, sx, w, h, base, x0 = 1, S = 8) :
+    f = ImageFont.truetype(FONT, int(size * S))
+    m = Image.new('L', (int(w * S / sx), h * S), 0); ImageDraw.Draw(m).text((x0 * S, base * S), text, font = f, fill = 255, anchor = 'ls')
+    m = m.resize((w * S, h * S), Image.LANCZOS)
+    return np.asarray(m.resize((w, h), Image.LANCZOS), dtype = float) / 255
+def emboss(a, bg, dark = 0.70, strength = 0.6) :
+    # white text with a darker edge up and to the left on the strip background bg (rows x cols x 3), like the names
+    a = np.clip(a ** 0.65, 0, 1); sh = np.zeros_like(a); sh[:-1, :-1] = a[1:, 1:]
+    return np.uint8(np.clip((bg * (1 - strength * sh[..., None]) + bg * dark * strength * sh[..., None]) * (1 - a[..., None]) + 255 * a[..., None], 0, 255))
+LABEL = (168, 3, 64, 16)                                             # x, y, width, height in the title strip
+# PORT (embossed like the names), a gap and the letter in a 17 x 15 box (bevel: dark top / left, light bottom / right) in the colours of the
+# polyphony digits (bitmap 105: background (9, 7, 28), orange (255, 106, 0)); PORT + box are centred on the panel (x 200)
+BOX_BG, ORANGE, GAP, BOXW, BOXH = (9, 7, 28), (255, 106, 0), 3, 17, 15
+bg = np.asarray(panel.crop((LABEL[0], LABEL[1], LABEL[0] + LABEL[2], LABEL[1] + LABEL[3])), dtype = float)
+TEXT_W = 38                                                                  # width of PORT in the approved mockup
+mt = text_mask('PORT', 13, 0.9, LABEL[2], LABEL[3], 13.5, x0 = 0); cols = np.where(mt.max(axis = 0) > 0.25)[0]
+size = 13 * TEXT_W / (cols.max() - cols.min() + 1)
+mt = text_mask('PORT', size, 0.9, LABEL[2], LABEL[3], 13.5, x0 = 0); cols = np.where(mt.max(axis = 0) > 0.25)[0]
+tw = int(cols.max() - cols.min() + 1); left = 200 - (tw + GAP + BOXW) // 2 - LABEL[0]            # label-relative x of the group
+mt = text_mask('PORT', size, 0.9, LABEL[2], LABEL[3], 13.5, x0 = left - cols.min())
+bx = left + tw + GAP; by = 1
+gfont = ImageFont.truetype(FONT, 14 * 8)
+labels = Image.new('RGB', (4 * LABEL[2], LABEL[3]))
+for i, port in enumerate('ABCD') :
+    cell = Image.fromarray(emboss(mt, bg, 0.40, 0.95), 'RGB')
+    d = ImageDraw.Draw(cell)
+    d.rectangle((bx, by, bx + BOXW - 1, by + BOXH - 1), fill = BOX_BG)
+    d.line((bx, by, bx + BOXW - 2, by), fill = (0x60, 0x62, 0x6e)); d.line((bx, by, bx, by + BOXH - 2), fill = (0x60, 0x62, 0x6e))
+    d.line((bx, by + BOXH - 1, bx + BOXW - 1, by + BOXH - 1), fill = (0xfa, 0xfa, 0xfc)); d.line((bx + BOXW - 1, by, bx + BOXW - 1, by + BOXH - 1), fill = (0xfa, 0xfa, 0xfc))
+    g = Image.new('L', (40 * 8, 20 * 8), 0); ImageDraw.Draw(g).text((4 * 8, 16 * 8), port, font = gfont, fill = 255, anchor = 'ls', stroke_width = 3, stroke_fill = 255)
+    g = g.resize((40, 20), Image.BOX).point(lambda v : 255 if v >= 128 else 0)                  # crisp, like the digits
+    gb = g.getbbox(); g = g.crop(gb)
+    cell.paste(Image.new('RGB', g.size, ORANGE), (bx + 1 + (BOXW - 2 - g.width) // 2, by + 1 + (BOXH - 2 - g.height) // 2), g)
+    labels.paste(cell, (i * LABEL[2], 0))
+labels.save(B / 'PortLabels.bmp')
+print('Panel101.bmp, PanelButtons.bmp, PortLabels.bmp written')

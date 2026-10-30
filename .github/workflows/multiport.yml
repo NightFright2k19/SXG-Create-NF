@@ -1,0 +1,160 @@
+name: SXG-Create-NF Multiport build
+
+# Experimental builds of the multi-port work (issue #74) from the branch `multiport`: the Windows patcher only,
+# published as pre-releases `multiport-m<N>` (never "Latest", kept apart from the Autobuild releases r<N>).
+# The version is `m<N>`, not `r<N>`, so the patcher's self-update (utility/selfupdate.py) is off in these builds.
+# Templates are made again from source/syxg50.dll and packed, but not committed (that stays with the main Autobuild).
+
+on:
+  push:
+    branches: [multiport]
+    paths:
+      - 'main.py'
+      - 'patcher*.py'
+      - 'utility/**'
+      - '!utility/dev/**'
+      - 'source/syxg50.dll'
+      - '.github/workflows/multiport.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sxg-create-nf-multiport
+  cancel-in-progress: false
+
+jobs:
+  templates:
+    name: Plugin templates
+    runs-on: ubuntu-24.04
+    outputs:
+      number: ${{ steps.version.outputs.number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check Python syntax
+        run: python3 -m py_compile main.py patcher.py patcher_i18n.py utility/*.py
+
+      - name: Next build number
+        id: version
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const releases = await github.paginate(github.rest.repos.listReleases,
+              { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 });
+            let max = 0;
+            for (const r of releases) {
+              const m = r.tag_name.match(/^multiport-m(\d+)$/);
+              if (m) max = Math.max(max, parseInt(m[1], 10));
+            }
+            core.setOutput('number', max + 1);
+
+      - name: Make templates
+        run: python utility/template.py --make --check
+
+      - name: Pack templates (7z, LZMA2, Ultra)
+        run: |
+          set -euo pipefail
+          7z a -t7z -m0=LZMA2 -mx=9 -mfb=273 -md=1536m -ms=on -mf=off -mhc=off -mtm=off -mtc=off -mta=off templates.7z ./templates/*.tpl
+          ls -la templates.7z
+
+      - name: Upload templates
+        uses: actions/upload-artifact@v4
+        with:
+          name: templates
+          path: templates.7z
+          if-no-files-found: error
+
+  build:
+    name: Patcher Windows
+    needs: templates
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download templates
+        uses: actions/download-artifact@v4
+        with:
+          name: templates
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build patcher
+        env:
+          BUILD: m${{ needs.templates.outputs.number }}
+        run: |
+          set -euo pipefail
+          echo "VERSION = '$BUILD'" > patcher_version.py
+          HIDDEN=""
+          for f in utility/*.py; do HIDDEN="$HIDDEN --hidden-import $(basename "$f" .py)"; done
+          python -m PyInstaller --onefile --windowed --noconfirm --clean --icon utility/icons/patcher.ico \
+            --name SXG-Create-NF-Patcher \
+            --paths utility --paths . \
+            --add-data "utility/bitmaps:bitmaps" \
+            --add-data "utility/icons:icons" \
+            --add-data "templates.7z:." \
+            --hidden-import main --hidden-import patcher_i18n --hidden-import patcher_version $HIDDEN \
+            patcher.py
+          ls -la dist
+
+      - name: Self test and package
+        env:
+          NAME: SXG-Create-NF-Patcher-m${{ needs.templates.outputs.number }}-windows
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          ./dist/SXG-Create-NF-Patcher.exe --selftest
+          cp dist/SXG-Create-NF-Patcher.exe "upload/$NAME.exe"
+          ls -la upload
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: patcher-windows
+          path: upload/*
+          if-no-files-found: error
+
+  release:
+    name: Create pre-release
+    needs: [templates, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download patcher
+        uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Create GitHub pre-release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: multiport-m${{ needs.templates.outputs.number }}
+          commit: ${{ github.sha }}
+          name: Multiport m${{ needs.templates.outputs.number }} (experimental)
+          prerelease: true
+          makeLatest: false
+          artifacts: assets/*
+          artifactErrorsFailBuild: true
+          body: |
+            **Experimental** build of the multi-port work for issue #74 (port select `F5 nn`, ports A-D), Windows only, for testing. The patcher does not update itself. Not part of the normal Autobuild releases.
+
+            Same use as the normal patcher: put it next to your ROM files, start it, click **Patch**. Details: [Ports B-D](https://github.com/NightFright2k19/SXG-Create-NF/blob/multiport/docs/gui.md#ports-b-d-f5-nn).
