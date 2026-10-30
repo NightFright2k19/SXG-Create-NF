@@ -140,7 +140,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install PyInstaller
-        run: python -m pip install --upgrade pip pyinstaller
+        run: python -m pip install --upgrade pip pyinstaller certifi
 
       - name: Build patcher
         env:
@@ -161,7 +161,7 @@ jobs:
             --add-data "utility/bitmaps:bitmaps" \
             --add-data "utility/icons:icons" \
             --add-data "templates.7z:." \
-            --hidden-import main --hidden-import patcher_i18n --hidden-import patcher_version $HIDDEN \
+            --hidden-import main --hidden-import patcher_i18n --hidden-import patcher_version --hidden-import certifi $HIDDEN \
             patcher.py
           ls -la dist
 
@@ -255,3 +255,30 @@ jobs:
               console.log(`Removing the pre-release label from ${release.tag_name}.`);
               await github.rest.repos.updateRelease({ owner, repo, release_id: release.id, prerelease: false, make_latest: 'false' });
             }
+
+  history:
+    name: Version history
+    needs: [version, release]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Number the "next" rows in docs/versions.md
+        env:
+          REVISION: ${{ needs.version.outputs.revision }}
+        run: |
+          set -euo pipefail
+          # Rows added since the last release are written as "| next | | ... |"; they get this release's number and date.
+          if grep -q '^| next | |' docs/versions.md; then
+            sed -i "s/^| next | |/| r${REVISION} | $(date -u +%F) |/" docs/versions.md
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add docs/versions.md
+            git commit -m "Version history: r${REVISION}" -m 'Made by the Autobuild workflow.'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi

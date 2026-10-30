@@ -12,7 +12,7 @@ Apply them proactively, without needing to be reminded.
 - For every change, check whether `README.md`, the matching file in `docs/` (technical details) and/or the Autobuild Release Notes
   need to be updated. The release notes are the `body` of the "Create GitHub
   release" step in `.github/workflows/build.yml`.
-- Add a row to `docs/versions.md` (version history) for every change that ends up in a release; plain language, one line, newest on top.
+- Add a row to `docs/versions.md` (version history) for every change that ends up in a release; plain language, one line, newest on top. New rows start with `next` in the Release column and an empty Date column (`| next | | ... |`); the Autobuild workflow replaces them with the release number and date after the release. Never write `r<N>` by hand.
 - Required documentation changes belong in the same change (the same PR).
 - Never skip a documentation update without checking first. State the result of
   the check (updated, or not needed and why) in the PR.
@@ -72,6 +72,7 @@ SXG-Create-NF converts the ROMs of Yamaha MU tone generators (MU50 … MU1000) i
 - Plugins start in XG / XGLite with pass-through for all resets and SysEx (like the original S-YXG50). **Send Reset** buttons (GM / GS / XG / GM2; S-YXG2006LE: parameter GM / GS / XGLite / GM2) send a reset once; nothing is sent at load or saved (#37).
 - Polyphony default 256 (MU plugins: second engine; S-YXG2006LE: up to 8 engines of 32 voices, notes counted by the plugin, sustain-held notes count).
 - ini: keys looked up in `[Config]`, `[SYXG50]`, `[<plugin id>]` (e.g. `[SYXG100]`); table key `VoiceTable` or `SoftSynth`; the converter writes `[<plugin id>]` + `VoiceTable` (#36). The S-YXG2006LE reads no ini.
+- Ports (#74): the first `F5 02..04` makes one engine per port (128 voices); channel messages and part SysEx go to the port `F5` selected (GS `40 1x` / `41` to the current port, `50 1x` / `51` to its partner); a click on the PORT label switches the panel (view port = record byte `+0xD`). **The internal plugin names stay `S-YXGM<n>`** (FSMP recognises F5-safe plugins by them); the name picture on the panel reads `S-YXG<n>`.
 - Panel (#42): 400 x 114, control row `CHN ◀ 01 ▶  PRG ◀ 001 ▶  MSB ◀ 000 ▶  LSB ◀ 000 ▶` under the title strip (ignored bank values show `---`); bitmap 101 = `Panel101.bmp` + `Name_<model>.bmp`, made by `utility/dev/gui/mkpanel.py`.
 - Send Reset buttons: MT-32 (Falcosoft's GS MT-32 sequence, `utility/dev/gui/mt32.syx`) / GM / GS / XG / GM2 (#37, #41).
 - Preview note (#43, #46): holding the left mouse button in the POLYPHONY field (x 245-298, y 57-103) plays a note on the CHN channel, wheel = pitch (C1-G9, default C4); it goes to engine A only.

@@ -6,7 +6,10 @@ Releases before r14 were not kept. Releases that only touched the build or the d
 
 | Release | Date | Changes |
 |---|---|---|
-| next | | Patcher: link "What's new?" at the bottom of the window; version history added. |
+| next | | Ports A-D: the port select command `F5 nn` plays up to four ports of 16 channels (own engine per port, SysEx routing incl. GS modes, port selector in the panel); the plugins are called `S-YXGM<n>` internally (#74). |
+| r54 | 2026-10-28 | Patcher: the update check no longer fails with "certificate verify failed" when the system lacks a GitHub root certificate; the Mozilla certificates (certifi) are used as well (#84). |
+| r54 | 2026-10-28 | GS mode: PRG digits turn red for bank MSB 126 with a program from 65 up, which has no voice (#73). |
+| r54 | 2026-10-28 | Patcher: link "What's new?" at the bottom of the window; version history added. |
 | r50 | 2026-10-21 | Build only: workflow cleanup, no change to the patcher or the plugins. |
 | r49 | 2026-10-21 | The port select command `F5 nn` is now ignored instead of switching the instance's channels (#74). |
 | r48 | 2026-10-21 | PRG digits turn red when a channel has no valid instrument (#73). |

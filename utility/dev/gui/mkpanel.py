@@ -6,8 +6,6 @@
 # model names), PresetButtons_old.bmp (pressed buttons of #35), and ../../bitmaps/Bitmap105.bmp.
 # Outputs (../../bitmaps/):
 #   Panel101.bmp       bitmap 101 for every model: template + the control row of the mockup, value cells blank
-#   Name_<model>.bmp   the model name S-YXGM<n> (title strip x 280-399, y 0-22, 120 x 23) pasted into bitmap 101 per model: the
-#                      100 x 23 names of the earlier versions with an M drawn between G and the number (issue #74)
 #   PortLabels.bmp     the port labels PORT A - PORT D (64 x 16 each, 256 x 16) appended to bitmap 106 at x 400 and drawn into the
 #                      title strip at x 168, y 3 (issue #74, dev/poly/panel.asm): embossed PORT and a black box with the orange
 #                      letter, the group centred on x 200
@@ -56,8 +54,7 @@ for (x, n), txt in zip(DIGITS, ('01', '078', '001', '040')) :
         a = mock.crop((x + 10 * i, 32, x + 10 * i + 10, 45)); b = dig.crop((int(c) * 10, 0, int(c) * 10 + 10, 13))
         assert list(a.getdata()) == list(b.getdata()), (x, i)
 
-# --- issue #74: the multi-port plugins are named S-YXGM<n>: an M between G and the number (the earlier 100 x 23 names move 11 pixels
-# to the left, the picture grows to 120 x 23 so the number stays where it was), and the port labels
+# --- issue #74: the port labels (the model name pictures Name_<model>.bmp are made elsewhere and read S-YXG<n>)
 import numpy as np
 FONT = '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'
 def text_mask(text, size, sx, w, h, base, x0 = 1, S = 8) :
@@ -69,22 +66,6 @@ def emboss(a, bg, dark = 0.70, strength = 0.6) :
     # white text with a darker edge up and to the left on the strip background bg (rows x cols x 3), like the names
     a = np.clip(a ** 0.65, 0, 1); sh = np.zeros_like(a); sh[:-1, :-1] = a[1:, 1:]
     return np.uint8(np.clip((bg * (1 - strength * sh[..., None]) + bg * dark * strength * sh[..., None]) * (1 - a[..., None]) + 255 * a[..., None], 0, 255))
-def with_m(old, prefix = 46, mw = 11, shift = 20) :
-    a = np.asarray(old.convert('L'), dtype = int)[3:20]
-    c0 = int(np.where((abs(a - 178) > 12).any(axis = 0))[0][0]); pend = c0 + prefix     # the prefix S-YXG is 46 pixels wide
-    new = Image.new('RGB', (old.width + shift, old.height))
-    for y in range(old.height) :
-        for x in range(new.width) : new.putpixel((x, y), old.getpixel((0, y)))
-    new.paste(old.crop((pend, 0, old.width, old.height)), (pend + shift, 0))
-    new.paste(old.crop((c0, 0, pend, old.height)), (c0 + shift - mw, 0))
-    m = text_mask('M', 17, 0.85, 20, old.height, 18.5); cols = np.where(m.max(axis = 0) > 0.3)[0]
-    bg = np.array([[old.getpixel((0, y))] * 20 for y in range(old.height)], dtype = float)
-    g = Image.fromarray(emboss(m, bg), 'RGB').crop((cols.min() - 1, 0, cols.min() - 1 + mw, old.height))
-    new.paste(g, (pend + shift - mw, 0))
-    return new
-for model in ('MU50', 'MU80', 'MU90', 'MU100', 'MU128', 'MU1000', 'MU2000') :
-    old = Image.open(B / f'Name_{model}.bmp').convert('RGB')
-    if old.width == 100 : with_m(old).save(B / f'Name_{model}.bmp')        # the names already carry the M after the first run
 LABEL = (168, 3, 64, 16)                                             # x, y, width, height in the title strip
 # PORT (embossed like the names), a gap and the letter in a 17 x 15 box (bevel: dark top / left, light bottom / right) in the colours of the
 # polyphony digits (bitmap 105: background (9, 7, 28), orange (255, 106, 0)); PORT + box are centred on the panel (x 200)
@@ -111,4 +92,4 @@ for i, port in enumerate('ABCD') :
     cell.paste(Image.new('RGB', g.size, ORANGE), (bx + 1 + (BOXW - 2 - g.width) // 2, by + 1 + (BOXH - 2 - g.height) // 2), g)
     labels.paste(cell, (i * LABEL[2], 0))
 labels.save(B / 'PortLabels.bmp')
-print('Panel101.bmp, Name_*.bmp, PanelButtons.bmp, PortLabels.bmp written')
+print('Panel101.bmp, PanelButtons.bmp, PortLabels.bmp written')

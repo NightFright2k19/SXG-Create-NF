@@ -90,6 +90,7 @@ All MU plugins have a control row under the title strip (panel 400 x 114):
 - **MSB ◀ 000 ▶** and **LSB ◀ 000 ▶** step the channel's bank select; a step sends the bank select and a program change, so the new bank sounds at once. A bank value the engine ignores in its current mode shows **---**.
 - **Colours:** the PRG digits of a **drum part** are dimmed grey; **red** PRG digits mean that the channel's bank / program combination has no instrument and stays silent.
 - **Operation:** click for a single step, hold to repeat, or use the mouse wheel over a control. Each plugin instance has its own row. Nothing of it is saved.
+- **Port (more than 16 channels):** a host that sends the port select `F5 nn` (e.g. Falcosoft MIDI Player with 32- or 64-channel files) gets up to four ports A-D of 16 channels. Click the **PORT** label in the title strip to switch the panel (meters, polyphony, CHN / PRG / MSB / LSB, preview note) to the next port that is in use. Details: [Ports B-D](docs/gui.md#ports-b-d-f5-nn).
 - **Preview note:** hold the left mouse button in the **POLYPHONY** field to play a note on the selected channel; the mouse wheel there changes the pitch (default C4).
 
 ![Panel with the control row CHN / PRG / MSB / LSB](utility/dev/gui/panel_preset.png)
