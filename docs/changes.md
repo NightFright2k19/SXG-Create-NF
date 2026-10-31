@@ -33,6 +33,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **Element HPF with a static pitch EG:** where all pitch EG levels are equal (a constant transposition, e.g. Parasite: coarse tune -24, pitch EG +24), the cutoff of the HPF copies follows the pitch that is actually played. Before, it was set for the coarse-tuned key only, two octaves too high for Parasite (-13 dB at C4).
 - **Voices with 3 or 4 elements** (22 MU1000 voices): folded into the two elements the DLL can play instead of dropping elements 3 and 4 (stereo pairs, key splits, layers; `elemreduce.py`), incl. per-member wave start offsets and baked amp EGs for percussive key-split members.
 - **Rising decay 2** (MU80 and later): decay 1 level raised to 64 where decay 2 rises again, because the DLL ends notes below that level (Lite Org, WireLead, synecho2, Bounce, Ana Echo).
+- **Wave fine tune** (MU128 / MU1000, issue #90): wavedata byte `+8` (low 7 bits, 1/1024 octave) is added to the wave tuning; 71 waves, e.g. the Native flute above F5 was up to 31 cent out of tune.
 
 ## Drum keys
 
