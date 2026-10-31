@@ -10,7 +10,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **MU2000** (issue #53): converted to `syxg2000.dll` (S-YXG2000) when no MU1000 set is there, from the MAME-style h/l pair or from the `mu2000_flash.bin` of tarboh's S-MU2000 ROM folder. It has the same sound data as the MU1000, so both plugins sound the same; with both sets present only the MU1000 is converted (see [Supported models](../README.md#supported-models-and-rom-sets)).
 - **S-YXG2006LE** (new): Yamaha's own engine (`SGP2.OLD` / `SGP2.DLL`) is patched and its tables are used unconverted, see [S-YXG2006LE](../README.md#s-yxg2006le).
 - **MU Basic voice map** for MU100 / MU128 / MU1000: the MU90-compatible map is built into the same table as the native one and can be switched in the Setup dialog (MU Native is the default). The earlier `--mu-basic` switch was removed.
-- **MSB 48 banks with an LSB** (MU128 / MU1000, issue #89): the 12 further banks of MSB 48 (e.g. 48/8 Ping, 48/48 RandmRun) are converted and selected by a patch of the voice lookup; the original S-YXG50 table has only one MSB 48 bank.
+- **MSB 48 banks with an LSB** (MU100 / MU128 / MU1000, issue #89): the 12 further banks of MSB 48 (e.g. 48/8 Ping, 48/48 RandmRun) are converted and selected by a patch of the voice lookup; the original S-YXG50 table has only one MSB 48 bank.
 
 ## Table formats
 
@@ -34,7 +34,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **Element HPF with a static pitch EG:** where all pitch EG levels are equal (a constant transposition, e.g. Parasite: coarse tune -24, pitch EG +24), the cutoff of the HPF copies follows the pitch that is actually played. Before, it was set for the coarse-tuned key only, two octaves too high for Parasite (-13 dB at C4).
 - **Voices with 3 or 4 elements** (22 MU1000 voices): folded into the two elements the DLL can play instead of dropping elements 3 and 4 (stereo pairs, key splits, layers; `elemreduce.py`), incl. per-member wave start offsets and baked amp EGs for percussive key-split members.
 - **Rising decay 2** (MU80 and later): decay 1 level raised to 64 where decay 2 rises again, because the DLL ends notes below that level (Lite Org, WireLead, synecho2, Bounce, Ana Echo).
-- **Wave fine tune** (MU128 / MU1000, issue #90): wavedata byte `+8` (low 7 bits, 1/1024 octave) is added to the wave tuning; 71 waves, e.g. the Native flute above F5 was up to 31 cent out of tune.
+- **Wave fine tune** (MU100 / MU128 / MU1000, issue #90): wavedata byte `+8` (low 7 bits, 1/1024 octave) is added to the wave tuning; 71 waves, e.g. the Native flute above F5 was up to 31 cent out of tune.
 
 ## Drum keys
 

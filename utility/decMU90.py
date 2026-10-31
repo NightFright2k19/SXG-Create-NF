@@ -143,6 +143,8 @@ def Make_Reversed(sample : Sample) -> tuple[Sample, int, int] :
     return sample, sample.offset_negative, sample.offset_positive
 
 
+WAVE_FINE_CENT = 1200 / 1024    # wave fine tune unit, see ProcessWaveData
+
 @dataclass
 class MU90(MUdecoder) : 
 
@@ -276,6 +278,23 @@ class MU90(MUdecoder) :
             waves.append(wave)
 
             if key_max >= 0x7F : break
+
+        # * wave fine tune (issue #90): the low 7 bits of byte +8 (bit 7 = backwards) are a signed fine pitch in
+        #   1/1024 octave (1.171875 cent) that S-YXG50's wave entry has no field for. Used by 25 MU100 and 71 MU128 /
+        #   MU1000 waves (e.g. Flute # F6 and up: -27 = 32 cent), never by the MU90 (checked: all 1,595 waves 0).
+        #   Measured on the S-MU2000 against the emulated syxg50: 1.17 cent per unit; 1 unit of tune_cent is 1 cent
+        #   (signed, higher = higher pitch, linear up to +-127). Folded into tune_cent, a carry goes into tune_note
+        #   (1 semitone = 100 cent, a lower tune_note is a higher pitch).
+        for wave in waves :
+            fine = data[wave.address_src + 8] & 0x7F
+            if fine >= 0x40 : fine -= 0x80
+            if fine == 0 : continue
+            cent = (wave.tune_cent - 256 if wave.tune_cent >= 128 else wave.tune_cent) + round(fine * WAVE_FINE_CENT)
+            note = wave.tune_note
+            while cent > 127 : cent -= 100; note -= 1
+            while cent < -128 : cent += 100; note += 1
+            assert 0 <= note <= 0xFF
+            wave.tune_note, wave.tune_cent = note, cent & 0xFF
 
         return (WaveBank(address, waves), samples)
 

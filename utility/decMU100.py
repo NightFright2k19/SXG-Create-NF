@@ -21,7 +21,8 @@ from decMU90 import MU90, MU90_Waverom, Make_Reversed, Apply_Drum_HPF, Apply_Ele
 #       0: MSB table (0 -> XG, 48 -> MSB 48 bank, 64 -> SFX, 0x46 = silent)
 #       1: XG LSB, MU Basic     3: XG LSB, MU100 Native (base bank 0x55)
 #       2: MSB 48 LSB table     9: GS variations (MSB)
-#   S-YXG50 can only address MSB 48 as one bank (LSB 0).
+#   S-YXG50 can only address MSB 48 as one bank (LSB 0); the other 12 banks (LSB 8 ... 120) are read as Bank.MSB48
+#   and reached through the voice map appendix (issue #89, makeSYXG50 / dllpatch.SYXG50_MSB48).
 # - drum program maps: 4 rows (GS, XG basic, XG native, SFX); XG native uses a new
 #   Standard kit (kit 0x2E).
 
@@ -60,7 +61,7 @@ NATIVE_XG_BASE = 0x55
 @dataclass
 class MU100(MU90) :
 
-    bankorder_voice : list[Bank] = field(default_factory=lambda : [Bank.XG, Bank.SFX, Bank.GS] )
+    bankorder_voice : list[Bank] = field(default_factory=lambda : [Bank.XG, Bank.SFX, Bank.GS, Bank.MSB48] )
     bankorder_drums : list[Bank] = field(default_factory=lambda : [Bank.GS_DRUMS, Bank.XG_DRUMS, Bank.SFX_DRUMS] )
 
     @classmethod
@@ -88,6 +89,7 @@ class MU100(MU90) :
             if v == 0x00 and not basic : msb[i] = NATIVE_XG_BASE   # MSB 0 / 96-111 / 126 / 127 -> native base bank
         data += msb
         data += row(9)
+        data += row(2)                      # MSB 48 LSB: 13 banks (issue #89), same in both maps
         banks_end = len(data)
 
         return cls(
