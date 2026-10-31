@@ -180,6 +180,29 @@ class MU1000(MU90) :
         )
 
 
+    # * wave fine tune (issue #90): the low 7 bits of wave byte +8 (bit 7 = backwards, see decMU90) are a signed
+    #   fine pitch in 1/1024 octave (1.171875 cent) that the MU90 format does not have in S-YXG50's tune_cent.
+    #   71 of the 2,901 MU1000 waves use it (e.g. Flute # F6 and up: -27 = 32 cent). Measured on S-MU2000 against
+    #   the emulated syxg50: error = -1.17 cent per unit, and 1 unit of tune_cent (signed, 1 cent, higher = higher pitch)
+    #   is linear up to +-127 cent. The tune is folded into tune_cent, a carry goes into tune_note (1 semitone = 100 cent,
+    #   a lower tune_note is a higher pitch).
+    WAVE_FINE_CENT = 1200 / 1024
+
+    @override
+    def ProcessWaveData(self, data : bytes | bytearray, address : int) -> tuple[WaveBank, dict[int, Sample]] :
+        wavebank, samples = super().ProcessWaveData(data, address)
+        for wave in wavebank.waves :
+            fine = data[wave.address_src + 8] & 0x7F
+            if fine >= 0x40 : fine -= 0x80
+            if fine == 0 : continue
+            cent = (wave.tune_cent - 256 if wave.tune_cent >= 128 else wave.tune_cent) + round(fine * self.WAVE_FINE_CENT)
+            note = wave.tune_note
+            while cent > 127 : cent -= 100; note -= 1
+            while cent < -128 : cent += 100; note += 1
+            assert 0 <= note <= 0xFF
+            wave.tune_note, wave.tune_cent = note, cent & 0xFF
+        return wavebank, samples
+
     @override
     def ProcessVoice(self, data : bytes | bytearray, address: int) -> tuple[Voice, dict[str | int, WaveBank], dict[int, Sample]] :
         HEADER_LENGTH = 14

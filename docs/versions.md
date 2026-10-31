@@ -6,6 +6,7 @@ Releases before r14 were not kept. Releases that only touched the build or the d
 
 | Release | Date | Changes |
 |---|---|---|
+| next | | MU1000 / MU128: the fine tune of waves (wavedata byte `+8`, 1/1024 octave) is now converted, so the 71 waves that use it play in tune; e.g. Flute # above F5 was up to 31 cents off, Native voices only (#90). |
 | r55 | 2026-10-30 | Ports A-D: the port select command `F5 nn` plays up to four ports of 16 channels (own engine per port, SysEx routing incl. GS modes, port selector in the panel); the plugins are called `S-YXGM<n>` internally (#74). |
 | r54 | 2026-10-28 | Patcher: the update check no longer fails with "certificate verify failed" when the system lacks a GitHub root certificate; the Mozilla certificates (certifi) are used as well (#84). |
 | r54 | 2026-10-28 | GS mode: PRG digits turn red for bank MSB 126 with a program from 65 up, which has no voice (#73). |
