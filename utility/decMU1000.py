@@ -132,7 +132,7 @@ DRUM_LEVEL_FACTOR = 10 ** (DRUM_LEVEL_GAIN_DB / 40)
 @dataclass
 class MU1000(MU90) :
 
-    bankorder_voice : list[Bank] = field(default_factory=lambda : [Bank.XG, Bank.SFX, Bank.GS, Bank.GM2] )
+    bankorder_voice : list[Bank] = field(default_factory=lambda : [Bank.XG, Bank.SFX, Bank.GS, Bank.GM2, Bank.MSB48] )
     bankorder_drums : list[Bank] = field(default_factory=lambda : [Bank.GS_DRUMS, Bank.XG_DRUMS, Bank.SFX_DRUMS] )
 
     @classmethod
@@ -160,6 +160,7 @@ class MU1000(MU90) :
         data += msb
         data += row(_GSROW, 0)                      # GS
         data += row(_DRUMPRG, 6 if basic else 7)    # GM2 LSB: basic or native
+        data += row(_BANKROWS, 3)                   # MSB 48 LSB: 13 banks (issue #89), same in both maps
         banks_end = len(data)
 
         return cls(

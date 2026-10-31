@@ -6,6 +6,7 @@ Releases before r14 were not kept. Releases that only touched the build or the d
 
 | Release | Date | Changes |
 |---|---|---|
+| next | | MU128 / MU1000: the MSB 48 banks with an LSB (48/8 Ping, 48/16 CheapOsc, 48/48 RandmRun and so on, 12 more banks) now play; before, every LSB played bank 48/0 and most presets were silent (#89). The MU1000 wave file grows by 2.7 MB. |
 | r56 | 2026-10-31 | MU1000 / MU128: the fine tune of waves (wavedata byte `+8`, 1/1024 octave) is now converted, so the 71 waves that use it play in tune; e.g. Flute # above F5 was up to 31 cents off, Native voices only (#90). |
 | r55 | 2026-10-30 | Ports A-D: the port select command `F5 nn` plays up to four ports of 16 channels (own engine per port, SysEx routing incl. GS modes, port selector in the panel); the plugins are called `S-YXGM<n>` internally (#74). |
 | r54 | 2026-10-28 | Patcher: the update check no longer fails with "certificate verify failed" when the system lacks a GitHub root certificate; the Mozilla certificates (certifi) are used as well (#84). |
