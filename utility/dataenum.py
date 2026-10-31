@@ -20,6 +20,7 @@ class Bank(StrEnum) :
     XG_MODERN = auto()
     SFX = auto()
     GM2 = auto() # msb 121
+    MSB48 = auto() # msb 48, LSB selects the bank (MU128 / MU1000 / MU2000, issue #89)
     UNKNOWN = auto()
 
     GS_DRUMS = auto()
@@ -44,6 +45,7 @@ def BankToLSBMSB(bank : Bank, byte : int) -> tuple[int,int] :
         case Bank.SFX : return (0, byte)
         case Bank.XG :  return (byte, 0)
         case Bank.GM2 : return (byte, 121)
+        case Bank.MSB48 : return (byte, 48)
         case _ : raise ValueError()
 
 def IsDrumBank(b : Bank) -> bool :  

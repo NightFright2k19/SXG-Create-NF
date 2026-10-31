@@ -126,10 +126,11 @@ def Rising_Decay2_Fix(data) :
 #   program) gives. The table holds the voices and banks of both maps, the bank map / drum program rows of
 #   the native map in the normal place, and those of the second map in an appendix behind the wave data,
 #   which the patched DLL swaps in (dllpatch.SYXG50_VOICEMAP). The DLL ignores data behind the last section.
-#   Appendix (VOICE_MAP_APPENDIX bytes): +0 'MAP2', +4 default map (0 = native, 1 = second), +5..+7 0,
-#   +8 eight alternate rows of 128 bytes: drum programs GS / XG / SFX / GM2, voice banks GS / MSB / XG / GM2
+#   Appendix (VOICE_MAP_APPENDIX bytes): +0 'MAP2', +4 default map (0 = native, 1 = second), +5 1 = the MSB 48 row
+#   is there (issue #89), +6..+7 0, +8 eight alternate rows of 128 bytes: drum programs GS / XG / SFX / GM2,
+#   voice banks GS / MSB / XG / GM2, then +0x408 the MSB 48 row (bank index per LSB, 0xFF = none; same in both maps)
 VOICE_MAP_MAGIC = b'MAP2'
-VOICE_MAP_APPENDIX = 8 + 8 * 128
+VOICE_MAP_APPENDIX = 8 + 9 * 128
 
 def Merge_Alt_Table(table : Table, alt : Table) :
     # voices, wavebanks, samples, drum voices and kits are keyed by their ROM address, the banks of the second
@@ -154,7 +155,8 @@ def Merge_Alt_Table(table : Table, alt : Table) :
     print(f'voice maps: the second map adds {added} banks and {added_voices} voices')
 
 def Voice_Map_Appendix(alt : Table, table : Table, GSbanks : dict, XGbanks : dict, bank_map_order : list,
-                       drum_bank_locations : dict, voice_bankmaps : bytes, drumbank_prgmaps : bytes, alt_default : bool) -> bytes :
+                       drum_bank_locations : dict, voice_bankmaps : bytes, drumbank_prgmaps : bytes, alt_default : bool,
+                       msb48_row : bytes = bytes([0xFF]) * 128) -> bytes :
     # rows of the second map, with the bank and kit indices of this table
     # voice bank rows: same filling rule as the main rows (aliases included), GS / XG side kept apart
     rows = bytearray(0xFF for _ in range(128)) + bytearray(len(voice_bankmaps) - 128)
@@ -185,7 +187,8 @@ def Voice_Map_Appendix(alt : Table, table : Table, GSbanks : dict, XGbanks : dic
     same_d = sum(1 for a, b in zip(drows, drumbank_prgmaps) if a != b)
     print(f'voice maps: second map differs in {same_v} bank map and {same_d} drum program entries'
           f' (default: {"second" if alt_default else "native"} map)')
-    out = bytearray(VOICE_MAP_MAGIC) + bytes([1 if alt_default else 0, 0, 0, 0]) + drows + rows
+    has48 = any(b != 0xFF for b in msb48_row)
+    out = bytearray(VOICE_MAP_MAGIC) + bytes([1 if alt_default else 0, 1 if has48 else 0, 0, 0]) + drows + rows + bytes(msb48_row)
     assert len(out) == VOICE_MAP_APPENDIX
     return bytes(out)
 
@@ -729,13 +732,20 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
 
     bank_map_order : list[Bank] = decSYXG50.SYXG50().bankorder_voice
 
+    # MSB 48 with an LSB (issue #89): S-YXG50 has no row for it, the bank index per LSB goes into one more
+    # appendix row that the patched DLL reads (dllpatch.SYXG50_MSB48)
+    msb48_row = bytearray(0xFF for _ in range(128))
+
     for voicebank in voicebanks_expanded :
 
-        assert voicebank.bank in bank_map_order 
+        for bank, byte in [(voicebank.bank, voicebank.relevant_byte())] + list(voicebank.aliases) : 
+            if bank == Bank.MSB48 and voicebank.bank != Bank.GS : msb48_row[byte] = voicebank.index
+        assert voicebank.bank == Bank.MSB48 or voicebank.bank in bank_map_order 
         if getattr(voicebank, 'alt', False) : continue      # second voice map only: rows in the appendix
 
-        addr = voicebank.relevant_byte() + (128 * bank_map_order.index(voicebank.bank))
-        voice_bankmaps[addr] = voicebank.index
+        if voicebank.bank != Bank.MSB48 : 
+            addr = voicebank.relevant_byte() + (128 * bank_map_order.index(voicebank.bank))
+            voice_bankmaps[addr] = voicebank.index
 
         # handle dupes (aliases)
         for bank, byte in voicebank.aliases : 
@@ -743,6 +753,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
             if (voicebank.bank == Bank.GS and bank != Bank.GS) or (voicebank.bank != Bank.GS and bank == Bank.GS) :
                 continue
 
+            if bank == Bank.MSB48 : continue
             addr = byte + (128 * bank_map_order.index(bank))
             voice_bankmaps[addr] = voicebank.index
 
@@ -915,7 +926,7 @@ def MakeSYXG50(table : Table, in_waves : bytes, tablecnv : TableConverter, new_t
 
     if alt_table is not None : 
         appendix = bytearray(Voice_Map_Appendix(alt_table, table, GSbanks, XGbanks, bank_map_order,
-                                                drum_bank_locations, voice_bankmaps, drumbank_prgmaps, alt_default))
+                                                drum_bank_locations, voice_bankmaps, drumbank_prgmaps, alt_default, msb48_row))
         # the GM2 rows are the same in both voice maps: the drum program row always, the voice bank row only where the GM2 banks are built
         # here (models with GM2 voices of their own, MU128 / MU1000, keep their own row)
         gm2_rows = [8 + 128 * drum_bank_locations[Bank.GM2_DRUMS]]

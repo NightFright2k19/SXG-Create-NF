@@ -243,6 +243,20 @@ SYXG50_VMAPNOW = [
               '1b 04 10 43 83 fb 10 72 de 61 8a 44 24 08 3c 10 e9 eb 7a fc ff'),
 ]
 VMAPNOW_CAVE_END = 0x3FA7B
+# * MSB 48 with an LSB (issue #89): find_voice (0x10004540) takes the bank of an XG bank select from the MSB row and
+#   knows only one bank for MSB 48. The hook behind the MSB row lookup (0x10004589) reads, for MSB 48, the bank from the
+#   LSB: row 0x408 of the voice map appendix ('MAP2' block, found by the voice map cave at 0x10056DC4; byte +5 = 1 says the
+#   row is there, 0xFF = no bank for that LSB, then the MSB row decides as before). The row is the same in both voice maps.
+#   Assembled by hand with keystone, position independent (call/pop), eax / edx / ebp restored where they matter.
+SYXG50_MSB48 = [
+    (0x04589, '8a 04 02 3c 01 75 44',
+              'e9 ed b4 03 00 90 90'),
+    (0x3FA7B, ' '.join(['00'] * 83),
+              '8a 04 02 80 fa 30 75 3e 55 e8 00 00 00 00 5d 81 ed 89 fa 03 10 80 bd c1 6d 05 10 01 75 27 8b 95 c4 6d 05 10 80 7a '
+              '05 01 75 1b 50 0f b6 44 24 1c 8a 84 02 08 04 00 00 3c ff 74 09 83 c4 04 5d e9 15 4b fc ff 58 5d 3c 01 0f 85 0b 4b '
+              'fc ff e9 c2 4a fc ff'),
+]
+MSB48_CAVE_END = 0x3FACE
 VMAP_DATA_END = 0x56E40
 VMAP_CONTROL_ID = 0x420
 VMAP_CONTROL_TEXT = 'MU Basic voice map'
@@ -274,6 +288,8 @@ def apply_voicemap(data : bytearray) :
     text_virtual_size(data, VMAP_CAVE_END)
     apply(data, SYXG50_VMAPNOW, 'voice map switch: immediate (re-selects the programs of all parts)')
     text_virtual_size(data, VMAPNOW_CAVE_END)
+    apply(data, SYXG50_MSB48, 'MSB 48 with LSB: bank per LSB from the voice map appendix (MU128 / MU1000)')
+    text_virtual_size(data, MSB48_CAVE_END)
     data_virtual_size(data, VMAP_DATA_END)
     entry = resource_entries(data, RT_DIALOG).get(111)
     if entry is None : raise DllPatchError('dialog 111 not found in the DLL')

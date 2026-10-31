@@ -10,6 +10,7 @@ This fork extends [Soundshock's SXG-Create](https://github.com/Soundshock/SXG-Cr
 - **MU2000** (issue #53): converted to `syxg2000.dll` (S-YXG2000) when no MU1000 set is there, from the MAME-style h/l pair or from the `mu2000_flash.bin` of tarboh's S-MU2000 ROM folder. It has the same sound data as the MU1000, so both plugins sound the same; with both sets present only the MU1000 is converted (see [Supported models](../README.md#supported-models-and-rom-sets)).
 - **S-YXG2006LE** (new): Yamaha's own engine (`SGP2.OLD` / `SGP2.DLL`) is patched and its tables are used unconverted, see [S-YXG2006LE](../README.md#s-yxg2006le).
 - **MU Basic voice map** for MU100 / MU128 / MU1000: the MU90-compatible map is built into the same table as the native one and can be switched in the Setup dialog (MU Native is the default). The earlier `--mu-basic` switch was removed.
+- **MSB 48 banks with an LSB** (MU128 / MU1000, issue #89): the 12 further banks of MSB 48 (e.g. 48/8 Ping, 48/48 RandmRun) are converted and selected by a patch of the voice lookup; the original S-YXG50 table has only one MSB 48 bank.
 
 ## Table formats
 
