@@ -46,6 +46,12 @@ n2000.save(B / 'Name_MU2000.bmp')
 # set on the MU50 name picture so that the text ends where the MU50's does (digit pitch 8 pixels)
 m50 = Image.open(B / 'Name_MU50.bmp').convert('RGB'); m100 = Image.open(B / 'Name_MU100.bmp').convert('RGB')
 n15 = m50.copy(); n15.paste(m100.crop((21, 0, 74, 23)), (29, 0)); n15.paste(m50.crop((74, 0, 82, 23)), (83, 0))
+# what is left of the MU50's "0" right of the "5" (x 90-98, and the shadow between the top bar and the bowl at x 90, rows 9-11) is
+# painted over with the row's background (x 96)
+q = n15.load()
+for y in range(23) :
+    for x in range(91, 99) : q[x, y] = q[96, y]
+    if 9 <= y <= 11 : q[90, y] = q[96, y]
 n15.save(B / 'Name_MU15.bmp')
 old = Image.open(P / 'PresetButtons_old.bmp').convert('RGB')
 strip = Image.new('RGB', (40, 15)); strip.paste(old.crop((0, 0, 30, 15)), (0, 0))
