@@ -24,7 +24,7 @@ The MU hardware keeps decoding through a loop, carrying the decoder state from o
 - **Size:** 683 voices (MU50: 737, no DOC bank), 547 samples; table 141 KB, wave data 5.8 MB.
 - **SFX voices of the drum kits:** the ROM's table of 87 voices holds 16-bit word offsets from the voices (the MU50's holds absolute addresses); the decoder writes them as the absolute addresses the MU50 decoder reads. Six keys of the XG SFX kits point to SFX voices 87-92, beyond that table, and have no sample: they are left out (silent).
 - **Effects:** the MU15 has 12 chorus and 45 variation types (MU50: 10 and 42). The plugin keeps the S-YXG50 effect engine, so the additional types play as their nearest counterpart, like the types of the later models without one.
-- **Check:** against the MU50 (same engine, same test notes) the RMS level of piano, strings, brass, pad, sax, guitar and the drum kit notes is within 0.5 dB (piano and guitar identical), the Fingered Bass 1.5 dB lower (a voice the MU15 revoiced).
+- **Check:** against the MU50 (same engine, same test notes) the RMS level of piano, strings, brass, pad, sax, guitar and the drum kit notes is within 0.5 dB (piano and guitar identical), the Fingered Bass 1.5 dB lower (the voice differs).
 
 ## MU50
 

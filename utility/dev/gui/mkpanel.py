@@ -42,6 +42,11 @@ for dx in range(9) :
         c = tuple(round(bga[i] + (255 - bga[i]) * al) for i in range(3))
         po[57 + dx, y] = max(c, po[57 + dx, y], key = sum)
 n2000.save(B / 'Name_MU2000.bmp')
+# MU15 (#94): no earlier bitmap; S-YXG15 = "S-YXG1" of the MU100 name (x 21-73) and the "5" of the MU50 name (x 74-81),
+# set on the MU50 name picture so that the text ends where the MU50's does (digit pitch 8 pixels)
+m50 = Image.open(B / 'Name_MU50.bmp').convert('RGB'); m100 = Image.open(B / 'Name_MU100.bmp').convert('RGB')
+n15 = m50.copy(); n15.paste(m100.crop((21, 0, 74, 23)), (29, 0)); n15.paste(m50.crop((74, 0, 82, 23)), (83, 0))
+n15.save(B / 'Name_MU15.bmp')
 old = Image.open(P / 'PresetButtons_old.bmp').convert('RGB')
 strip = Image.new('RGB', (40, 15)); strip.paste(old.crop((0, 0, 30, 15)), (0, 0))
 dash = blank.copy(); fg = max(dig.getdata(), key = sum)
