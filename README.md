@@ -1,6 +1,6 @@
 # SXG-Create
 
-Converts the ROM sets of Yamaha MU-series tone generators (MU50 to MU1000, and the MU2000) into tables and wave data for the **S-YXG50** soft synthesizer (`syxg50.dll`), and patches the DLL so that it can play them as close to the original module as the S-YXG50 engine allows.
+Converts the ROM sets of Yamaha MU-series tone generators (MU15, MU50 to MU1000, and the MU2000) into tables and wave data for the **S-YXG50** soft synthesizer (`syxg50.dll`), and patches the DLL so that it can play them as close to the original module as the S-YXG50 engine allows.
 
 <img width="518" height="448" alt="patcher_preview" src="https://github.com/user-attachments/assets/3f20301f-ff01-4f6e-8e0d-98956f7c2eb5" />
 
@@ -31,7 +31,7 @@ The easiest way: download the patcher for your system from the newest **Autobuil
 | macOS (Intel) | `SXG-Create-NF-Patcher-rN-macos-intel.zip` | extract, then open `SXG-Create-NF-Patcher.app` |
 
 1. Put the patcher in a folder together with your MU ROM files, and/or the three files of Yamaha's **S-YXG2006LE** (`SGP2.OLD` or `SGP2.DLL`, also one patched by SGP2VSTi 1.0.2.22 such as `S-YXG2006LE.DLL`; `sxgbnw6l.tbl`, `sxgdat6l.tbl`). Subfolders are fine, e.g. one per model; file names don't matter (detection by CRC32). **`syxg50.dll` is no longer needed:** the patcher carries ready-patched plugin templates (see [Plugin templates](docs/templates.md)).
-2. Start the patcher. It lists the S-YXG2006LE first (one line, when all three files are there), then every complete ROM set it found, starting with the MU50. If it finds no ROMs, it asks for the folder; **Choose folder…** points it to another place at any time.
+2. Start the patcher. It lists the S-YXG2006LE first (one line, when all three files are there), then every complete ROM set it found, starting with the MU15 and the MU50. If it finds no ROMs, it asks for the folder; **Choose folder…** points it to another place at any time.
 3. Click **Patch**. All listed models are converted, several at the same time on a multi-core CPU, and the S-YXG2006LE is patched in the same run. The plugins end up in the folder **`Plugins`** next to the patcher: one DLL per model (`syxgmu50.dll`, `syxg80.dll` ... `syxg1000.dll`, `syxg2000.dll`) with the tables inside (`--embed`), no ini or table files needed, and `syxg2006le.dll` with its two tables inside (see [S-YXG2006LE](#s-yxg2006le) for its parameters). **Open folder** shows them.
 
 - **Language:** the system language if available, else English; the menu at the top right switches between 29 languages, each shown in its own name and sorted alphabetically by the Latin spelling of that name: العربية, Bahasa Indonesia, বাংলা, Čeština, Dansk, Deutsch, Ελληνικά, English, Español, فارسی, Français, 한국어, हिन्दी, Italiano, עברית, Magyar, Nederlands, 日本語, Polski, Português, Română, Русский, Српски, Svenska, ไทย, Tiếng Việt, Türkçe, Українська, 中文.
@@ -52,6 +52,7 @@ The easiest way: download the patcher for your system from the newest **Autobuil
 
 | Model | Program ROM(s) | Wave ROMs | Table layout |
 |---|---|---|---|
+| MU15 (xv684c0 v1.01) | `xv684c0.bin` (4 MB, program and wave data in one ROM) | none | classic |
 | MU50 (xr174c0 v1.05) | `xr174c0.ic7` | `xq057c0.ic18`, `xq058c0.ic19` | classic |
 | MU80 (xq556a0 v1.04) | `yamaha_mu80.bin` / `xq556a0.ic8` | `xq012b0-822.bin`, `xq013b0-823.bin`, `xq089b0-824.bin`, `xq090b0-825.bin` | classic |
 | MU90 (xs519d0 v1.01) | `xs519d0.ic9` | `xs518a0.ic22`, `xs743a0.ic23` | classic |
@@ -74,7 +75,7 @@ The S-YXG50's own tables and `Vampire.dll` are recognised as well, but they are 
 ## Using the converted plugins
 
 - **Host:** syxg50.dll is a 32-bit VST2 instrument. Any VST2 host works; to use it as a system MIDI device (e.g. for DOSBox or Windows games), load it through a VSTi MIDI driver.
-- **Which model:** MU50 sounds like the DB50XG, SW60XG and the S-YXG50 itself, which is what most players of 1990s games heard. MU90/MU100 are good all-rounders with better samples and similar balance (MU100 = SW1000XG sound set). MU1000/MU128 have the best samples and the most voices, but are larger and partly revoiced; the "MU Tone Map" switch (Basic) in Setup gives the MU90-compatible voice set for older material.
+- **Which model:** MU15 is a slimmed-down MU50 (same sound character and Setup page, 683 instead of 737 voices, no DOC bank). MU50 sounds like the DB50XG, SW60XG and the S-YXG50 itself, which is what most players of 1990s games heard. MU90/MU100 are good all-rounders with better samples and similar balance (MU100 = SW1000XG sound set). MU1000/MU128 have the best samples and the most voices, but are larger and partly revoiced; the "MU Tone Map" switch (Basic) in Setup gives the MU90-compatible voice set for older material.
 - **GS:** GS songs play through Yamaha's GS mode, an approximation of the Roland sound set. MT-32 music needs an MT-32 emulator.
 - **Installing:** copy the finished DLL (from the `Plugins` folder) to where your host looks for VST2 plugins. The tables are inside the DLL; no ini or table files are needed. Without the patcher, the Python script writes the same plugins to `output` ([Python script](docs/python-script.md)).
 - **Instrument lists:** players that substitute "missing" programs from an instrument list (e.g. Falcosoft MIDI Player with `S-YXG50_XG-GS.ins`) replace the MU-only drum kits with the Standard Kit. Select an instrument definition for the converted model (e.g. `Yamaha_MU1000_XG.ins`).

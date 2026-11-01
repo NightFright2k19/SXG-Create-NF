@@ -93,6 +93,8 @@ TableIn(dataenum.MU.MU2000, 'MU2000 v2.01 (S-MU2000 flash image)', program_roms=
                                                                    '34913E42' : 'xw848a0.ic53', '3728F1F2' : 'xw849a0.ic54',}, support='decode'),
 TableIn(dataenum.MU.MU50, 'MU50 xr174c0 v1.05, 1995-08-21', program_roms={'902520A4' : 'xr174c0.ic7'}, waveroms={'D4ADBC7E' : 'xq057c0.ic18',
                                                                                                                 '7B68F475' : 'xq058c0.ic19'}, support='decode'),
+# one 4 MB ROM: firmware + wave data (decMU15)
+TableIn(dataenum.MU.MU15, 'MU15 xv684c0 v1.01, 1998-11-28', program_roms={'E4046AEF' : 'xv684c0.bin'}, waveroms={}, support='decode'),
 ]
 # TableIn('TABLENAMETABLENAME', program_roms={'CRCRCC' : 'NAMENAMENAME'}, waveroms={'CRCRCRCRC' : 'DESCDESCDESC',}, support='neither'),
 

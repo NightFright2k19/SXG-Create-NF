@@ -8,6 +8,7 @@ from dataenum import *
 import decBase
 import decMU80 
 import decMU50
+import decMU15
 import decSYXG50 
 import decMU90 
 import decMU100
@@ -58,6 +59,15 @@ def Convert(mu_src : MU, mu_tgt : MU, out_path : str, program_roms : list[Path],
             for path in wave_roms : 
                 in_wave_bytes = in_wave_bytes + bytes(open(path, mode='rb').read() )
  
+        case MU.MU15 : 
+
+            # * one ROM: firmware (decoded like the MU50's) and wave data; same data formats as the MU50
+            fw, in_wave_bytes = decMU15.MU15_Split(open( program_roms[0], mode='rb').read() )
+            table_decoder = decMU15.MU15.From_Bytes(fw)
+            table_decoder.waverom_span = len(in_wave_bytes)
+            table_converter = tableconvert.fromMU50(MU.MU50)
+            mu_src = MU.MU50    # same data formats from here on
+
         case MU.SYXG50 : 
             
             new_table_version='S-YXG50a1'
