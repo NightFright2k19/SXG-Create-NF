@@ -28,6 +28,7 @@ DLL_SOURCE = REPO / 'source' / 'syxg50.dll'
 
 # per model: table version (16 bytes max), table file, wave file, big table layout ("Full" DLL patch)
 MODEL_FILES = {
+    'MU15'   : ('SXGMU15a1',  'SXGMU15a1.TBL', 'SXGMU15a1.UPCM', False),
     'MU50'   : ('SXGMU50a1',  'SXGMU50a1.TBL', 'SXGMU50a1.UPCM', False),
     'MU80'   : ('SXG MU80',   'SXGMU80a1.TBL', 'SXGMU80a1.UPCM', False),
     'MU90'   : ('SXG MU90',   'SXGMU90t.TBL',  'SXGMU90.UPCM',   False),

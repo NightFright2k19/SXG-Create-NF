@@ -18,6 +18,14 @@ The MU hardware keeps decoding through a loop, carrying the decoder state from o
 - **Limits:** lead-in is only used while it fits the address range and the 24-bit start offset; drum samples in the classic layout are limited to a 16-bit start offset.
 - **Statistics:** the run prints how many loops were already seamless, made seamless, or did not settle within 8 passes.
 
+## MU15
+
+- **One ROM:** `xv684c0.bin` (4 MB, CRC32 `E4046AEF`) holds the byte-swapped firmware (the first 448,252 bytes) and the wave data. `utility/decMU15.py` splits it and decodes the firmware like the MU50's: the formats (voices, 30-byte drum voices, 16-byte samples) are the same, only the table addresses differ (layout from TaleTN's MUTable). The result is converted with the MU50 converter, so the plugin has the MU50's classic layout and Setup page (reset types, MU Basic only).
+- **Size:** 683 voices (MU50: 737, no DOC bank), 547 samples; table 141 KB, wave data 5.8 MB.
+- **SFX voices of the drum kits:** the ROM's table of 87 voices holds 16-bit word offsets from the voices (the MU50's holds absolute addresses); the decoder writes them as the absolute addresses the MU50 decoder reads. Six keys of the XG SFX kits point to SFX voices 87-92, beyond that table, and have no sample: they are left out (silent).
+- **Effects:** the MU15 has 12 chorus and 45 variation types (MU50: 10 and 42). The plugin keeps the S-YXG50 effect engine, so the additional types play as their nearest counterpart, like the types of the later models without one.
+- **Check:** against the MU50 (same engine, same test notes) the RMS level of piano, strings, brass, pad, sax, guitar and the drum kit notes is within 0.5 dB (piano and guitar identical), the Fingered Bass 1.5 dB lower (a voice the MU15 revoiced).
+
 ## MU50
 
 - **Identical to Yamaha's own S-YXG50 table** in all voice and drum parameters (see [Verification](verification.md#verification-against-the-s-mu2000-and-the-s-yxg50)), but with the MU50's original sample data.

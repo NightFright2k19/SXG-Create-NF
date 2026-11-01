@@ -5,6 +5,7 @@ class MU(StrEnum) :
     UNDEFINED = auto()
     MU80 = auto()
     MU50 = auto()
+    MU15 = auto()
     QS300 = auto()
     TG300 = auto()
     SYXG50 = auto()

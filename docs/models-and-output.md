@@ -6,6 +6,7 @@
 
 | Models | Layout | DLL patch | Table | Wave data | Wave size |
 |---|---|---|---|---|---|
+| MU15 | classic | "Enhanced" | `SXGMU15a1.TBL` | `SXGMU15a1.UPCM` | 5.8 MB |
 | MU50 | classic | "Enhanced" | `SXGMU50a1.TBL` | `SXGMU50a1.UPCM` | 6.7 MB |
 | MU80 | classic | "Enhanced" | `SXGMU80a1.TBL` | `SXGMU80a1.UPCM` | 12.7 MB |
 | MU90 / MU90B | classic | "Enhanced" | `SXGMU90t.TBL` | `SXGMU90.UPCM` | 13.3 MB |
@@ -20,7 +21,7 @@ With `--embed`, the DLL contains both files and is correspondingly large (MU90 1
 
 Classic tables also get a `<table>.TBL.rehex-meta` file, a debug description of the table.
 
-### Classic layout (MU50 / MU80 / MU90)
+### Classic layout (MU15 / MU50 / MU80 / MU90)
 
 This is the original S-YXG50 table format:
 
@@ -69,4 +70,4 @@ Smaller additions:
 
 Drum velocity sensitivity and the folded 3-/4-element voices reuse existing sample data.
 
-The classic tables (MU50 / MU80 / MU90) did not grow, because those models have no HPF.
+The classic tables (MU15 / MU50 / MU80 / MU90) did not grow, because those models have no HPF.
