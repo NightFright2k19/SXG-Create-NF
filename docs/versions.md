@@ -6,6 +6,7 @@ Releases before r14 were not kept. Releases that only touched the build or the d
 
 | Release | Date | Changes |
 |---|---|---|
+| next | | CLAP plugins (#97): hosts that run a plugin at a rate S-YXG50 does not support (Woof! uses 32000 Hz) now get correct pitch and sound; before, the music was too low, dull and distorted. The bridge now plays the plugin at 44100 Hz and resamples its output to the host rate. |
 | next | | CLAP plugins (#97): the Windows CLAP now also works when the host passes its path with mixed `\` and `/` (Woof! does), where it did not find the DLL and failed to load. A failed start is also written to `sxgbridge.log` in the temp folder. |
 | r62 | 2026-11-02 | CLAP plugins (#97): the Windows and Linux patchers now write the DLLs to `Plugins/VST2` and a CLAP version of every plugin to `Plugins/CLAP` (with `sxgbridge32.exe`); each writes only the CLAPs of its own system, macOS is unchanged. The CLAP is a bridge that runs the 32-bit plugin in a helper process (on Linux under Wine): MIDI with SysEx, the plugin's own panel and saved state work in 64-bit CLAP hosts. |
 | r61 | 2026-11-02 | CLAP plugins (#97): the Windows patcher now writes the DLLs to `Plugins\VST2` and a CLAP version of every plugin to `Plugins\CLAP` (with `sxgbridge32.exe`). The CLAP is a bridge that runs the 32-bit plugin in a helper process: MIDI with SysEx, the plugin's own panel and saved state work in 64-bit CLAP hosts. Linux and macOS patchers are unchanged. |

@@ -29,7 +29,7 @@ Copy the `.clap` files **and** `sxgbridge32.exe` to a CLAP folder of your host (
 - **Editor:** the plugin's own panel (the panel has a fixed size). Windows: a child window in the host's window (win32). Linux: the helper opens the panel in a window of its own, the CLAP finds it (by its title) and moves it into the host's X11 window with `XReparentWindow`; a timer (CLAP timer support, 100 ms) tells Wine where the window is on the screen, so mouse clicks hit when the host window moves. X11 hosts only (no Wayland-native embedding).
 - **State:** the plugin's own chunk (what a VST2 host saves) is stored in the CLAP state.
 - **Not done:** CLAP parameters (the plugins have none worth automating except the S-YXG2006LE's; they stay in the plugin's own panel / MIDI), voice info, latency reporting, keyboard focus handling in the Linux editor.
-- Block sizes above 8192 samples are processed in pieces. Sample rate is passed on at activation.
+- Block sizes above 8192 samples are processed in pieces. Sample rate is passed on at activation. S-YXG50 only plays correctly at 11025, 22050, 44100, 48000 and 96000 Hz (at any other rate it renders at about 44100 Hz, so the pitch is wrong: 32000 Hz sounds about 28 % too low). For every other host rate (e.g. 32000 Hz in Woof!) the helper therefore runs the plugin at 44100 Hz and resamples its output to the host rate (cubic interpolation); MIDI event positions are converted accordingly. The 2 to 3 samples of look-ahead of the interpolation are the only latency added.
 
 ## Building (development)
 
