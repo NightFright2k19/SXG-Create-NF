@@ -22,6 +22,7 @@ enum {                                  // control commands (host -> helper, ans
     SXG_CMD_EDIT_SHOW,                  // arg0 = 1 show, 0 hide
     SXG_CMD_GET_CHUNK,                  // -> blob, blob_len
     SXG_CMD_SET_CHUNK,                  // <- blob, blob_len
+    SXG_CMD_EDIT_OPEN_TOP,              // Linux: editor in a window of its own (title "SXGBridge <token>"); -> arg0/arg1 = size
     SXG_CMD_QUIT
 };
 

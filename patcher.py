@@ -6,8 +6,8 @@
 #   (one DLL per model, tables inside). The plugins are made from the pre-patched templates bundled with the
 #   patcher (utility/template.py, issue #40), so no syxg50.dll is needed; the S-YXG2006LE still needs the
 #   user's SGP2.OLD / SGP2.DLL (sgp2patch.py).
-# * CLAP (issue #97, Windows patcher): the DLLs go to Plugins\VST2 and a CLAP bridge for each of them to Plugins\CLAP
-#   (utility/clapbridge.py). The other systems write the DLLs to 'Plugins' as before.
+# * CLAP (issue #97, Windows and Linux patcher): the DLLs go to Plugins/VST2 and a CLAP bridge for each of them to Plugins/CLAP
+#   (utility/clapbridge.py); each patcher writes only the CLAP of its own system. macOS writes the DLLs to 'Plugins' as before.
 # * patcher --cli <args> runs main.py's command line (used for the per-model runs).
 # * Language: the system language, else English; a menu at the top right switches it.
 # * Update (issue #72): a release patcher looks for a newer release a moment after it has started and offers it with the
@@ -329,7 +329,7 @@ if __name__ == '__main__' :
         assert (Path(dllpatch.__file__).parent / 'bitmaps').is_dir(), 'bitmaps missing'
         assert all(f.is_file() for f in ICONS), 'icons missing'
         template.check()                                    # every model's template is bundled and empty
-        if sys.platform == 'win32' : clapbridge.check()     # the Windows patcher carries the CLAP bridge
+        if clapbridge.wanted() : clapbridge.check()         # the Windows and Linux patchers carry the CLAP bridge
         assert selfupdate.asset_name(1).startswith('SXG-Create-NF-Patcher-r1-'), 'selfupdate'
         if option('--selftest-out') : Path(option('--selftest-out')).write_text(f'selftest ok {VERSION}\n')    # a windowed exe prints nothing
         print('selftest ok', VERSION); sys.exit(0)

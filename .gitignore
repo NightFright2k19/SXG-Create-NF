@@ -12,3 +12,4 @@ clapbridge/*.clap
 clapbridge/*.exe
 clapbridge/test/*.exe
 clapbridge/test/*.dll
+clapbridge/test/testhost_linux
