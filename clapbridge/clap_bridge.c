@@ -198,7 +198,9 @@ static int plat_entry_path(const char* path)
 {
     wchar_t full[MAX_PATH];
     if (!MultiByteToWideChar(CP_UTF8, 0, path, -1, full, MAX_PATH)) return 0;
-    wchar_t* slash = wcsrchr(full, L'\\'); if (!slash) slash = wcsrchr(full, L'/');
+    // hosts mix both separators (e.g. Woof!: <folder>\plugins/name.clap): the last of either one ends the folder
+    wchar_t* slash = wcsrchr(full, L'\\'); wchar_t* slash2 = wcsrchr(full, L'/');
+    if (!slash || (slash2 && slash2 > slash)) slash = slash2;
     wchar_t* base = slash ? slash + 1 : full;
     if (slash) { *slash = 0; wcsncpy(g_dir, full, MAX_PATH - 1); } else wcscpy(g_dir, L".");
     wcsncpy(g_stem, base, MAX_PATH - 1);
