@@ -6,6 +6,8 @@
 #   (one DLL per model, tables inside). The plugins are made from the pre-patched templates bundled with the
 #   patcher (utility/template.py, issue #40), so no syxg50.dll is needed; the S-YXG2006LE still needs the
 #   user's SGP2.OLD / SGP2.DLL (sgp2patch.py).
+# * CLAP (issue #97, Windows patcher): the DLLs go to Plugins\VST2 and a CLAP bridge for each of them to Plugins\CLAP
+#   (utility/clapbridge.py). The other systems write the DLLs to 'Plugins' as before.
 # * patcher --cli <args> runs main.py's command line (used for the per-model runs).
 # * Language: the system language, else English; a menu at the top right switches it.
 # * Update (issue #72): a release patcher looks for a newer release a moment after it has started and offers it with the
@@ -91,7 +93,7 @@ def main_window() :
     import tkinter as tk
     from tkinter import ttk, filedialog, messagebox
     from patcher_i18n import TEXT, LANGUAGES
-    import selfupdate
+    import selfupdate, clapbridge
 
     root = tk.Tk()
     root.title(f'SXG-Create-NF Patcher {VERSION}')
@@ -138,6 +140,7 @@ def main_window() :
     frame.columnconfigure(0, weight = 1)
 
     def plugins_dir() : return HERE / 'Plugins'
+    def vst2_dir() : return plugins_dir() / 'VST2' if clapbridge.supported() else plugins_dir()      # with CLAP bridges: Plugins\VST2 + Plugins\CLAP
     def refresh() :
         intro['text'] = T('intro'); box['text'] = T('files'); folder_lbl['text'] = T('folder') + ':'
         folder_val['text'] = str(st['folder']); browse['text'] = T('browse')
@@ -238,7 +241,7 @@ def main_window() :
         else : log.grid_remove()
         refresh()
     def start_patch() :
-        out = plugins_dir(); out.mkdir(exist_ok = True)
+        out = vst2_dir(); out.mkdir(parents = True, exist_ok = True)
         files = [str(p) for _, pr, wv in st['models'] for p in pr + wv]
         args = files + ['--embed', '--out-dir', str(out)]
         me = [sys.executable] if FROZEN else [sys.executable, str(Path(__file__).resolve())]
@@ -252,7 +255,14 @@ def main_window() :
                                  stdin = subprocess.DEVNULL, env = env, text = True, encoding = 'utf-8',
                                  errors = 'replace', creationflags = flags)
             for line in p.stdout : q.put(('line', line))
-            q.put(('finished', p.wait()))
+            code = p.wait()
+            if clapbridge.supported() :                      # a CLAP bridge for every plugin that is there (also after a partial failure)
+                try :
+                    done = clapbridge.install(out, plugins_dir() / 'CLAP')
+                    q.put(('line', f'CLAP bridges: {len(done)} written to {plugins_dir() / "CLAP"}\n'))
+                except Exception as e :
+                    q.put(('line', f'CLAP bridges: FAILED ({e})\n')); code = code or 1
+            q.put(('finished', code))
         threading.Thread(target = work, daemon = True).start()
     def line(text) :
         write_log(text)
@@ -276,7 +286,7 @@ def main_window() :
         log_text = log.get('1.0', 'end')
         failed = [m[0].split(' ')[0] for m in st['models'] if f'  {m[0]}: FAILED' in log_text]
         if code != 0 and not failed : failed = [m[0].split(' ')[0] for m in st['models']] if len(st['models']) == 1 else ['?']
-        n = len(list(plugins_dir().glob('*.dll')))
+        n = len(list(vst2_dir().glob('*.dll')))
         if 'S-YXG2006LE: ' in log_text and 'written' not in log_text.split('S-YXG2006LE: ')[-1].split('\n')[0] :
             failed.append(SGP2_NAME)
         if failed : set_status('failed', models = ', '.join(failed))
@@ -315,10 +325,11 @@ def option(name : str) -> str | None :
 if __name__ == '__main__' :
     if len(sys.argv) > 1 and sys.argv[1] == '--cli' : run_cli(sys.argv[2:])
     elif len(sys.argv) > 1 and sys.argv[1] == '--selftest' :
-        import dllpatch, convert, dataCRCs, template, selfupdate, main as _m
+        import dllpatch, convert, dataCRCs, template, selfupdate, clapbridge, main as _m
         assert (Path(dllpatch.__file__).parent / 'bitmaps').is_dir(), 'bitmaps missing'
         assert all(f.is_file() for f in ICONS), 'icons missing'
         template.check()                                    # every model's template is bundled and empty
+        if sys.platform == 'win32' : clapbridge.check()     # the Windows patcher carries the CLAP bridge
         assert selfupdate.asset_name(1).startswith('SXG-Create-NF-Patcher-r1-'), 'selfupdate'
         if option('--selftest-out') : Path(option('--selftest-out')).write_text(f'selftest ok {VERSION}\n')    # a windowed exe prints nothing
         print('selftest ok', VERSION); sys.exit(0)
