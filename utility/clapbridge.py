@@ -1,40 +1,51 @@
-# clapbridge.py - CLAP versions of the plugins (issue #97), Windows only for now.
+# clapbridge.py - CLAP versions of the plugins (issue #97): Windows and Linux (Wine); macOS has none yet.
 #
-# The plugins are 32-bit Windows VST2 DLLs. Their CLAP version is a bridge: one small 64-bit CLAP file per plugin
-# (clapbridge/clap_bridge.c, the same file under each plugin's name, e.g. syxg1000.clap) that runs the DLL in the
-# 32-bit helper sxgbridge32.exe (clapbridge/host32.c) and exchanges audio, MIDI and the editor window with it.
-# Layout written next to the patcher:
+# The plugins are 32-bit Windows VST2 DLLs. Their CLAP version is a bridge: one small CLAP file per plugin
+# (the same file under each plugin's name, e.g. syxg1000.clap) that runs the DLL in the 32-bit helper
+# sxgbridge32.exe (clapbridge/host32.c) and exchanges audio, MIDI and the editor window with it:
+#   Windows: sxgbridge.clap (clapbridge/clap_bridge.c, 64-bit), the helper runs directly
+#   Linux:   sxgbridge-linux.clap (clapbridge/clap_bridge_linux.c, x86-64), the helper runs under Wine
+# Each patcher writes only the CLAP of its own system. Layout written next to the patcher:
 #     Plugins\VST2\syxg1000.dll ...        the plugins
 #     Plugins\CLAP\syxg1000.clap ...       the bridges (they find ..\VST2\<same name>.dll)
 #     Plugins\CLAP\sxgbridge32.exe         the helper (one copy for all)
-# The two bridge files are built from clapbridge/ by the Autobuild workflow (mingw-w64) and bundled with the Windows
-# patcher; a checkout builds them with `make -C clapbridge`.
+# The bridge files are built from clapbridge/ by the Autobuild workflow and bundled with the Windows and Linux patchers;
+# a checkout builds them with `make -C clapbridge` (Windows files, mingw-w64) and `make -C clapbridge linux` (gcc, libxcb-dev).
 #   python utility/clapbridge.py <VST2 folder> <CLAP folder>      writes the CLAP files for the DLLs in the first folder
 import shutil, struct, sys
 from pathlib import Path
 
-CLAP_FILE, HELPER_FILE = 'sxgbridge.clap', 'sxgbridge32.exe'
+CLAP_FILES = {'win32': 'sxgbridge.clap', 'linux': 'sxgbridge-linux.clap'}
+CLAP_FILE = CLAP_FILES.get(sys.platform)             # None on macOS
+HELPER_FILE = 'sxgbridge32.exe'
 HERE = Path(__file__).resolve().parent
 
 def bridge_dir() -> Path | None :
     # frozen patcher: bundled in 'bridge'; checkout: the build folder clapbridge/
     candidates = [Path(getattr(sys, '_MEIPASS', HERE.parent)) / 'bridge', HERE.parent / 'clapbridge']
+    if CLAP_FILE is None : return None
     for d in candidates :
         if (d / CLAP_FILE).is_file() and (d / HELPER_FILE).is_file() : return d
     return None
 
 def supported() -> bool :
-    return sys.platform == 'win32' and bridge_dir() is not None
+    return bridge_dir() is not None
+
+def wanted() -> bool :
+    # the patcher of this system carries a bridge (Windows, Linux)
+    return CLAP_FILE is not None
 
 def machine(f : Path) -> int :
+    # PE: machine field; ELF: e_machine
     data = f.read_bytes()[:4096]
+    if data[:4] == b'\x7fELF' : return struct.unpack_from('<H', data, 18)[0]
     return struct.unpack_from('<H', data, struct.unpack_from('<I', data, 0x3C)[0] + 4)[0]
 
 def check() -> None :
-    # selftest: both files are there and are the right kind of PE file (64-bit CLAP, 32-bit helper)
+    # selftest: both files are there and are the right kind of file (64-bit CLAP: PE x64 / ELF x86-64, 32-bit PE helper)
     d = bridge_dir()
     assert d is not None, 'CLAP bridge files missing'
-    assert machine(d / CLAP_FILE) == 0x8664, 'sxgbridge.clap is not a 64-bit DLL'
+    assert machine(d / CLAP_FILE) == (0x8664 if sys.platform == 'win32' else 62), f'{CLAP_FILE} is not a 64-bit plugin'
     assert machine(d / HELPER_FILE) == 0x014C, 'sxgbridge32.exe is not a 32-bit program'
 
 def install(vst2 : Path, clap : Path) -> list[str] :

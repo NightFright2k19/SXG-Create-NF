@@ -1,8 +1,11 @@
 // host32.c - 32-bit helper of the SXG-Create-NF CLAP bridge (issue #97).
 // Loads one VST2 plugin DLL (32-bit), takes MIDI / commands from the 64-bit CLAP through shared memory and
 // returns the audio. The window message loop and the commands run on the main thread, the audio on a second one.
-//   sxgbridge32.exe <plugin.dll> <object prefix>
+//   sxgbridge32.exe <plugin.dll> <object prefix>                      Windows CLAP: named events and a named file mapping
+//   sxgbridge32.exe <plugin.dll> net:<port>:<token>:<shared file>     Linux CLAP (run by Wine): the file is mapped from
+//       the Linux side, the signals travel over two loopback TCP connections (control, audio) instead of events
 #define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
 #include <windows.h>
 #include <shellapi.h>
 #include <stdio.h>
@@ -21,6 +24,27 @@ static VstTimeInfo time_info;
 static HWND     editor_wnd;
 static BOOL     editor_open;
 static int      ed_w, ed_h;
+static int      net;                    // 1: signals over sockets (Linux bridge)
+static SOCKET   s_ctl = INVALID_SOCKET, s_aud = INVALID_SOCKET;
+static char     title[64];
+
+static void send_byte(SOCKET s, char c) { send(s, &c, 1, 0); }
+static void sig_ready(void) { if (net) send_byte(s_ctl, 'R'); else SetEvent(h_ready); }
+static void sig_adone(void) { if (net) send_byte(s_aud, 'a'); else SetEvent(h_adone); }
+static void sig_cdone(void) { if (net) send_byte(s_ctl, 'c'); else SetEvent(h_cdone); }
+static void wait_ago(void)
+{
+    if (!net) { WaitForSingleObject(h_ago, INFINITE); return; }
+    char b;
+    if (recv(s_aud, &b, 1, 0) <= 0) InterlockedExchange(&quitting, 1);       // the Linux side is gone
+}
+static DWORD WINAPI ctl_reader(LPVOID p)                 // socket mode: 'C' from the bridge = run a command
+{
+    (void)p; char b;
+    while (recv(s_ctl, &b, 1, 0) > 0) if (b == 'C') SetEvent(h_cgo);
+    InterlockedExchange(&quitting, 1); SetEvent(h_cgo);
+    return 0;
+}
 
 // ----------------------------------------------------------------------------- host callback of the plugin
 
@@ -102,10 +126,10 @@ static DWORD WINAPI audio_thread(LPVOID p)
     (void)p;
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
     for (;;) {
-        WaitForSingleObject(h_ago, INFINITE);
+        wait_ago();
         if (quitting) break;
         process_block();
-        SetEvent(h_adone);
+        sig_adone();
     }
     return 0;
 }
@@ -128,7 +152,7 @@ static void edit_rect(void)
     }
 }
 
-static void edit_open(HWND parent)
+static void edit_open(HWND parent, int top_level)
 {
     static int registered;
     if (editor_open || !fx || !(fx->flags & effFlagsHasEditor)) return;
@@ -140,8 +164,12 @@ static void edit_open(HWND parent)
     }
     edit_rect();
     if (ed_w <= 0) { ed_w = 640; ed_h = 480; }
-    editor_wnd = CreateWindowExA(0, "SXGBridgeEditor", "", WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-                                 0, 0, ed_w, ed_h, parent, 0, GetModuleHandleA(0), 0);
+    if (top_level)      // Linux: a window of its own that the CLAP moves into the host's window (X11 reparenting)
+        editor_wnd = CreateWindowExA(WS_EX_TOOLWINDOW, "SXGBridgeEditor", title, WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+                                     0, 0, ed_w, ed_h, 0, 0, GetModuleHandleA(0), 0);
+    else
+        editor_wnd = CreateWindowExA(0, "SXGBridgeEditor", "", WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+                                     0, 0, ed_w, ed_h, parent, 0, GetModuleHandleA(0), 0);
     if (!editor_wnd) return;
     fx->dispatcher(fx, effEditOpen, 0, 0, editor_wnd, 0);
     editor_open = TRUE;
@@ -179,7 +207,11 @@ static void run_command(void)
         break;
     case SXG_CMD_EDIT_RECT:  edit_rect(); sh->arg[0] = ed_w; sh->arg[1] = ed_h; break;
     case SXG_CMD_EDIT_OPEN:
-        edit_open((HWND)(UINT_PTR)(uint32_t)sh->arg[0]);
+        edit_open((HWND)(UINT_PTR)(uint32_t)sh->arg[0], 0);
+        sh->result = editor_open; sh->arg[0] = ed_w; sh->arg[1] = ed_h;
+        break;
+    case SXG_CMD_EDIT_OPEN_TOP:
+        edit_open(0, 1);
         sh->result = editor_open; sh->arg[0] = ed_w; sh->arg[1] = ed_h;
         break;
     case SXG_CMD_EDIT_CLOSE: edit_close(); break;
@@ -207,7 +239,7 @@ static void fail(const char* msg)
 {
     snprintf(sh->error, sizeof sh->error, "%s", msg);
     sh->ok = 0;
-    SetEvent(h_ready);
+    sig_ready();
 }
 
 typedef AEffect* (__cdecl *VstMain)(AudioMasterCallback);
@@ -225,16 +257,45 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE hp, LPSTR cmd, int show)
     (void)hi; (void)hp; (void)cmd; (void)show;
     int argc; LPWSTR* argvw = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (!argvw || argc < 3) return 2;
-    char prefix[96];
-    WideCharToMultiByte(CP_ACP, 0, argvw[2], -1, prefix, sizeof prefix, 0, 0);
+    char prefix[512];
+    WideCharToMultiByte(CP_UTF8, 0, argvw[2], -1, prefix, sizeof prefix, 0, 0);
 
-    h_map = open_obj(prefix, SXG_OBJ_MAP, 1);
-    h_ready = open_obj(prefix, SXG_OBJ_READY, 0);
-    h_ago = open_obj(prefix, SXG_OBJ_AGO, 0);   h_adone = open_obj(prefix, SXG_OBJ_ADONE, 0);
-    h_cgo = open_obj(prefix, SXG_OBJ_CGO, 0);   h_cdone = open_obj(prefix, SXG_OBJ_CDONE, 0);
-    if (!h_map || !h_ready || !h_ago || !h_adone || !h_cgo || !h_cdone) return 3;
-    sh = (Shared*)MapViewOfFile(h_map, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-    if (!sh) return 3;
+    if (!strncmp(prefix, "net:", 4)) {                                    // Linux bridge, see the top of the file
+        net = 1;
+        char* port = prefix + 4; char* token = strchr(port, ':'); if (!token) return 2; *token++ = 0;
+        char* file = strchr(token, ':'); if (!file) return 2; *file++ = 0;
+        snprintf(title, sizeof title, "SXGBridge %s", token);
+        WSADATA wd; WSAStartup(MAKEWORD(2, 2), &wd);
+        for (int k = 0; k < 2; k++) {
+            SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+            struct sockaddr_in a; memset(&a, 0, sizeof a);
+            a.sin_family = AF_INET; a.sin_port = htons((u_short)atoi(port)); a.sin_addr.s_addr = inet_addr("127.0.0.1");
+            if (connect(s, (struct sockaddr*)&a, sizeof a) != 0) return 3;
+            int one = 1; setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char*)&one, sizeof one);
+            char hello[32]; snprintf(hello, sizeof hello, "%s%c", token, k == 0 ? 'C' : 'A');
+            send(s, hello, (int)strlen(hello), 0);
+            if (k == 0) s_ctl = s; else s_aud = s;
+        }
+        char win[MAX_PATH + 8] = "Z:";                                    // the Linux file system is drive Z: under Wine
+        strncat(win, file, MAX_PATH);
+        for (char* q = win; *q; q++) if (*q == '/') *q = '\\';
+        h_map = CreateFileA(win, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_EXISTING, 0, 0);
+        if (h_map == INVALID_HANDLE_VALUE) return 3;
+        HANDLE fm = CreateFileMappingA(h_map, 0, PAGE_READWRITE, 0, (DWORD)sizeof(Shared), 0);
+        if (!fm) return 3;
+        sh = (Shared*)MapViewOfFile(fm, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+        if (!sh) return 3;
+        h_cgo = CreateEventA(0, FALSE, FALSE, 0);
+        CreateThread(0, 0, ctl_reader, 0, 0, 0);
+    } else {
+        h_map = open_obj(prefix, SXG_OBJ_MAP, 1);
+        h_ready = open_obj(prefix, SXG_OBJ_READY, 0);
+        h_ago = open_obj(prefix, SXG_OBJ_AGO, 0);   h_adone = open_obj(prefix, SXG_OBJ_ADONE, 0);
+        h_cgo = open_obj(prefix, SXG_OBJ_CGO, 0);   h_cdone = open_obj(prefix, SXG_OBJ_CDONE, 0);
+        if (!h_map || !h_ready || !h_ago || !h_adone || !h_cgo || !h_cdone) return 3;
+        sh = (Shared*)MapViewOfFile(h_map, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+        if (!sh) return 3;
+    }
 
     // the plugin finds its ini file and resources next to itself
     dll = LoadLibraryExW(argvw[1], 0, LOAD_WITH_ALTERED_SEARCH_PATH);
@@ -255,18 +316,19 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE hp, LPSTR cmd, int show)
     sh->ok = 1;
 
     HANDLE at = CreateThread(0, 0, audio_thread, 0, 0, 0);
-    SetEvent(h_ready);
+    sig_ready();
 
     while (!quitting) {
         DWORD r = MsgWaitForMultipleObjects(1, &h_cgo, FALSE, INFINITE, QS_ALLINPUT);
-        if (r == WAIT_OBJECT_0) { run_command(); SetEvent(h_cdone); }
+        if (r == WAIT_OBJECT_0) { if (!quitting) { run_command(); sig_cdone(); } }
         else {
             MSG m;
             while (PeekMessageA(&m, 0, 0, 0, PM_REMOVE)) { TranslateMessage(&m); DispatchMessageA(&m); }
         }
     }
     edit_close();
-    InterlockedExchange(&quitting, 1); SetEvent(h_ago);
+    InterlockedExchange(&quitting, 1);
+    if (net) { shutdown(s_aud, SD_BOTH); closesocket(s_aud); } else SetEvent(h_ago);
     WaitForSingleObject(at, 2000);
     fx->dispatcher(fx, effClose, 0, 0, 0, 0);
     return 0;
