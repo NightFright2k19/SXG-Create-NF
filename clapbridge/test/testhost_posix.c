@@ -1,10 +1,18 @@
-// testhost_linux.c - minimal Linux CLAP host (X11) for testing the Linux bridge:  testhost_linux <plugin.clap> [real]
+// testhost_posix.c - minimal Linux / macOS CLAP host for testing the POSIX bridge:  testhost_posix <plugin.clap> [real | smoke]
+//   real:  the plugin is one of the S-YXG DLLs (no sample checks)
+//   smoke: only load the CLAP, check entry, factory and descriptor (macOS CI: no Wine there)
+// Linux: X11 editor (embedded). macOS, or -DTEST_FLOAT on Linux (X11 only to look for the window): floating editor.
 // 'real': the plugin is one of the S-YXG DLLs, only load / activate / process / editor / state are checked.
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <unistd.h>
+#if defined(__APPLE__) || defined(TEST_FLOAT)
+#define FLOATING 1
+#endif
+#if !defined(__APPLE__)
 #include <xcb/xcb.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -38,15 +46,25 @@ static float peak(int a, int b) { float p = 0; for (int i = a; i < b; i++) if (f
 
 int main(int argc, char** argv)
 {
-    int real = argc > 2;
+    int real = argc > 2 && !strcmp(argv[2], "real");
     void* m = dlopen(argv[1], RTLD_NOW);
     CHECK(m != 0, "load %s", argv[1]);
     if (!m) return 1;
     const clap_plugin_entry_t* entry = (const clap_plugin_entry_t*)dlsym(m, "clap_entry");
-    CHECK(entry && entry->init(argv[1]), "entry init");
+    char initp[4096]; snprintf(initp, sizeof initp, "%s", argv[1]);
+    { char* b = strstr(initp, ".clap/Contents/MacOS/"); if (b) b[5] = 0; }      // a macOS bundle: the host gives the bundle to init
+    CHECK(entry && entry->init(initp), "entry init");
     const clap_plugin_factory_t* f = entry->get_factory(CLAP_PLUGIN_FACTORY_ID);
     const clap_plugin_descriptor_t* d = f->get_plugin_descriptor(f, 0);
     printf("      id=%s name=%s\n", d->id, d->name);
+    if (argc > 2 && !strcmp(argv[2], "smoke")) {
+        CHECK(f->get_plugin_count(f) == 1, "one plugin in the factory");
+        CHECK(!strncmp(d->id, "io.github.nightfright2k19.sxg-create-nf.", 40), "plugin id");
+        CHECK(d->features && d->features[0], "features");
+        entry->deinit();
+        printf(fails ? "RESULT: %d failed\n" : "RESULT: all passed\n", fails);
+        return fails != 0;
+    }
     clap_host_t host = { CLAP_VERSION_INIT, 0, "testhost", "x", "", "1", host_ext, host_noop, host_noop, host_noop };
     const clap_plugin_t* pl = f->create_plugin(f, &host, d->id);
     CHECK(pl && pl->init(pl), "plugin init");
@@ -89,6 +107,38 @@ int main(int argc, char** argv)
         CHECK(!memcmp(m2.buf + 12, "changed", 8), "state round trip");
     }
 
+#ifdef FLOATING
+    const clap_plugin_gui_t* gui = pl->get_extension(pl, CLAP_EXT_GUI);
+    CHECK(gui && gui->is_api_supported(pl, CLAP_WINDOW_API_COCOA, true), "gui cocoa floating supported");
+    CHECK(gui && !gui->is_api_supported(pl, CLAP_WINDOW_API_COCOA, false), "embedded gui not offered");
+    CHECK(gui->create(pl, CLAP_WINDOW_API_COCOA, true), "gui create (floating)");
+    uint32_t w = 0, h = 0; gui->get_size(pl, &w, &h);
+    printf("      editor size %u x %u\n", w, h);
+    if (!real) CHECK(w == 200 && h == 100, "editor size 200 x 100");
+    CHECK(gui->show(pl), "gui show (opens the window)");
+    usleep(1500000);
+#ifndef __APPLE__
+    {   // Linux emulation of the macOS test: Wine's window must exist as a top-level X11 window with the plugin's name
+        xcb_connection_t* xc = xcb_connect(0, 0);
+        xcb_screen_t* scr = xcb_setup_roots_iterator(xcb_get_setup(xc)).data;
+        xcb_query_tree_reply_t* t = xcb_query_tree_reply(xc, xcb_query_tree(xc, scr->root), 0);
+        int hit = 0;
+        for (int i = 0; t && i < xcb_query_tree_children_length(t); i++) {
+            xcb_get_property_reply_t* r = xcb_get_property_reply(xc, xcb_get_property(xc, 0, xcb_query_tree_children(t)[i], XCB_ATOM_WM_NAME, XCB_ATOM_ANY, 0, 64), 0);
+            if (r && xcb_get_property_value_length(r) && strstr((const char*)xcb_get_property_value(r), real ? "S-YXG" : "Fake VST")) hit++;
+            free(r);
+        }
+        CHECK(hit >= 1, "floating editor window exists (%d)", hit);
+        if (getenv("SHOT")) { char cmd[256]; snprintf(cmd, sizeof cmd, "import -window root %s", getenv("SHOT")); int rc = system(cmd); (void)rc; }
+        xcb_disconnect(xc);
+    }
+#endif
+    CHECK(gui->hide(pl), "gui hide");
+    CHECK(gui->show(pl), "gui show again");
+    const clap_plugin_timer_support_t* ts = pl->get_extension(pl, CLAP_EXT_TIMER_SUPPORT);
+    if (ts) ts->on_timer(pl, 0);
+    CHECK(!gui->set_parent(pl, 0), "embedding is refused");
+#else
     const clap_plugin_gui_t* gui = pl->get_extension(pl, CLAP_EXT_GUI);
     CHECK(gui && gui->is_api_supported(pl, CLAP_WINDOW_API_X11, false), "gui x11 supported");
     CHECK(gui->create(pl, CLAP_WINDOW_API_X11, false), "gui create");
@@ -111,13 +161,16 @@ int main(int argc, char** argv)
     CHECK(t && xcb_query_tree_children_length(t) >= 1, "editor window is a child of the host window (%d children)", t ? xcb_query_tree_children_length(t) : -1);
     if (t) { xcb_window_t* ch = xcb_query_tree_children(t); if (xcb_query_tree_children_length(t)) printf("      child window 0x%x\n", ch[0]); }
     if (getenv("SHOT")) { char cmd[256]; snprintf(cmd, sizeof cmd, "import -window root %s", getenv("SHOT")); int rc = system(cmd); (void)rc; }
+#endif
     gui->destroy(pl);
     CHECK(1, "gui destroy");
     pl->stop_processing(pl);
     pl->deactivate(pl);
     pl->destroy(pl);
     entry->deinit();
+    #ifndef FLOATING
     xcb_disconnect(xc);
+#endif
     printf(fails ? "RESULT: %d failed\n" : "RESULT: all passed\n", fails);
     return fails != 0;
 }
