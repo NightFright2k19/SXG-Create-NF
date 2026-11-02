@@ -3,8 +3,9 @@
 # xvfb (or a DISPLAY), a Wine prefix (WINEPREFIX, default ~/.wine). Run from anywhere:  bash clapbridge/test/run_tests.sh
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+SELF="$HERE/$(basename "$0")"
+if [ -z "${DISPLAY:-}" ]; then exec xvfb-run -a bash "$SELF" "$@"; fi      # no X server: start one
 cd "$HERE/.."
-if [ -z "${DISPLAY:-}" ]; then exec xvfb-run -a bash "$0" "$@"; fi
 export WINEDEBUG=-all
 make clean >/dev/null; make; make linux
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
