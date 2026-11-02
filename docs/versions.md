@@ -6,7 +6,7 @@ Releases before r14 were not kept. Releases that only touched the build or the d
 
 | Release | Date | Changes |
 |---|---|---|
-| next | | CLAP plugins (#97): the Windows patcher now writes the DLLs to `Plugins\VST2` and a CLAP version of every plugin to `Plugins\CLAP` (with `sxgbridge32.exe`). The CLAP is a bridge that runs the 32-bit plugin in a helper process: MIDI with SysEx, the plugin's own panel and saved state work in 64-bit CLAP hosts. Linux and macOS patchers are unchanged. |
+| r61 | 2026-11-02 | CLAP plugins (#97): the Windows patcher now writes the DLLs to `Plugins\VST2` and a CLAP version of every plugin to `Plugins\CLAP` (with `sxgbridge32.exe`). The CLAP is a bridge that runs the 32-bit plugin in a helper process: MIDI with SysEx, the plugin's own panel and saved state work in 64-bit CLAP hosts. Linux and macOS patchers are unchanged. |
 | r60 | 2026-11-01 | MU15: the name picture on the panel no longer shows the remains of a "0" behind the "5" (#94). |
 | r59 | 2026-11-01 | MU15: new model (#94). Converts the MU15 ROM `xv684c0.bin` into a plugin `S-YXGM15` (internal name, panel: S-YXG15) with the MU50 layout and Setup page; listed first in the patcher. |
 | r58 | 2026-10-31 | MU100: the same two fixes as for MU1000: the 12 further MSB 48 banks (LSB 8-120, e.g. 48/8 Ping) now play (#89), and the wave fine tune is converted, so 25 waves play in tune, e.g. Flute # above C#5 was up to 33 cents off (#90). |
