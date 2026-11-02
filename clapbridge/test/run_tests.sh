@@ -19,6 +19,8 @@ gcc -O2 -Wall -Wno-format-truncation -D__APPLE__ -Istub -I.. -shared -fPIC -fvis
 for d in win lin mac; do mkdir -p "$T/$d/CLAP" "$T/$d/VST2"; cp "$T/fake.dll" "$T/$d/VST2/fake.dll"; cp ../sxgbridge32.exe "$T/$d/CLAP/"; done
 cp ../sxgbridge.clap "$T/win/CLAP/fake.clap"; cp ../sxgbridge-linux.clap "$T/lin/CLAP/fake.clap"; cp "$T/mac.clap" "$T/mac/CLAP/fake.clap"
 echo "== Windows bridge (Wine)";  wine "$T/testhost.exe" "$(winepath -w "$T/win/CLAP/fake.clap")"
+echo "== Windows bridge, path with mixed separators (as Woof! gives it)"
+wine "$T/testhost.exe" "$(winepath -w "$T/win/CLAP")/fake.clap" | grep -E "plugin init|RESULT"
 echo "== Linux bridge";           "$T/testhost_posix" "$T/lin/CLAP/fake.clap"
 echo "== macOS bridge (floating editor, emulated on Linux)"; "$T/testhost_float" "$T/mac/CLAP/fake.clap"
 echo "ALL BRIDGE TESTS PASSED"
