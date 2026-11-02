@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y gcc-mingw-w64 libxcb1-dev wine wine32:i386 xvfb
+          sudo apt-get install -y gcc-mingw-w64 libxcb1-dev wine wine64 wine32:i386 libwine xvfb
 
       - name: Initialise Wine
         run: xvfb-run -a wine wineboot -i
