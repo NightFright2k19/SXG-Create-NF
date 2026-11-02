@@ -8,3 +8,7 @@ patcher_version.py
 source/*
 !source/place_roms_here.txt
 !source/syxg50.dll
+clapbridge/*.clap
+clapbridge/*.exe
+clapbridge/test/*.exe
+clapbridge/test/*.dll

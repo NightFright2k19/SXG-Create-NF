@@ -6,6 +6,8 @@ name: SXG-Create-NF Autobuild
 # Plugin templates (issue #40, utility/template.py): the first job makes them again from source/syxg50.dll
 # and commits them to templates/ when they changed; the patchers are built from that commit and carry the
 # templates in one 7z archive (LZMA2, Ultra, largest dictionary), so users no longer need syxg50.dll.
+# CLAP bridge (issue #97, clapbridge/): the `bridge` job builds the 64-bit CLAP and the 32-bit helper with mingw-w64;
+# the Windows patcher bundles both and writes a CLAP for every plugin.
 # Older Autobuild releases are kept for regression tests; only the newest one is marked as Latest.
 
 on:
@@ -18,6 +20,7 @@ on:
       - '!utility/dev/**'
       - 'source/syxg50.dll'
       - 'templates/**'
+      - 'clapbridge/**'
       - '.github/workflows/build.yml'
   workflow_dispatch:
 
@@ -79,6 +82,31 @@ jobs:
           path: templates.7z
           if-no-files-found: error
 
+  bridge:
+    name: CLAP bridge
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install mingw-w64
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64
+
+      - name: Build bridge
+        run: |
+          set -euo pipefail
+          make -C clapbridge
+          file clapbridge/sxgbridge.clap clapbridge/sxgbridge32.exe
+          mkdir bridge-bin
+          cp clapbridge/sxgbridge.clap clapbridge/sxgbridge32.exe bridge-bin/
+
+      - name: Upload bridge
+        uses: actions/upload-artifact@v4
+        with:
+          name: clap-bridge
+          path: bridge-bin/*
+          if-no-files-found: error
+
   version:
     name: Determine release number
     runs-on: ubuntu-24.04
@@ -110,7 +138,7 @@ jobs:
 
   build:
     name: Patcher ${{ matrix.label }}
-    needs: [version, templates]
+    needs: [version, templates, bridge]
     strategy:
       fail-fast: true
       matrix:
@@ -134,6 +162,13 @@ jobs:
         with:
           name: templates
 
+      - name: Download CLAP bridge
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: clap-bridge
+          path: bridge-bin
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -150,6 +185,8 @@ jobs:
           echo "VERSION = '$REVISION'" > patcher_version.py
           HIDDEN=""
           for f in utility/*.py; do HIDDEN="$HIDDEN --hidden-import $(basename "$f" .py)"; done
+          BRIDGE=""
+          if [ "${{ runner.os }}" = "Windows" ]; then BRIDGE="--add-data bridge-bin:bridge"; fi     # CLAP bridge (#97), Windows only
           case "${{ runner.os }}" in                  # program icon: .ico (Windows), .icns (macOS); Linux has none
             Windows) ICON="--icon utility/icons/patcher.ico" ;;
             macOS)   ICON="--icon utility/icons/patcher.icns" ;;
@@ -160,7 +197,7 @@ jobs:
             --paths utility --paths . \
             --add-data "utility/bitmaps:bitmaps" \
             --add-data "utility/icons:icons" \
-            --add-data "templates.7z:." \
+            --add-data "templates.7z:." $BRIDGE \
             --hidden-import main --hidden-import patcher_i18n --hidden-import patcher_version --hidden-import certifi $HIDDEN \
             patcher.py
           ls -la dist
@@ -232,6 +269,7 @@ jobs:
             - `syxg50.dll` is **no longer needed**: the patcher carries ready-patched plugin templates (without any ROM data) and only writes the converted ROMs into them. The S-YXG2006LE still needs your own `SGP2.OLD` or `SGP2.DLL`.
             - Start it, check the list of found models, click **Patch**. MU models and the S-YXG2006LE are built in the same run; each also works on its own.
             - The plugins (one DLL per model, tables inside; `syxg2006le.dll` for the S-YXG2006LE) end up in the folder `Plugins` next to the patcher.
+            - **Windows: CLAP bridges.** The Windows patcher puts the DLLs into `Plugins\VST2` and a CLAP version of each into `Plugins\CLAP` (`syxg1000.clap` ... plus `sxgbridge32.exe`, keep it next to them). The CLAP runs the 32-bit plugin in a helper process, so it also loads in 64-bit CLAP hosts; it plays MIDI and SysEx, shows the plugin's own panel and saves the plugin state. Native CLAPs for Linux and macOS are not possible (the plugins are 32-bit Windows code).
 
             **WHAT'S NEW**
             - See the [version history](https://github.com/NightFright2k19/SXG-Create-NF/blob/main/docs/versions.md) for the changes of every release.
