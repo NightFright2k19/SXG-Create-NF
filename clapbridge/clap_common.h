@@ -26,8 +26,18 @@ static const struct { const char* stem; const char* name; } NAMES[] = {
     { "syxg1000", "S-YXG MU1000" }, { "syxg2000", "S-YXG MU2000" }, { "syxg2006le", "S-YXG2006LE" }, { 0, 0 }
 };
 
+// every failure to start is also written to <temp folder>/sxgbridge.log: many hosts show nothing of a plugin's log
+static void log_to_file(const char* m)
+{
+    const char* t = getenv("TEMP"); if (!t || !*t) t = getenv("TMPDIR"); if (!t || !*t) t = "/tmp";
+    char f[1024]; snprintf(f, sizeof f, "%s/sxgbridge.log", t);
+    FILE* fp = fopen(f, "a");
+    if (fp) { fprintf(fp, "%s: %s\n", g_id, m); fclose(fp); }
+}
+
 static void log_error(Inst* p, const char* m)
 {
+    log_to_file(m);
     if (p->host && p->host->get_extension) {
         const clap_host_log_t* l = (const clap_host_log_t*)p->host->get_extension(p->host, CLAP_EXT_LOG);
         if (l && l->log) l->log(p->host, CLAP_LOG_ERROR, m);

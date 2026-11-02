@@ -14,6 +14,11 @@ Copy the `.clap` files **and** `sxgbridge32.exe` to a CLAP folder of your host (
 
 **Linux needs Wine** (any recent version that runs 32-bit programs, e.g. Wine 9): `wine` in the path, or `SXG_WINE=/path/to/wine`; the Wine prefix is the usual one (`WINEPREFIX`, default `~/.wine`). `SXG_DEBUG=1` leaves Wine's output visible when the plugin does not load.
 
+## Troubleshooting
+
+- **The host does not load the CLAP:** the reason is written to `sxgbridge.log` in the temp folder (`%TEMP%` on Windows, `$TMPDIR` or `/tmp` elsewhere), often the only place a host does not show. Typical causes: `sxgbridge32.exe` is not in the same folder as the `.clap`, the DLL is not found (see the search order above), or (Linux / macOS) Wine is missing.
+- **Where hosts look for CLAP files:** each host has its own folders. Woof! (Windows) scans only a `plugins` folder next to `Woof.exe` or in its preferences folder, and loads the first suitable `.clap` it finds. Put the `.clap`, `sxgbridge32.exe` and the DLL into that `plugins` folder (the DLL may also be one folder up or in a `VST2` folder next to `plugins`); remove the CLAP files of models you do not want, so that the right one is used.
+
 ## How it works
 
 - `clapbridge/clap_bridge.c` (Windows) and `clap_bridge_linux.c` (Linux) are the same file under every plugin's name; the plugin is taken from the file name (`syxg1000.clap` -> `syxg1000.dll`, shown as "S-YXG MU1000"). What both share (MIDI, audio, ports, state, factory) is `clap_common.h`.
