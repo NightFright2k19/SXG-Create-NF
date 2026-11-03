@@ -1,9 +1,12 @@
-// clap_bridge_linux.c - Linux CLAP plugin that runs one of the 32-bit S-YXG VST2 plugins under Wine (issue #97).
+// clap_bridge_posix.c - Linux and macOS CLAP plugin that runs one of the 32-bit S-YXG VST2 plugins under Wine (issue #97).
 // Like the Windows bridge, the same file is copied once per plugin and takes the plugin from its own name:
 //   <folder>/syxg1000.clap  ->  <folder>/../VST2/syxg1000.dll  (or <folder>/syxg1000.dll)  run by  wine <folder>/sxgbridge32.exe
-// The helper is the same 32-bit program as on Windows. Shared memory is a file in /dev/shm that Wine maps too; the signals
-// (audio block, command, done) travel over two loopback TCP connections. The editor is a Wine window that is moved into
-// the host's X11 window (XReparentWindow), as other Wine bridges do. Needs Wine (wine in PATH, or SXG_WINE=<wine binary>).
+// (macOS: syxg1000.clap is a bundle, syxg1000.clap/Contents/MacOS/syxg1000 is this code.)
+// The helper is the same 32-bit program as on Windows. Shared memory is a file (Linux: /dev/shm, macOS: the temp folder) that
+// Wine maps too; the signals (audio block, command, done) travel over two loopback TCP connections.
+// Linux: the editor is a Wine window that is moved into the host's X11 window (XReparentWindow), as other Wine bridges do.
+// macOS: a window of another process cannot be embedded, so the editor is a floating window (CLAP floating GUI).
+// Needs Wine (wine in PATH or a usual install folder, or SXG_WINE=<wine binary>); on Apple Silicon Wine runs under Rosetta.
 // The part shared with the Windows bridge is in clap_common.h.
 #define _GNU_SOURCE
 #include <errno.h>
@@ -26,11 +29,19 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <crt_externs.h>
+#else
 #include <xcb/xcb.h>
+#endif
 #include "clap/clap.h"
 #include "protocol.h"
 
+#ifdef __APPLE__
+#define environ (*_NSGetEnviron())
+#else
 extern char** environ;
+#endif
 
 static char g_dir[PATH_MAX], g_stem_raw[256], g_stem8[128];
 static int  g_counter;
@@ -43,11 +54,13 @@ typedef struct {
     char error[256];
     pid_t pid;
     int fd_ctl, fd_aud, shm_fd;
-    char shm_path[96], token[24];
+    char shm_path[PATH_MAX], token[24];
     pthread_mutex_t cmd_lock;
+#ifndef __APPLE__
     xcb_connection_t* xc;
     xcb_window_t xparent, xchild, xroot;
     int last_x, last_y;
+#endif
     clap_id timer;
 } Inst;
 #define INST_INIT(p) pthread_mutex_init(&(p)->cmd_lock, 0)
@@ -74,7 +87,21 @@ static int wait_byte(Inst* p, int fd, char want, int timeout_ms)
         if (waitpid(p->pid, 0, WNOHANG) == p->pid) { p->pid = 0; return 0; }
     }
 }
-static void send_byte(int fd, char c) { ssize_t n = write(fd, &c, 1); (void)n; }
+#ifdef __APPLE__
+#define SEND_FLAGS 0                                    // SO_NOSIGPIPE is set on the sockets instead
+#else
+#define SEND_FLAGS MSG_NOSIGNAL                         // a helper that is gone must not kill the host with SIGPIPE
+#endif
+static void send_byte(int fd, char c) { ssize_t n = send(fd, &c, 1, SEND_FLAGS); (void)n; }
+static void tune_socket(int fd)
+{
+    int one = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+#ifdef SO_NOSIGPIPE
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+#endif
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
+}
 
 static int command(Inst* p, int cmd, int a0, int a1, unsigned timeout)
 {
@@ -111,6 +138,23 @@ static int find_dll(char* out, size_t n)
     return 0;
 }
 
+// wine binary: SXG_WINE, then (macOS: a host's PATH is short) the usual install folders, then wine in PATH
+static const char* find_wine(void)
+{
+    const char* e = getenv("SXG_WINE");
+    if (e && *e) return e;
+#ifdef __APPLE__
+    static const char* cand[] = {
+        "/opt/homebrew/bin/wine", "/usr/local/bin/wine", "/opt/homebrew/bin/wine64", "/usr/local/bin/wine64",
+        "/Applications/Wine Stable.app/Contents/Resources/wine/bin/wine", "/Applications/Wine Staging.app/Contents/Resources/wine/bin/wine",
+        "/Applications/Wine Devel.app/Contents/Resources/wine/bin/wine",
+        "/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin/wine", 0
+    };
+    for (int i = 0; cand[i]; i++) if (access(cand[i], X_OK) == 0) return cand[i];
+#endif
+    return "wine";
+}
+
 static int plat_start(Inst* p)
 {
     char dll[PATH_MAX], exe[PATH_MAX], t[PATH_MAX + 16];
@@ -120,7 +164,13 @@ static int plat_start(Inst* p)
     if (!exists(t) || !realpath(t, exe)) { snprintf(p->error, sizeof p->error, "sxgbridge32.exe not found next to the CLAP"); return 0; }
 
     int n = __sync_add_and_fetch(&g_counter, 1);
+#ifdef __APPLE__
+    const char* tmp = getenv("TMPDIR"); char tdir[PATH_MAX];
+    if (!tmp || !*tmp || !realpath(tmp, tdir)) snprintf(tdir, sizeof tdir, "/tmp");
+    snprintf(p->shm_path, sizeof p->shm_path, "%.60s/sxgb_%d_%d", tdir, (int)getpid(), n);
+#else
     snprintf(p->shm_path, sizeof p->shm_path, "/dev/shm/sxgb_%d_%d", (int)getpid(), n);
+#endif
     p->shm_fd = open(p->shm_path, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     if (p->shm_fd < 0 || ftruncate(p->shm_fd, sizeof(Shared)) != 0) { snprintf(p->error, sizeof p->error, "cannot create %s", p->shm_path); return 0; }
     p->sh = (Shared*)mmap(0, sizeof(Shared), PROT_READ | PROT_WRITE, MAP_SHARED, p->shm_fd, 0);
@@ -133,7 +183,8 @@ static int plat_start(Inst* p)
     if (ur >= 0) { ssize_t k = read(ur, rnd, sizeof rnd); (void)k; close(ur); }
     for (int i = 0; i < 8; i++) snprintf(p->token + 2 * i, 3, "%02x", rnd[i]);
 
-    int ls = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    int ls = socket(AF_INET, SOCK_STREAM, 0);
+    if (ls >= 0) tune_socket(ls);
     struct sockaddr_in a; memset(&a, 0, sizeof a);
     a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     socklen_t al = sizeof a;
@@ -146,7 +197,7 @@ static int plat_start(Inst* p)
     strncat(wdll, dll, PATH_MAX); for (char* q = wdll; *q; q++) if (*q == '/') *q = '\\';
     snprintf(arg2, sizeof arg2, "net:%d:%s:%s", ntohs(a.sin_port), p->token, p->shm_path);
     (void)wexe;
-    const char* wine = getenv("SXG_WINE"); if (!wine || !*wine) wine = "wine";
+    const char* wine = find_wine();
     char* argv[] = { (char*)wine, exe, wdll, arg2, 0 };
     char** env = environ; int ne = 0; while (env[ne]) ne++;
     char** envp = (char**)calloc((size_t)ne + 3, sizeof *envp);
@@ -169,14 +220,14 @@ static int plat_start(Inst* p)
         int waited = 0, got = -1;
         while (waited < 120000) {
             int r = poll(&pf, 1, 200);
-            if (r > 0) { got = accept4(ls, 0, 0, SOCK_CLOEXEC); break; }
+            if (r > 0) { got = accept(ls, 0, 0); break; }
             waited += 200;
             if (waitpid(p->pid, 0, WNOHANG) == p->pid) { p->pid = 0; break; }
         }
         if (got < 0) { close(ls); snprintf(p->error, sizeof p->error, p->pid ? "Wine did not start the helper in time" : "Wine ended without starting the helper (is Wine installed?)"); return 0; }
         char hello[24] = {0}; struct pollfd hp = { got, POLLIN, 0 };
         if (poll(&hp, 1, 5000) <= 0 || read(got, hello, 17) != 17 || strncmp(hello, p->token, 16) != 0 || (hello[16] != (i ? 'A' : 'C'))) { close(got); close(ls); snprintf(p->error, sizeof p->error, "unexpected connection"); return 0; }
-        int one = 1; setsockopt(got, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+        tune_socket(got);
         if (i == 0) p->fd_ctl = got; else p->fd_aud = got;
     }
     close(ls);
@@ -208,6 +259,91 @@ static void plat_stop(Inst* p)
     if (p->shm_path[0]) unlink(p->shm_path);
 }
 
+#ifdef __APPLE__
+// ----------------------------------------------------------------------------- editor (macOS: floating window)
+
+// The editor window belongs to the Wine process; macOS cannot embed it, so the plugin has a floating GUI: show opens
+// (or shows again) the panel in a window of its own with a title bar, hide hides it. Closing the window by hand tells the host.
+static void gui_closed_notify(Inst* p)
+{
+    const clap_host_gui_t* hg = p->host->get_extension ? (const clap_host_gui_t*)p->host->get_extension(p->host, CLAP_EXT_GUI) : 0;
+    if (hg && hg->closed) hg->closed(p->host, false);
+}
+static void plat_gui_close(Inst* p)
+{
+    if (p->gui_open) command(p, SXG_CMD_EDIT_CLOSE, 0, 0, 5000);
+    p->gui_open = 0;
+    const clap_host_timer_support_t* ts = p->timer != CLAP_INVALID_ID && p->host->get_extension ?
+        (const clap_host_timer_support_t*)p->host->get_extension(p->host, CLAP_EXT_TIMER_SUPPORT) : 0;
+    if (ts && ts->unregister_timer) ts->unregister_timer(p->host, p->timer);
+    p->timer = CLAP_INVALID_ID;
+}
+
+static bool gui_supported(const clap_plugin_t* c, const char* api, bool floating)
+{
+    Inst* p = (Inst*)c->plugin_data;
+    return floating && api && !strcmp(api, CLAP_WINDOW_API_COCOA) && !p->dead && p->sh && p->sh->has_editor;
+}
+static bool gui_preferred(const clap_plugin_t* c, const char** api, bool* floating)
+{
+    if (!gui_supported(c, CLAP_WINDOW_API_COCOA, true)) return false;
+    *api = CLAP_WINDOW_API_COCOA; *floating = true; return true;
+}
+static bool gui_create(const clap_plugin_t* c, const char* api, bool floating)
+{
+    Inst* p = (Inst*)c->plugin_data;
+    if (!gui_supported(c, api, floating)) return false;
+    if (command(p, SXG_CMD_EDIT_RECT, 0, 0, 10000)) { p->gui_w = p->sh->arg[0]; p->gui_h = p->sh->arg[1]; }
+    if (p->gui_w <= 0) { p->gui_w = 640; p->gui_h = 480; }
+    p->gui_made = 1; p->timer = CLAP_INVALID_ID; return true;
+}
+static void gui_destroy(const clap_plugin_t* c) { Inst* p = (Inst*)c->plugin_data; plat_gui_close(p); p->gui_made = 0; }
+static bool gui_scale(const clap_plugin_t* c, double s) { (void)c; (void)s; return false; }
+static bool gui_size(const clap_plugin_t* c, uint32_t* w, uint32_t* h)
+{
+    Inst* p = (Inst*)c->plugin_data;
+    if (!p->gui_made) return false;
+    *w = (uint32_t)p->gui_w; *h = (uint32_t)p->gui_h; return true;
+}
+static bool gui_can_resize(const clap_plugin_t* c) { (void)c; return false; }
+static bool gui_hints(const clap_plugin_t* c, clap_gui_resize_hints_t* h) { (void)c; (void)h; return false; }
+static bool gui_adjust(const clap_plugin_t* c, uint32_t* w, uint32_t* h) { return gui_size(c, w, h); }
+static bool gui_set_size(const clap_plugin_t* c, uint32_t w, uint32_t h) { Inst* p = (Inst*)c->plugin_data; return (int)w == p->gui_w && (int)h == p->gui_h; }
+static bool gui_set_parent(const clap_plugin_t* c, const clap_window_t* win) { (void)c; (void)win; return false; }     // not embeddable
+static bool gui_transient(const clap_plugin_t* c, const clap_window_t* w) { (void)c; (void)w; return false; }
+static void gui_title(const clap_plugin_t* c, const char* t) { (void)c; (void)t; }
+static bool gui_show(const clap_plugin_t* c)
+{
+    Inst* p = (Inst*)c->plugin_data;
+    if (!p->gui_made) return false;
+    p->sh->editor_closed = 0;
+    if (!command(p, SXG_CMD_EDIT_OPEN_FLOAT, 0, 0, 30000) || !p->sh->result) return false;
+    p->gui_open = 1;
+    if (p->timer == CLAP_INVALID_ID) {                                  // notice a window the user has closed
+        const clap_host_timer_support_t* ts = p->host->get_extension ? (const clap_host_timer_support_t*)p->host->get_extension(p->host, CLAP_EXT_TIMER_SUPPORT) : 0;
+        if (ts && ts->register_timer) ts->register_timer(p->host, 250, &p->timer);
+    }
+    return true;
+}
+static bool gui_hide(const clap_plugin_t* c)
+{
+    Inst* p = (Inst*)c->plugin_data;
+    if (!p->gui_open) return false;
+    command(p, SXG_CMD_EDIT_SHOW, 0, 0, 5000);
+    return true;
+}
+static const clap_plugin_gui_t ext_gui = {
+    gui_supported, gui_preferred, gui_create, gui_destroy, gui_scale, gui_size, gui_can_resize, gui_hints,
+    gui_adjust, gui_set_size, gui_set_parent, gui_transient, gui_title, gui_show, gui_hide
+};
+static void on_timer(const clap_plugin_t* c, clap_id id)
+{
+    Inst* p = (Inst*)c->plugin_data;
+    if (id == p->timer && p->gui_open && p->sh && p->sh->editor_closed) { p->sh->editor_closed = 0; gui_closed_notify(p); }
+}
+static const clap_plugin_timer_support_t ext_timer = { on_timer };
+
+#else
 // ----------------------------------------------------------------------------- editor (X11)
 
 static xcb_atom_t atom(xcb_connection_t* c, const char* name)
@@ -351,6 +487,7 @@ static void on_timer(const clap_plugin_t* c, clap_id id)
 }
 static const clap_plugin_timer_support_t ext_timer = { on_timer };
 
+#endif
 static const void* plat_ext(const char* id)
 {
     if (!strcmp(id, CLAP_EXT_GUI)) return &ext_gui;
@@ -362,6 +499,11 @@ static int plat_entry_path(const char* path)
 {
     char full[PATH_MAX];
     snprintf(full, sizeof full, "%s", path);
+    {   // macOS: some hosts pass the executable inside the bundle (X.clap/Contents/MacOS/X), others the bundle X.clap
+        char* c = strstr(full, ".clap/Contents/MacOS");
+        if (c) c[5] = 0;
+        size_t n = strlen(full); while (n > 1 && full[n - 1] == '/') full[--n] = 0;
+    }
     char* slash = strrchr(full, '/');
     const char* base = slash ? slash + 1 : full;
     if (slash) { *slash = 0; snprintf(g_dir, sizeof g_dir, "%s", full[0] ? full : "/"); } else snprintf(g_dir, sizeof g_dir, ".");

@@ -1,4 +1,4 @@
-// clap_common.h - the part of the CLAP bridge that is the same on Windows (clap_bridge.c) and Linux (clap_bridge_linux.c).
+// clap_common.h - the part of the CLAP bridge that is the same on Windows (clap_bridge.c) and Linux (clap_bridge_posix.c).
 // Included by both after they have defined, in this order:
 //   Inst (with clap_plugin_t plugin, const clap_host_t* host, Shared* sh, int dead, active, gui_made, gui_open, gui_w, gui_h,
 //   char error[256] and what the platform needs), INST_INIT(p), and these functions:

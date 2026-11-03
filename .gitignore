@@ -12,4 +12,6 @@ clapbridge/*.clap
 clapbridge/*.exe
 clapbridge/test/*.exe
 clapbridge/test/*.dll
-clapbridge/test/testhost_linux
+clapbridge/test/testhost_posix
+clapbridge/sxgbridge-macos
+clapbridge/testhost_mac

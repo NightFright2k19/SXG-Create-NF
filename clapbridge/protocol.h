@@ -22,6 +22,7 @@ enum {                                  // control commands (host -> helper, ans
     SXG_CMD_EDIT_SHOW,                  // arg0 = 1 show, 0 hide
     SXG_CMD_GET_CHUNK,                  // -> blob, blob_len
     SXG_CMD_SET_CHUNK,                  // <- blob, blob_len
+    SXG_CMD_EDIT_OPEN_FLOAT,            // macOS: editor in a floating window with a title bar (the user can close it: editor_closed) -> arg0/arg1 = size
     SXG_CMD_EDIT_OPEN_TOP,              // Linux: editor in a window of its own (title "SXGBridge <token>"); -> arg0/arg1 = size
     SXG_CMD_QUIT
 };
@@ -40,6 +41,7 @@ typedef struct {
     // set by the helper before it signals "ready"
     int32_t  ok;                        // 1 = plugin loaded
     int32_t  outputs, inputs, flags, unique_id, has_editor;
+    volatile int32_t editor_closed;     // helper -> host: the user closed the floating editor window
     char     error[256];
     char     name[64];
     // audio: the host fills frames / events, signals audio_go, waits for audio_done

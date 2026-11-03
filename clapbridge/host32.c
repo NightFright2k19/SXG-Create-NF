@@ -27,6 +27,7 @@ static int      ed_w, ed_h;
 static int      net;                    // 1: signals over sockets (Linux bridge)
 static SOCKET   s_ctl = INVALID_SOCKET, s_aud = INVALID_SOCKET;
 static char     title[64];
+static int      floating;               // the editor window is a floating window of its own (macOS)
 
 static void send_byte(SOCKET s, char c) { send(s, &c, 1, 0); }
 static void sig_ready(void) { if (net) send_byte(s_ctl, 'R'); else SetEvent(h_ready); }
@@ -139,6 +140,7 @@ static DWORD WINAPI audio_thread(LPVOID p)
 static LRESULT CALLBACK ed_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 {
     if (m == WM_TIMER && fx && editor_open) { fx->dispatcher(fx, effEditIdle, 0, 0, 0, 0); return 0; }
+    if (m == WM_CLOSE && floating) { ShowWindow(w, SW_HIDE); sh->editor_closed = 1; return 0; }      // closing only hides it
     return DefWindowProcA(w, m, wp, lp);
 }
 
@@ -152,7 +154,7 @@ static void edit_rect(void)
     }
 }
 
-static void edit_open(HWND parent, int top_level)
+static void edit_open(HWND parent, int top_level)       // top_level: 0 child of parent, 1 bare popup (Linux), 2 floating window with title bar (macOS)
 {
     static int registered;
     if (editor_open || !fx || !(fx->flags & effFlagsHasEditor)) return;
@@ -164,7 +166,14 @@ static void edit_open(HWND parent, int top_level)
     }
     edit_rect();
     if (ed_w <= 0) { ed_w = 640; ed_h = 480; }
-    if (top_level)      // Linux: a window of its own that the CLAP moves into the host's window (X11 reparenting)
+    if (top_level == 2) {
+        RECT r = { 0, 0, ed_w, ed_h };
+        DWORD st = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
+        AdjustWindowRect(&r, st, FALSE);
+        floating = 1;
+        editor_wnd = CreateWindowExA(WS_EX_TOPMOST, "SXGBridgeEditor", sh->name[0] ? sh->name : "S-YXG", st,
+                                     CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, 0, 0, GetModuleHandleA(0), 0);
+    } else if (top_level)      // Linux: a window of its own that the CLAP moves into the host's window (X11 reparenting)
         editor_wnd = CreateWindowExA(WS_EX_TOOLWINDOW, "SXGBridgeEditor", title, WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
                                      0, 0, ed_w, ed_h, 0, 0, GetModuleHandleA(0), 0);
     else
@@ -174,7 +183,7 @@ static void edit_open(HWND parent, int top_level)
     fx->dispatcher(fx, effEditOpen, 0, 0, editor_wnd, 0);
     editor_open = TRUE;
     edit_rect();                                         // some plugins only know the size once open
-    if (ed_w > 0) SetWindowPos(editor_wnd, 0, 0, 0, ed_w, ed_h, SWP_NOZORDER | SWP_NOMOVE);
+    if (ed_w > 0 && !floating) SetWindowPos(editor_wnd, 0, 0, 0, ed_w, ed_h, SWP_NOZORDER | SWP_NOMOVE);
     SetTimer(editor_wnd, 1, 33, 0);
     ShowWindow(editor_wnd, SW_SHOW);
 }
@@ -208,6 +217,11 @@ static void run_command(void)
     case SXG_CMD_EDIT_RECT:  edit_rect(); sh->arg[0] = ed_w; sh->arg[1] = ed_h; break;
     case SXG_CMD_EDIT_OPEN:
         edit_open((HWND)(UINT_PTR)(uint32_t)sh->arg[0], 0);
+        sh->result = editor_open; sh->arg[0] = ed_w; sh->arg[1] = ed_h;
+        break;
+    case SXG_CMD_EDIT_OPEN_FLOAT:
+        if (editor_open && editor_wnd) { sh->editor_closed = 0; ShowWindow(editor_wnd, SW_SHOW); }     // opened before and hidden by the user
+        else edit_open(0, 2);
         sh->result = editor_open; sh->arg[0] = ed_w; sh->arg[1] = ed_h;
         break;
     case SXG_CMD_EDIT_OPEN_TOP:

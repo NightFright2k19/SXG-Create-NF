@@ -1,0 +1,69 @@
+name: CLAP bridge check
+
+# Builds the CLAP bridges (issue #97, clapbridge/) and runs their tests on pull requests that touch them:
+# Linux: Windows bridge under Wine, Linux bridge, macOS source emulated on Linux (clapbridge/test/run_tests.sh);
+# macOS: builds the universal bridge, makes a .clap bundle like the patcher and loads it (entry / factory / descriptor).
+
+on:
+  pull_request:
+    paths:
+      - 'clapbridge/**'
+      - 'utility/clapbridge.py'
+      - '.github/workflows/bridge-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Bridges under Wine
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64 libxcb1-dev wine wine64 wine32:i386 libwine xvfb
+
+      - name: Initialise Wine
+        run: xvfb-run -a wine wineboot -i
+
+      - name: Build and test
+        run: bash clapbridge/test/run_tests.sh
+
+  macos:
+    name: macOS bridge
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          make -C clapbridge macos
+          lipo -info clapbridge/sxgbridge-macos
+          clang -O2 -Wall -Iclapbridge -o clapbridge/testhost_mac clapbridge/test/testhost_posix.c
+
+      - name: Make a bundle like the patcher and load it
+        run: |
+          set -euo pipefail
+          mkdir -p t/VST2
+          : > t/VST2/syxgtest.dll
+          : > clapbridge/sxgbridge32.exe          # stand-in: the 32-bit helper needs mingw and is built by the Linux job
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, 'utility')
+          import clapbridge
+          bridge = clapbridge.bridge_dir() / clapbridge.CLAP_FILE
+          assert clapbridge.mac_archs(bridge) == {0x0100000C, 0x01000007}, 'not universal'
+          print(clapbridge.install(__import__('pathlib').Path('t/VST2'), __import__('pathlib').Path('t/CLAP')))
+          PY
+          find t/CLAP
+          codesign --verify --verbose t/CLAP/syxgtest.clap
+          clapbridge/testhost_mac t/CLAP/syxgtest.clap/Contents/MacOS/syxgtest smoke

@@ -7,8 +7,8 @@ name: SXG-Create-NF Autobuild
 # and commits them to templates/ when they changed; the patchers are built from that commit and carry the
 # templates in one 7z archive (LZMA2, Ultra, largest dictionary), so users no longer need syxg50.dll.
 # CLAP bridge (issue #97, clapbridge/): the `bridge` job builds the 64-bit CLAP and the 32-bit helper with mingw-w64;
-# the Windows patcher bundles both and writes a CLAP for every plugin; the Linux patcher gets a Linux CLAP (built in its own
-# job, gcc + libxcb) plus the same helper (it runs under Wine).
+# the Windows patcher bundles both and writes a CLAP for every plugin; the Linux and macOS patchers get a CLAP built in their
+# own job (gcc + libxcb / clang, universal) plus the same helper (it runs under Wine).
 # Older Autobuild releases are kept for regression tests; only the newest one is marked as Latest.
 
 on:
@@ -164,7 +164,6 @@ jobs:
           name: templates
 
       - name: Download CLAP bridge
-        if: runner.os != 'macOS'
         uses: actions/download-artifact@v4
         with:
           name: clap-bridge
@@ -179,6 +178,16 @@ jobs:
           cp clapbridge/sxgbridge-linux.clap bridge-bin/
           rm -f bridge-bin/sxgbridge.clap                 # the Windows CLAP is not part of the Linux patcher
           file bridge-bin/*
+
+      - name: Build macOS CLAP bridge
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          make -C clapbridge macos
+          lipo -info clapbridge/sxgbridge-macos
+          cp clapbridge/sxgbridge-macos bridge-bin/
+          rm -f bridge-bin/sxgbridge.clap                 # the Windows CLAP is not part of the macOS patcher
+          ls -la bridge-bin
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -196,8 +205,7 @@ jobs:
           echo "VERSION = '$REVISION'" > patcher_version.py
           HIDDEN=""
           for f in utility/*.py; do HIDDEN="$HIDDEN --hidden-import $(basename "$f" .py)"; done
-          BRIDGE=""
-          if [ "${{ runner.os }}" != "macOS" ]; then BRIDGE="--add-data bridge-bin:bridge"; fi     # CLAP bridge (#97), Windows and Linux
+          BRIDGE="--add-data bridge-bin:bridge"                                                   # CLAP bridge (#97), every system
           case "${{ runner.os }}" in                  # program icon: .ico (Windows), .icns (macOS); Linux has none
             Windows) ICON="--icon utility/icons/patcher.ico" ;;
             macOS)   ICON="--icon utility/icons/patcher.icns" ;;
@@ -280,7 +288,7 @@ jobs:
             - `syxg50.dll` is **no longer needed**: the patcher carries ready-patched plugin templates (without any ROM data) and only writes the converted ROMs into them. The S-YXG2006LE still needs your own `SGP2.OLD` or `SGP2.DLL`.
             - Start it, check the list of found models, click **Patch**. MU models and the S-YXG2006LE are built in the same run; each also works on its own.
             - The plugins (one DLL per model, tables inside; `syxg2006le.dll` for the S-YXG2006LE) end up in the folder `Plugins` next to the patcher.
-            - **CLAP bridges (Windows and Linux).** The Windows and Linux patchers put the DLLs into `Plugins/VST2` and a CLAP version of each into `Plugins/CLAP` (`syxg1000.clap` ... plus `sxgbridge32.exe`, keep it next to them); each patcher writes only the CLAPs of its own system. The CLAP runs the 32-bit plugin in a helper process (on Linux under Wine, which must be installed: `wine` in the path, or `SXG_WINE`), so it loads in 64-bit CLAP hosts; it plays MIDI and SysEx, shows the plugin's own panel and saves the plugin state. macOS has no CLAP yet.
+            - **CLAP bridges.** The patchers put the DLLs into `Plugins/VST2` and a CLAP version of each into `Plugins/CLAP` (`syxg1000.clap` ... plus `sxgbridge32.exe`, keep it next to them); each patcher writes only the CLAPs of its own system (macOS: `.clap` bundles, signed ad hoc). The CLAP runs the 32-bit plugin in a helper process, so it loads in 64-bit CLAP hosts; it plays MIDI and SysEx, shows the plugin's own panel and saves the plugin state. On Linux and macOS the helper runs under Wine, which must be installed (`wine` in the path, a usual install folder, or `SXG_WINE`). The panel is embedded on Windows and Linux (X11); on macOS it opens as a floating window. The macOS bridge is untested on real hardware: feedback welcome.
 
             **WHAT'S NEW**
             - See the [version history](https://github.com/NightFright2k19/SXG-Create-NF/blob/main/docs/versions.md) for the changes of every release.
