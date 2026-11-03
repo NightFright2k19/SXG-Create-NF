@@ -12,6 +12,7 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 cd test
 i686-w64-mingw32-gcc -O2 -Wall -shared -o "$T/fake.dll" fakevst.c -static-libgcc -s
 x86_64-w64-mingw32-gcc -O2 -Wall -I.. -o "$T/testhost.exe" testhost.c -static -s
+x86_64-w64-mingw32-gcc -O2 -Wall -I.. -o "$T/testhost_vst2.exe" testhost_vst2.c -static -s
 gcc -O2 -Wall -I.. -o "$T/testhost_posix" testhost_posix.c -lxcb -ldl -lm
 gcc -O2 -w -DTEST_FLOAT -I.. -o "$T/testhost_float" testhost_posix.c -lxcb -ldl -lm
 # the macOS source compiled on Linux (stub header for _NSGetEnviron): same transport, floating editor
@@ -21,6 +22,9 @@ cp ../sxgbridge.clap "$T/win/CLAP/fake.clap"; cp ../sxgbridge-linux.clap "$T/lin
 echo "== Windows bridge (Wine)";  wine "$T/testhost.exe" "$(winepath -w "$T/win/CLAP/fake.clap")"
 echo "== Windows bridge, path with mixed separators (as Woof! gives it)"
 wine "$T/testhost.exe" "$(winepath -w "$T/win/CLAP")/fake.clap" | grep -E "plugin init|RESULT"
+echo "== 64-bit VST2 bridge (Wine; layout of the patcher: VST2/x64/<name>_x64.dll, plugin one folder up)"
+mkdir -p "$T/vst/VST2/x64"; cp "$T/fake.dll" "$T/vst/VST2/fake.dll"; cp ../sxgbridge32.exe "$T/vst/VST2/x64/"; cp ../sxgbridge-vst2.dll "$T/vst/VST2/x64/fake_x64.dll"
+wine "$T/testhost_vst2.exe" "$(winepath -w "$T/vst/VST2/x64/fake_x64.dll")"
 echo "== Linux bridge";           "$T/testhost_posix" "$T/lin/CLAP/fake.clap"
 echo "== macOS bridge (floating editor, emulated on Linux)"; "$T/testhost_float" "$T/mac/CLAP/fake.clap"
 echo "ALL BRIDGE TESTS PASSED"

@@ -6,6 +6,7 @@ Releases before r14 were not kept. Releases that only touched the build or the d
 
 | Release | Date | Changes |
 |---|---|---|
+| next | | 64-bit VST2 plugins (#104, Windows patcher): next to the 32-bit DLLs the patcher now writes 64-bit VST2 bridges named `<plugin>_x64.dll` (e.g. `syxgmu50_x64.dll`) into `Plugins\VST2\x64`, so 64-bit hosts such as the 64-bit Falcosoft MIDI Player can use the plugins without switching to the 32-bit build. Same bridge technology as the CLAP plugins: MIDI, SysEx, the plugin's own panel and saved state work. |
 | r65 | 2026-11-03 | CLAP plugins (#97): hosts that run a plugin at a rate S-YXG50 does not support (Woof! uses 32000 Hz) now get correct pitch and sound; before, the music was too low, dull and distorted. The bridge now plays the plugin at 44100 Hz and resamples its output to the host rate. |
 | r64 | 2026-11-03 | macOS patcher build (#97): the build step "Self test and package" failed because PyInstaller reduced the bundled CLAP bridge to one architecture; it is now bundled compressed, so the patcher can write the universal (Apple Silicon + Intel) bridge. |
 | r64 | 2026-11-03 | CLAP plugins (#97): the macOS patcher now writes the DLLs to `Plugins/VST2` and a CLAP bundle of every plugin to `Plugins/CLAP` (with `sxgbridge32.exe`), signed ad hoc. The bridge runs the 32-bit plugin under Wine (needs Wine and, on Apple Silicon, Rosetta); the panel opens as a floating window. MIDI, SysEx and saved state work as on the other systems. Untested on real hardware, feedback welcome. |
