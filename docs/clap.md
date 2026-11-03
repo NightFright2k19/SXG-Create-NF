@@ -1,4 +1,4 @@
-# CLAP plugins (bridge)
+# CLAP plugins (bridge) and 64-bit VST2 plugins
 
 Issue #97. The plugins are 32-bit Windows VST2 DLLs, so a native CLAP is not possible (no source, only the patched `syxg50.dll`). The CLAP versions are **bridges**: a small CLAP file that runs the DLL in a 32-bit helper process. All three patchers write them (on Linux and macOS the helper runs under Wine); each patcher writes only the CLAP of its own system.
 
@@ -47,3 +47,19 @@ Copy the `.clap` files **and** `sxgbridge32.exe` to a CLAP folder of your host (
 - the macOS source compiled on Linux (`-D__APPLE__`, stub header): same transport, floating editor (Wine's window must exist with the plugin's name, hide / show again, embedding refused).
 
 With a real converted plugin run a testhost with a second argument `real` (no sample checks). The tests cover loading, activation, sample-accurate notes, pitch, SysEx, state round trip, editor and shutdown. Checked with a converted MU50 under Wine: it plays (same output on all bridges), saves state and shows its 400 x 114 panel (embedded, or floating). On macOS only the CI can check the build: `bridge-check.yml` builds the universal binary, makes a bundle like the patcher, verifies its signature and loads it (entry, factory, descriptor). **Not tested on real hardware:** macOS with Wine (shared file mapping, floating window, Rosetta), and any real CLAP host on Linux or macOS; a window manager that decorates or composites; Wayland (XWayland hosts should work).
+
+## 64-bit VST2 bridges (Windows)
+
+Issue #104. For 64-bit VST2 hosts (e.g. the 64-bit Falcosoft MIDI Player, so that the MU plugins and the Nuked-SC55-P256 plugins can be used side by side without switching between 32-bit and 64-bit builds) the **Windows patcher** also writes 64-bit VST2 bridges. They exist for Windows only (Linux and macOS cannot load DLL plugins natively).
+
+```
+Plugins\VST2\syxgmu50.dll ... syxg1000.dll          the 32-bit plugins, as before
+Plugins\VST2\x64\syxgmu50_x64.dll ... syxg1000_x64.dll   64-bit bridges, name = <plugin>_x64.dll
+Plugins\VST2\x64\sxgbridge32.exe                    the 32-bit helper, shared; keep it next to the bridges
+```
+
+Point a 64-bit host to `Plugins\VST2\x64`, a 32-bit host to `Plugins\VST2`. The bridge takes the plugin from its own name (`syxg1000_x64.dll` -> `syxg1000.dll`) and looks for it one folder up, then next to itself, then two folders up. If you move the bridges, move the 32-bit DLL (and `sxgbridge32.exe`) with them. A failed start is written to `sxgbridge.log` in the temp folder, like for the CLAP.
+
+- `clapbridge/vst2_bridge.c` is the same file under every plugin's name (built as `sxgbridge-vst2.dll`; exports `VSTPluginMain` and `main`). The link to the helper (`win_transport.h`, protocol, helper) is the one of the CLAP bridge, so audio, MIDI / SysEx with sample-accurate offsets, the embedded editor (`effEditOpen` in the host's window) and the state (`effGetChunk` / `effSetChunk`) work the same; the same 44100 Hz handling for other host rates applies.
+- The bridge reports 2 outputs, no inputs, no parameters and one program (the plugin's own panel / MIDI is the interface), and starts the helper when the host loads it (the plugin is created at that point, so loading large models takes a moment).
+- Test: `clapbridge/test/testhost_vst2.c` (a minimal 64-bit VST2 host) is run under Wine by `run_tests.sh` with the same test instrument as the CLAP tests. **Not tested yet with a real 64-bit VST2 host** (e.g. Falcosoft MIDI Player x64): feedback welcome.

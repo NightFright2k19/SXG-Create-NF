@@ -8,6 +8,7 @@
 #   user's SGP2.OLD / SGP2.DLL (sgp2patch.py).
 # * CLAP (issue #97): the DLLs go to Plugins/VST2 and a CLAP bridge for each of them to Plugins/CLAP (macOS: .clap bundles)
 #   (utility/clapbridge.py); each patcher writes only the CLAP of its own system.
+# * 64-bit VST2 (issue #104, Windows patcher only): bridges named <plugin>_x64.dll go to Plugins/VST2/x64.
 # * patcher --cli <args> runs main.py's command line (used for the per-model runs).
 # * Language: the system language, else English; a menu at the top right switches it.
 # * Update (issue #72): a release patcher looks for a newer release a moment after it has started and offers it with the
@@ -262,6 +263,12 @@ def main_window() :
                     q.put(('line', f'CLAP bridges: {len(done)} written to {plugins_dir() / "CLAP"}\n'))
                 except Exception as e :
                     q.put(('line', f'CLAP bridges: FAILED ({e})\n')); code = code or 1
+            if clapbridge.vst2_x64_supported() :             # 64-bit VST2 bridges (#104, Windows): Plugins\VST2\x64\<name>_x64.dll
+                try :
+                    done = clapbridge.install_vst2_x64(out)
+                    q.put(('line', f'64-bit VST2 bridges: {len(done)} written to {out / "x64"}\n'))
+                except Exception as e :
+                    q.put(('line', f'64-bit VST2 bridges: FAILED ({e})\n')); code = code or 1
             q.put(('finished', code))
         threading.Thread(target = work, daemon = True).start()
     def line(text) :
