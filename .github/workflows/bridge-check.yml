@@ -73,7 +73,8 @@ jobs:
           mkdir -p bridge-bin
           gzip -9 -c clapbridge/sxgbridge-macos > bridge-bin/sxgbridge-macos.gz
           cp clapbridge/sxgbridge32.exe bridge-bin/        # the stand-in from the step above is enough here
-          python3 -m pip install --quiet pyinstaller
+          python3 -m venv fvenv
+          fvenv/bin/python -m pip install --quiet pyinstaller
           printf 'import sys\nsys.path.insert(0, "utility")\nimport clapbridge\na = clapbridge.mac_archs(clapbridge.clap_bytes(clapbridge.bridge_dir()))\nassert a == {0x0100000C, 0x01000007}, a\nprint("frozen check ok")\n' > frozen_check.py
-          python3 -m PyInstaller --onefile --noconfirm --clean --paths utility --add-data "bridge-bin:bridge" --hidden-import clapbridge frozen_check.py
+          fvenv/bin/python -m PyInstaller --onefile --noconfirm --clean --paths utility --add-data "bridge-bin:bridge" --hidden-import clapbridge frozen_check.py
           ./dist/frozen_check
