@@ -8,7 +8,7 @@ README.md, LICENSE, docs/   README (users) and the technical documentation
 CLAUDE.md            project rules and a short code map for Claude (Claude Code)
 source/              your ROM files; the original syxg50.dll (part of the repository, the templates are made from it)
 templates/           plugin templates, one per model, without ROM data (made by the Autobuild workflow)
-clapbridge/          CLAP bridge for the Windows and Linux patchers (C source, Makefile, Wine tests; see clap.md)
+clapbridge/          CLAP bridge for the patchers (C source, Makefile, Wine tests; see clap.md)
 output/              generated tables, wave files, patched DLLs and inis (created on the first run)
 utility/             the converter modules (decoders, table converters, table writer, sample conversion, DLL patcher)
 utility/bitmaps/     panel pictures for the patched DLLs
@@ -16,7 +16,7 @@ utility/dev/         development tools, not needed for a conversion and not in t
 .github/workflows/   autobuild release
 ```
 
-**Autobuild:** every push to `main` that changes `main.py`, the patcher, `utility` (except `utility/dev`), `source/syxg50.dll`, `templates` or `clapbridge` makes the [templates](templates.md) again (and commits them when they changed), builds the [CLAP bridge](clap.md) (mingw-w64 for Windows and the helper, gcc for Linux; bundled with the Windows and Linux patchers), then creates a release `autobuild-rN` (marked Latest) with the patchers for Windows, Linux and macOS, built from that commit. Older autobuilds are kept (for regression tests) and carry no label, so only the newest one, listed on top, is marked Latest. The workflow can also be started by hand (Actions, "Run workflow"). Autobuilds r14-r27 (the first ones with patchers) were deleted by the earlier workflow; the hand-started workflow `restore-autobuilds.yml` creates them again from the patchers that the Actions runs still hold. The tag `autobuild-rN` and the names of the patcher files in the release are used by the patcher's update (issue #72): keep them, or change `utility/selfupdate.py` with them.
+**Autobuild:** every push to `main` that changes `main.py`, the patcher, `utility` (except `utility/dev`), `source/syxg50.dll`, `templates` or `clapbridge` makes the [templates](templates.md) again (and commits them when they changed), builds the [CLAP bridge](clap.md) (mingw-w64 for Windows and the helper, gcc for Linux, clang for macOS; each patcher bundles its system's CLAP), then creates a release `autobuild-rN` (marked Latest) with the patchers for Windows, Linux and macOS, built from that commit. Older autobuilds are kept (for regression tests) and carry no label, so only the newest one, listed on top, is marked Latest. The workflow can also be started by hand (Actions, "Run workflow"). Autobuilds r14-r27 (the first ones with patchers) were deleted by the earlier workflow; the hand-started workflow `restore-autobuilds.yml` creates them again from the patchers that the Actions runs still hold. The tag `autobuild-rN` and the names of the patcher files in the release are used by the patcher's update (issue #72): keep them, or change `utility/selfupdate.py` with them.
 
 ## Patcher
 
