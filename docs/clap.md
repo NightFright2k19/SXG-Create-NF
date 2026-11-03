@@ -31,7 +31,7 @@ Copy the `.clap` files **and** `sxgbridge32.exe` to a CLAP folder of your host (
 - **macOS bundle:** each CLAP is a bundle `syxg1000.clap/Contents/{Info.plist, MacOS/syxg1000}` made by the patcher from the universal (arm64 + x86-64) binary and signed ad hoc with `codesign`, which Apple Silicon requires. The helper `sxgbridge32.exe` stays next to the bundles.
 - **State:** the plugin's own chunk (what a VST2 host saves) is stored in the CLAP state.
 - **Not done:** CLAP parameters (the plugins have none worth automating except the S-YXG2006LE's; they stay in the plugin's own panel / MIDI), voice info, latency reporting, keyboard focus handling in the Linux editor.
-- Block sizes above 8192 samples are processed in pieces. Sample rate is passed on at activation.
+- Block sizes above 8192 samples are processed in pieces. Sample rate is passed on at activation. S-YXG50 only plays correctly at 11025, 22050, 44100, 48000 and 96000 Hz (at any other rate it renders at about 44100 Hz, so the pitch is wrong: 32000 Hz sounds about 28 % too low). For every other host rate (e.g. 32000 Hz in Woof!) the helper therefore runs the plugin at 44100 Hz and resamples its output to the host rate (cubic interpolation); MIDI event positions are converted accordingly. The 2 to 3 samples of look-ahead of the interpolation are the only latency added.
 
 ## Building (development)
 

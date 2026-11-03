@@ -81,45 +81,115 @@ static intptr_t __cdecl master(AEffect* e, int32_t op, int32_t idx, intptr_t val
 
 // ----------------------------------------------------------------------------- audio thread
 
-static void process_block(void)
+// Rendering at the plugin's own rate. md[i] = frame (in this call) at which event i is sent, -1 = not in this call.
+static void render(int frames, const int32_t* md, float* o0, float* o1)
 {
     static char evbuf[sizeof(VstEventsHdr) + (SXG_MAXEVENTS) * sizeof(void*)];
     static VstMidiEvent mev[SXG_MAXEVENTS];
     static VstMidiSysexEvent sev[SXG_MAXEVENTS];
     static float in0[SXG_MAXFRAMES];       // silent inputs (an instrument has none, but be safe)
+    static float spare[6][SXG_MAXFRAMES];
+    uint32_t n = sh->n_events > SXG_MAXEVENTS ? SXG_MAXEVENTS : sh->n_events;
+    for (int lo = 0; lo < frames; lo += SXG_MAXFRAMES) {
+        int chunk = frames - lo > SXG_MAXFRAMES ? SXG_MAXFRAMES : frames - lo;
+        int last = lo + chunk >= frames;
+        VstEventsHdr* hdr = (VstEventsHdr*)evbuf;
+        void** list = hdr->events;
+        uint32_t cnt = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            if (md[i] < 0 || md[i] < lo || (md[i] >= lo + chunk && !(last && md[i] >= frames))) continue;
+            int32_t d = md[i] - lo; if (d > chunk - 1) d = chunk - 1;
+            SxgEvent* e = &sh->events[i];
+            if (e->kind == SXG_EV_SYSEX && (uint64_t)e->sysex_off + e->sysex_len <= SXG_SYSEX_MAX) {
+                memset(&sev[i], 0, sizeof sev[i]);
+                sev[i].type = 6; sev[i].byteSize = sizeof(VstMidiSysexEvent); sev[i].deltaFrames = d;
+                sev[i].dumpBytes = (int32_t)e->sysex_len; sev[i].sysexDump = (char*)sh->sysex + e->sysex_off;
+                list[cnt++] = &sev[i];
+            } else {
+                memset(&mev[i], 0, sizeof mev[i]);
+                mev[i].type = 1; mev[i].byteSize = sizeof(VstMidiEvent); mev[i].deltaFrames = d;
+                memcpy(mev[i].midiData, e->data, 3);
+                list[cnt++] = &mev[i];
+            }
+        }
+        if (cnt) { hdr->numEvents = (int32_t)cnt; hdr->reserved = 0; fx->dispatcher(fx, effProcessEvents, 0, 0, hdr, 0); }
+
+        float* outs[8] = {0}; float* ins[2] = { in0, in0 };
+        int no = fx->numOutputs > 8 ? 8 : fx->numOutputs;
+        for (int i = 0; i < no; i++) outs[i] = i == 0 ? o0 + lo : i == 1 ? o1 + lo : spare[i - 2];
+        for (int i = 0; i < no && i < 2; i++) memset(outs[i], 0, sizeof(float) * chunk);
+        if (fx->processReplacing) fx->processReplacing(fx, ins, outs, chunk);
+        else if (fx->process) fx->process(fx, ins, outs, chunk);
+        if (no == 1) memcpy(o1 + lo, o0 + lo, sizeof(float) * chunk);      // mono plugin on both channels
+    }
+}
+
+// Host rate the plugin does not support (the plugin then renders at 44100 Hz): resample its output.
+static double host_rate = 44100.0;     // rate the CLAP host asked for
+static double step = 1.0;              // plugin samples per host sample; 1.0 = no resampling
+#define PBN 16384
+static float pb[2][PBN];               // plugin-rate samples; pb[x][0] is the history sample
+static int pb_have = 1;
+static double pb_pos = 1.0;
+
+static void resample_reset(void) { memset(pb, 0, sizeof pb); pb_have = 1; pb_pos = 1.0; }
+
+static float cubic(const float* p, double t)
+{
+    float a = p[-1], b = p[0], c = p[1], d = p[2], f = (float)t;
+    return b + 0.5f * f * (c - a + f * (2*a - 5*b + 4*c - d + f * (3*(b - c) + d - a)));
+}
+
+static void process_block(void)
+{
+    static int32_t md[SXG_MAXEVENTS];
     int frames = sh->frames;
     if (frames < 0) frames = 0;
     if (frames > SXG_MAXFRAMES) frames = SXG_MAXFRAMES;
     if (!fx) { memset(sh->out, 0, sizeof sh->out); return; }
-
-    VstEventsHdr* hdr = (VstEventsHdr*)evbuf;
-    void** list = hdr->events;
     uint32_t n = sh->n_events > SXG_MAXEVENTS ? SXG_MAXEVENTS : sh->n_events;
-    for (uint32_t i = 0; i < n; i++) {
-        SxgEvent* e = &sh->events[i];
-        int32_t d = e->delta < (uint32_t)frames ? (int32_t)e->delta : (frames ? frames - 1 : 0);
-        if (e->kind == SXG_EV_SYSEX && (uint64_t)e->sysex_off + e->sysex_len <= SXG_SYSEX_MAX) {
-            memset(&sev[i], 0, sizeof sev[i]);
-            sev[i].type = 6; sev[i].byteSize = sizeof(VstMidiSysexEvent); sev[i].deltaFrames = d;
-            sev[i].dumpBytes = (int32_t)e->sysex_len; sev[i].sysexDump = (char*)sh->sysex + e->sysex_off;
-            list[i] = &sev[i];
-        } else {
-            memset(&mev[i], 0, sizeof mev[i]);
-            mev[i].type = 1; mev[i].byteSize = sizeof(VstMidiEvent); mev[i].deltaFrames = d;
-            memcpy(mev[i].midiData, e->data, 3);
-            list[i] = &mev[i];
+
+    if (step == 1.0) {
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t d = sh->events[i].delta;
+            md[i] = d < (uint32_t)frames ? (int32_t)d : (frames ? frames - 1 : 0);
+        }
+        render(frames, md, sh->out[0], sh->out[1]);
+        return;
+    }
+
+    int maxcnt = (int)(4096.0 / step); if (maxcnt < 1) maxcnt = 1;
+    for (int s = 0; s < frames; s += maxcnt) {
+        int cnt = frames - s > maxcnt ? maxcnt : frames - s;
+        int need = (int)(pb_pos + (cnt - 1) * step) + 3;
+        int m = need - pb_have, any = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            int32_t d = (int32_t)sh->events[i].delta;
+            if (d > frames - 1) d = frames - 1;
+            if (d >= s && (d < s + cnt || (s + cnt >= frames))) { md[i] = (int32_t)((d - s) * step); any = 1; }
+            else md[i] = -1;
+        }
+        if (m < 1 && any) m = 1;
+        if (m > 0) {
+            for (uint32_t i = 0; i < n; i++) if (md[i] >= m) md[i] = m - 1;
+            render(m, md, pb[0] + pb_have, pb[1] + pb_have);
+            pb_have += m;
+        }
+        for (int k = 0; k < cnt; k++) {
+            double x = pb_pos + k * step;
+            int ix = (int)x; double t = x - ix;
+            sh->out[0][s + k] = cubic(pb[0] + ix, t);
+            sh->out[1][s + k] = cubic(pb[1] + ix, t);
+        }
+        pb_pos += cnt * step;
+        int shift = (int)pb_pos - 1;
+        if (shift > pb_have) shift = pb_have;     // the step can skip past what was rendered
+        if (shift > 0) {
+            memmove(pb[0], pb[0] + shift, sizeof(float) * (pb_have - shift));
+            memmove(pb[1], pb[1] + shift, sizeof(float) * (pb_have - shift));
+            pb_have -= shift; pb_pos -= shift;
         }
     }
-    if (n) { hdr->numEvents = (int32_t)n; hdr->reserved = 0; fx->dispatcher(fx, effProcessEvents, 0, 0, hdr, 0); }
-
-    float* outs[8] = {0}; float* ins[2] = { in0, in0 };
-    static float spare[6][SXG_MAXFRAMES];
-    int no = fx->numOutputs > 8 ? 8 : fx->numOutputs;
-    for (int i = 0; i < no; i++) outs[i] = i < SXG_OUTS ? sh->out[i] : spare[i - SXG_OUTS];
-    memset(sh->out, 0, sizeof sh->out);
-    if (fx->processReplacing) fx->processReplacing(fx, ins, outs, frames);
-    else if (fx->process) fx->process(fx, ins, outs, frames);
-    if (no == 1) memcpy(sh->out[1], sh->out[0], sizeof(float) * frames);      // mono plugin on both channels
 }
 
 static DWORD WINAPI audio_thread(LPVOID p)
@@ -204,7 +274,15 @@ static void run_command(void)
     sh->result = 0;
     switch (sh->cmd) {
     case SXG_CMD_ACTIVATE:
-        sample_rate = (float)sh->arg[0] > 0 ? (float)sh->arg[0] : 44100.0f;
+        host_rate = (float)sh->arg[0] > 0 ? (double)sh->arg[0] : 44100.0;
+        {   // S-YXG50 plays correctly at these rates only; at any other it renders at about 44100 Hz
+            static const int ok[] = { 11025, 22050, 44100, 48000, 96000 };
+            int native = 0;
+            for (unsigned i = 0; i < sizeof ok / sizeof ok[0]; i++) if ((int)(host_rate + 0.5) == ok[i]) native = 1;
+            sample_rate = native ? (float)host_rate : 44100.0f;
+            step = native ? 1.0 : 44100.0 / host_rate;
+            resample_reset();
+        }
         fx->dispatcher(fx, effSetSampleRate, 0, 0, 0, sample_rate);
         fx->dispatcher(fx, effSetBlockSize, 0, SXG_MAXFRAMES, 0, 0);
         fx->dispatcher(fx, effMainsChanged, 0, 1, 0, 0);
