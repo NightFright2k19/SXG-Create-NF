@@ -185,7 +185,7 @@ jobs:
           set -euo pipefail
           make -C clapbridge macos
           lipo -info clapbridge/sxgbridge-macos
-          cp clapbridge/sxgbridge-macos bridge-bin/
+          gzip -9 -c clapbridge/sxgbridge-macos > bridge-bin/sxgbridge-macos.gz   # gzipped: PyInstaller would thin a bare Mach-O file to the runner's architecture
           rm -f bridge-bin/sxgbridge.clap                 # the Windows CLAP is not part of the macOS patcher
           ls -la bridge-bin
 
