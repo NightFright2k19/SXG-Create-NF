@@ -60,10 +60,21 @@ jobs:
           import sys
           sys.path.insert(0, 'utility')
           import clapbridge
-          bridge = clapbridge.bridge_dir() / clapbridge.CLAP_FILE
-          assert clapbridge.mac_archs(bridge) == {0x0100000C, 0x01000007}, 'not universal'
+          assert clapbridge.mac_archs(clapbridge.clap_bytes(clapbridge.bridge_dir())) == {0x0100000C, 0x01000007}, 'not universal'
           print(clapbridge.install(__import__('pathlib').Path('t/VST2'), __import__('pathlib').Path('t/CLAP')))
           PY
           find t/CLAP
           codesign --verify --verbose t/CLAP/syxgtest.clap
           clapbridge/testhost_mac t/CLAP/syxgtest.clap/Contents/MacOS/syxgtest smoke
+
+      - name: Frozen patcher still sees a universal bridge (PyInstaller thins bare Mach-O data files)
+        run: |
+          set -euo pipefail
+          mkdir -p bridge-bin
+          gzip -9 -c clapbridge/sxgbridge-macos > bridge-bin/sxgbridge-macos.gz
+          cp clapbridge/sxgbridge32.exe bridge-bin/        # the stand-in from the step above is enough here
+          python3 -m venv fvenv
+          fvenv/bin/python -m pip install --quiet pyinstaller
+          printf 'import sys\nsys.path.insert(0, "utility")\nimport clapbridge\na = clapbridge.mac_archs(clapbridge.clap_bytes(clapbridge.bridge_dir()))\nassert a == {0x0100000C, 0x01000007}, a\nprint("frozen check ok")\n' > frozen_check.py
+          fvenv/bin/python -m PyInstaller --onefile --noconfirm --clean --paths utility --add-data "bridge-bin:bridge" --hidden-import clapbridge frozen_check.py
+          ./dist/frozen_check

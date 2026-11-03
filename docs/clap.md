@@ -36,7 +36,7 @@ Copy the `.clap` files **and** `sxgbridge32.exe` to a CLAP folder of your host (
 ## Building (development)
 
 - Windows files: `make -C clapbridge` with mingw-w64 (`gcc-mingw-w64`): `sxgbridge.clap` (x86_64) and `sxgbridge32.exe` (i686, the helper for both systems).
-- Linux CLAP: `make -C clapbridge linux` (gcc, `libxcb-dev`): `sxgbridge-linux.clap`. macOS CLAP: `make -C clapbridge macos` (clang on a Mac): universal `sxgbridge-macos`.
+- Linux CLAP: `make -C clapbridge linux` (gcc, `libxcb-dev`): `sxgbridge-linux.clap`. macOS CLAP: `make -C clapbridge macos` (clang on a Mac): universal `sxgbridge-macos`. In the frozen macOS patcher this file is bundled gzipped (`sxgbridge-macos.gz`): PyInstaller would otherwise thin a bare Mach-O data file to the architecture of the build machine, and the patcher's self-test (and the bundle it writes) would see a single-architecture bridge. `bridge-check.yml` freezes a small test program to catch this.
 - The Autobuild workflow builds the Windows files in the `bridge` job (ubuntu, mingw-w64) the Linux CLAP in the Linux patcher's own build job (ubuntu-22.04, for an old glibc) and the macOS CLAP in the macOS patchers' jobs; every patcher bundles its system's CLAP + the helper (folder `bridge` inside the patcher). `utility/clapbridge.py` copies them. `python utility/clapbridge.py <VST2 folder> <CLAP folder>` writes the CLAP files for a folder of DLLs from a checkout. The workflow `bridge-check.yml` builds and tests the bridges on pull requests that touch `clapbridge/`.
 
 ## Tests (Wine)

@@ -12,7 +12,7 @@
 # The bridge files are built from clapbridge/ by the Autobuild workflow and bundled with the Windows and Linux patchers;
 # a checkout builds them with `make -C clapbridge` (Windows files, mingw-w64), `make -C clapbridge linux` (gcc, libxcb-dev) or `make -C clapbridge macos` (clang).
 #   python utility/clapbridge.py <VST2 folder> <CLAP folder>      writes the CLAP files for the DLLs in the first folder
-import plistlib, shutil, stat, struct, subprocess, sys
+import gzip, plistlib, shutil, stat, struct, subprocess, sys
 from pathlib import Path
 
 CLAP_FILES = {'win32': 'sxgbridge.clap', 'linux': 'sxgbridge-linux.clap', 'darwin': 'sxgbridge-macos'}
@@ -25,8 +25,13 @@ def bridge_dir() -> Path | None :
     candidates = [Path(getattr(sys, '_MEIPASS', HERE.parent)) / 'bridge', HERE.parent / 'clapbridge']
     if CLAP_FILE is None : return None
     for d in candidates :
-        if (d / CLAP_FILE).is_file() and (d / HELPER_FILE).is_file() : return d
+        if ((d / CLAP_FILE).is_file() or (d / (CLAP_FILE + '.gz')).is_file()) and (d / HELPER_FILE).is_file() : return d
     return None
+
+def clap_bytes(d : Path) -> bytes :
+    # the bridge CLAP; the frozen macOS patcher carries it gzipped (PyInstaller would thin a Mach-O file in a data folder to its own architecture)
+    f = d / CLAP_FILE
+    return f.read_bytes() if f.is_file() else gzip.decompress((d / (CLAP_FILE + '.gz')).read_bytes())
 
 def supported() -> bool :
     return bridge_dir() is not None
@@ -41,9 +46,9 @@ def machine(f : Path) -> int :
     if data[:4] == b'\x7fELF' : return struct.unpack_from('<H', data, 18)[0]
     return struct.unpack_from('<H', data, struct.unpack_from('<I', data, 0x3C)[0] + 4)[0]
 
-def mac_archs(f : Path) -> set[int] :
+def mac_archs(data : bytes) -> set[int] :
     # CPU types in a universal Mach-O file (0x0100000C arm64, 0x01000007 x86_64)
-    data = f.read_bytes()[:4096]
+    data = data[:4096]
     if data[:4] != b'\xca\xfe\xba\xbe' : return {struct.unpack_from('<I', data, 4)[0]} if data[:4] == b'\xcf\xfa\xed\xfe' else set()
     n = struct.unpack_from('>I', data, 4)[0]
     return {struct.unpack_from('>I', data, 8 + 20 * i)[0] for i in range(n)}
@@ -52,7 +57,7 @@ def check() -> None :
     # selftest: both files are there and are the right kind of file (64-bit CLAP: PE x64 / ELF x86-64, 32-bit PE helper)
     d = bridge_dir()
     assert d is not None, 'CLAP bridge files missing'
-    if sys.platform == 'darwin' : assert mac_archs(d / CLAP_FILE) == {0x0100000C, 0x01000007}, f'{CLAP_FILE} is not a universal (arm64 + x86_64) plugin'
+    if sys.platform == 'darwin' : assert mac_archs(clap_bytes(d)) == {0x0100000C, 0x01000007}, f'{CLAP_FILE} is not a universal (arm64 + x86_64) plugin'
     else : assert machine(d / CLAP_FILE) == (0x8664 if sys.platform == 'win32' else 62), f'{CLAP_FILE} is not a 64-bit plugin'
     assert machine(d / HELPER_FILE) == 0x014C, 'sxgbridge32.exe is not a 32-bit program'
 
@@ -66,17 +71,17 @@ def install(vst2 : Path, clap : Path) -> list[str] :
     shutil.copyfile(d / HELPER_FILE, clap / HELPER_FILE)
     names = []
     for p in dlls :
-        if sys.platform == 'darwin' : make_bundle(d / CLAP_FILE, clap / (p.stem + '.clap'), p.stem)
+        if sys.platform == 'darwin' : make_bundle(clap_bytes(d), clap / (p.stem + '.clap'), p.stem)
         else : shutil.copyfile(d / CLAP_FILE, clap / (p.stem + '.clap'))
         names.append(p.stem + '.clap')
     return names
 
-def make_bundle(binary : Path, bundle : Path, stem : str) -> None :
+def make_bundle(binary : bytes, bundle : Path, stem : str) -> None :
     # macOS: <stem>.clap/Contents/{Info.plist, MacOS/<stem>}; hosts load the bundle, Apple Silicon wants a signature (ad hoc is enough)
     if bundle.exists() : shutil.rmtree(bundle)
     exe = bundle / 'Contents' / 'MacOS' / stem
     exe.parent.mkdir(parents = True)
-    shutil.copyfile(binary, exe)
+    exe.write_bytes(binary)
     exe.chmod(exe.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     info = dict(CFBundleName = stem, CFBundleExecutable = stem, CFBundleIdentifier = 'io.github.nightfright2k19.sxg-create-nf.' + stem,
                 CFBundlePackageType = 'BNDL', CFBundleSignature = '????', CFBundleVersion = '1.0', CFBundleShortVersionString = '1.0',
