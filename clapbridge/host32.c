@@ -19,7 +19,7 @@ static HANDLE   h_ready, h_ago, h_adone, h_cgo, h_cdone, h_map;
 static AEffect* fx;
 static HMODULE  dll;
 static volatile LONG quitting;
-static float    sample_rate = 44100.0f;
+static float    sample_rate = 44100.0f;      // only until the host activates the plugin and tells its rate
 static VstTimeInfo time_info;
 static HWND     editor_wnd;
 static BOOL     editor_open;
@@ -124,22 +124,6 @@ static void render(int frames, const int32_t* md, float* o0, float* o1)
     }
 }
 
-// Host rate the plugin does not support (the plugin then renders at 44100 Hz): resample its output.
-static double host_rate = 44100.0;     // rate the CLAP host asked for
-static double step = 1.0;              // plugin samples per host sample; 1.0 = no resampling
-#define PBN 16384
-static float pb[2][PBN];               // plugin-rate samples; pb[x][0] is the history sample
-static int pb_have = 1;
-static double pb_pos = 1.0;
-
-static void resample_reset(void) { memset(pb, 0, sizeof pb); pb_have = 1; pb_pos = 1.0; }
-
-static float cubic(const float* p, double t)
-{
-    float a = p[-1], b = p[0], c = p[1], d = p[2], f = (float)t;
-    return b + 0.5f * f * (c - a + f * (2*a - 5*b + 4*c - d + f * (3*(b - c) + d - a)));
-}
-
 static void process_block(void)
 {
     static int32_t md[SXG_MAXEVENTS];
@@ -148,48 +132,11 @@ static void process_block(void)
     if (frames > SXG_MAXFRAMES) frames = SXG_MAXFRAMES;
     if (!fx) { memset(sh->out, 0, sizeof sh->out); return; }
     uint32_t n = sh->n_events > SXG_MAXEVENTS ? SXG_MAXEVENTS : sh->n_events;
-
-    if (step == 1.0) {
-        for (uint32_t i = 0; i < n; i++) {
-            uint32_t d = sh->events[i].delta;
-            md[i] = d < (uint32_t)frames ? (int32_t)d : (frames ? frames - 1 : 0);
-        }
-        render(frames, md, sh->out[0], sh->out[1]);
-        return;
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t d = sh->events[i].delta;
+        md[i] = d < (uint32_t)frames ? (int32_t)d : (frames ? frames - 1 : 0);
     }
-
-    int maxcnt = (int)(4096.0 / step); if (maxcnt < 1) maxcnt = 1;
-    for (int s = 0; s < frames; s += maxcnt) {
-        int cnt = frames - s > maxcnt ? maxcnt : frames - s;
-        int need = (int)(pb_pos + (cnt - 1) * step) + 3;
-        int m = need - pb_have, any = 0;
-        for (uint32_t i = 0; i < n; i++) {
-            int32_t d = (int32_t)sh->events[i].delta;
-            if (d > frames - 1) d = frames - 1;
-            if (d >= s && (d < s + cnt || (s + cnt >= frames))) { md[i] = (int32_t)((d - s) * step); any = 1; }
-            else md[i] = -1;
-        }
-        if (m < 1 && any) m = 1;
-        if (m > 0) {
-            for (uint32_t i = 0; i < n; i++) if (md[i] >= m) md[i] = m - 1;
-            render(m, md, pb[0] + pb_have, pb[1] + pb_have);
-            pb_have += m;
-        }
-        for (int k = 0; k < cnt; k++) {
-            double x = pb_pos + k * step;
-            int ix = (int)x; double t = x - ix;
-            sh->out[0][s + k] = cubic(pb[0] + ix, t);
-            sh->out[1][s + k] = cubic(pb[1] + ix, t);
-        }
-        pb_pos += cnt * step;
-        int shift = (int)pb_pos - 1;
-        if (shift > pb_have) shift = pb_have;     // the step can skip past what was rendered
-        if (shift > 0) {
-            memmove(pb[0], pb[0] + shift, sizeof(float) * (pb_have - shift));
-            memmove(pb[1], pb[1] + shift, sizeof(float) * (pb_have - shift));
-            pb_have -= shift; pb_pos -= shift;
-        }
-    }
+    render(frames, md, sh->out[0], sh->out[1]);
 }
 
 static DWORD WINAPI audio_thread(LPVOID p)
@@ -274,15 +221,7 @@ static void run_command(void)
     sh->result = 0;
     switch (sh->cmd) {
     case SXG_CMD_ACTIVATE:
-        host_rate = (float)sh->arg[0] > 0 ? (double)sh->arg[0] : 44100.0;
-        {   // S-YXG50 plays correctly at these rates only; at any other it renders at about 44100 Hz
-            static const int ok[] = { 11025, 22050, 44100, 48000, 96000 };
-            int native = 0;
-            for (unsigned i = 0; i < sizeof ok / sizeof ok[0]; i++) if ((int)(host_rate + 0.5) == ok[i]) native = 1;
-            sample_rate = native ? (float)host_rate : 44100.0f;
-            step = native ? 1.0 : 44100.0 / host_rate;
-            resample_reset();
-        }
+        if (sh->arg[0] > 0) sample_rate = (float)sh->arg[0];     // always the rate the host runs at, passed on unchanged
         fx->dispatcher(fx, effSetSampleRate, 0, 0, 0, sample_rate);
         fx->dispatcher(fx, effSetBlockSize, 0, SXG_MAXFRAMES, 0, 0);
         fx->dispatcher(fx, effMainsChanged, 0, 1, 0, 0);

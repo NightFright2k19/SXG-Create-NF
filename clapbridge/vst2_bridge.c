@@ -91,11 +91,19 @@ static void take_events(Inst* p, const VstEventsHdr* h)
     }
 }
 
+// The rate the host set; hosts that never call effSetSampleRate are asked through the audio master.
+static float host_rate(Inst* p)
+{
+    if (p->rate > 0) return p->rate;
+    float r = p->master ? (float)p->master(&p->fx, audioMasterGetSampleRate, 0, 0, 0, 0) : 0;
+    return r > 0 ? r : 44100.0f;
+}
+
 static int activate(Inst* p)
 {
     if (p->dead) return 0;
     if (p->active) return 1;
-    if (!command(p, SXG_CMD_ACTIVATE, (int)((p->rate > 0 ? p->rate : 44100.0f) + 0.5f), p->block, 30000)) return 0;
+    if (!command(p, SXG_CMD_ACTIVATE, (int)(host_rate(p) + 0.5f), p->block, 30000)) return 0;
     p->active = 1; return 1;
 }
 
@@ -236,7 +244,7 @@ __declspec(dllexport) AEffect* VSTPluginMain(AudioMasterCallback master)
     Inst* p = (Inst*)calloc(1, sizeof *p);
     if (!p) return 0;
     InitializeSRWLock(&p->cmd_lock);
-    p->master = master; p->rate = 44100.0f; p->block = 1024;
+    p->master = master; p->rate = 0; p->block = 1024;
     if (!plat_start(p)) { log_to_file(p->error); plat_stop(p); free(p); return 0; }
     AEffect* fx = &p->fx;
     fx->magic = kEffectMagic; fx->dispatcher = vst_dispatch; fx->process = vst_process;
